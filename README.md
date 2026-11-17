@@ -202,6 +202,36 @@
 - 安装：`adb install -r build/MiniMetro.apk`，或把 APK 传到手机点击安装
 - 正式上架需要自己的 release keystore：在 `export_presets.cfg` 的 Android 预设里填 `keystore/release` 与密码，再用 `godot --export-release "Android" build/MiniMetro-release.apk`
 
+### 手机触屏适配
+
+对全项目的可点击控件做了触屏尺寸审计，主要调整：
+
+- **对局结束**：新增两个 340×96 大按钮「重新开始 / 返回模式选择」；每日挑战没有第二次机会，只显示返回按钮
+- **设置**：右下角齿轮按钮扩大到 84×72；设置行高 78，音量行有独立的「− / +」触屏按钮，玩家名输入框 700×80
+- **底部 HUD**：暂停 / 1x / 2x / 3x / 设置全部 84×72
+- **模式菜单**：底部四个入口 250×88，城市切换箭头 90×90
+- **排行榜 / 地图大厅**：返回按钮 320×80，地图行高 84，行内点击即可下载
+- **资源图标**：可拖拽命中区扩大到 120×96
+- **地图编辑器**：工具栏改成两行、每行 5 个 180×70 大按钮，地图区域下移避免遮挡
+
+![手机模式菜单](docs/images/mobile-menu.png)
+
+![手机对局结束](docs/images/mobile-gameover.png)
+
+![手机设置](docs/images/mobile-settings.png)
+
+![手机地图编辑器](docs/images/mobile-editor.png)
+
+## 应用图标
+
+导出图标源文件为 1024×1024 PNG，已应用到桌面窗口图标、Windows 导出和 Android 启动图标（含 Android 自适应前景/背景）：
+
+![应用图标](docs/images/icon.png)
+
+- `art/icon_1024.png` / `icon_512.png` / `icon_192.png`
+- `art/icon_foreground_432.png` / `icon_background_432.png`
+- Android APK 已验证包含 `res/mipmap-anydpi-v26/icon.xml` 与各密度图标
+
 ### 暂停 / 设置
 
 暂停时模拟停止，但线路编辑与列车/车厢调动仍然可用：

@@ -45,6 +45,9 @@ var _stock_rects := {}
 
 var game_over := false
 var final_score := 0
+var game_over_can_restart := true
+var _game_over_restart_rect := Rect2()
+var _game_over_menu_rect := Rect2()
 
 var week_modal := false
 var reward_title := ""
@@ -76,8 +79,10 @@ var _city_arrow_rects: Array[Rect2] = []
 
 var settings_menu := false
 var settings_index := 0
-## 主循环每帧回填：master_volume / music_volume / fullscreen / language
+## 主循环每帧回填：master_volume / music_volume / fullscreen / language / player_name
 var settings_values := {}
+var _settings_minus_rects: Array[Rect2] = []
+var _settings_plus_rects: Array[Rect2] = []
 
 var toast_text := ""
 var toast_left := 0.0
@@ -119,11 +124,20 @@ func show_toast(message: String) -> void:
 	queue_redraw()
 
 
-func show_game_over(final: int, best: int) -> void:
+func show_game_over(final: int, best: int, can_restart: bool = true) -> void:
 	game_over = true
 	final_score = final
 	best_score = best
+	game_over_can_restart = can_restart
 	queue_redraw()
+
+
+func game_over_restart_at(pos: Vector2) -> bool:
+	return game_over_can_restart and _game_over_restart_rect.has_point(pos)
+
+
+func game_over_menu_at(pos: Vector2) -> bool:
+	return _game_over_menu_rect.has_point(pos)
 
 
 func show_week(cards: Array, week_number: int, title_text: String = "") -> void:
@@ -203,13 +217,28 @@ func settings_row_count() -> int:
 	return 8
 
 
+## 音量行的触屏 - / + 按钮命中（返回行号，-1 表示没点中）。
+func settings_minus_at(pos: Vector2) -> int:
+	for i in _settings_minus_rects.size():
+		if _settings_minus_rects[i].has_point(pos):
+			return i
+	return -1
+
+
+func settings_plus_at(pos: Vector2) -> int:
+	for i in _settings_plus_rects.size():
+		if _settings_plus_rects[i].has_point(pos):
+			return i
+	return -1
+
+
 func show_name_editor(current_name: String) -> void:
 	if name_edit == null:
 		return
 	name_edit_open = true
 	var vp := get_viewport_rect().size
-	name_edit.position = Vector2(vp.x * 0.5 - 280.0, vp.y * 0.5 - 24.0)
-	name_edit.size = Vector2(560.0, 54.0)
+	name_edit.position = Vector2(vp.x * 0.5 - 350.0, vp.y * 0.5 - 36.0)
+	name_edit.size = Vector2(700.0, 80.0)
 	name_edit.text = current_name
 	name_edit.visible = true
 	name_edit.grab_focus()
@@ -357,55 +386,55 @@ func _draw_clock(vp: Vector2) -> void:
 
 func _draw_speed_buttons(vp: Vector2) -> void:
 	var labels := ["1x", "2x", "3x"]
-	var size := Vector2(54.0, 34.0)
-	var gap := 8.0
+	var size := Vector2(84.0, 72.0)
+	var gap := 10.0
 	var total := size.x * 3.0 + gap * 2.0
-	var start := Vector2(vp.x - 72.0 - total, vp.y - 118.0)
+	var start := Vector2(vp.x - 400.0, vp.y - 104.0)
 	# 暂停按钮放在倍速按钮左边；暂停期间仍可编辑线路/调动车厢
-	_pause_rect = Rect2(start - Vector2(50.0, 0.0), Vector2(42.0, 34.0))
+	_pause_rect = Rect2(start - Vector2(96.0, 0.0), size)
 	# 设置按钮放在倍速按钮右边
-	_settings_rect = Rect2(Vector2(vp.x - 62.0, vp.y - 118.0), Vector2(42.0, 34.0))
+	_settings_rect = Rect2(Vector2(vp.x - 116.0, vp.y - 104.0), size)
 	var settings_center := _settings_rect.get_center()
-	var settings_poly := DrawUtil.rounded_rect(_settings_rect, 8.0, 6)
-	draw_colored_polygon(settings_poly, Color(1.0, 1.0, 1.0, 0.35))
+	var settings_poly := DrawUtil.rounded_rect(_settings_rect, 12.0, 6)
+	draw_colored_polygon(settings_poly, Color(1.0, 1.0, 1.0, 0.42))
 	draw_polyline(DrawUtil.closed(settings_poly), Color(INK, 0.4), 1.5, true)
-	draw_circle(settings_center, 8.0, Color(INK, 0.8), true, -1.0, true)
-	draw_circle(settings_center, 3.2, Color(PAPER, 0.95), true, -1.0, true)
+	draw_circle(settings_center, 15.0, Color(INK, 0.8), true, -1.0, true)
+	draw_circle(settings_center, 6.0, Color(PAPER, 0.95), true, -1.0, true)
 	for i in 8:
 		var a := TAU * float(i) / 8.0
-		draw_line(settings_center + Vector2(cos(a), sin(a)) * 9.5,
-			settings_center + Vector2(cos(a), sin(a)) * 12.5, Color(INK, 0.8), 2.2, true)
+		draw_line(settings_center + Vector2(cos(a), sin(a)) * 17.0,
+			settings_center + Vector2(cos(a), sin(a)) * 23.0, Color(INK, 0.8), 3.5, true)
 	var mouse := get_global_mouse_position()
 	var pause_hovered := _pause_rect.has_point(mouse)
-	var pause_poly := DrawUtil.rounded_rect(_pause_rect, 8.0, 6)
+	var pause_poly := DrawUtil.rounded_rect(_pause_rect, 12.0, 6)
 	draw_colored_polygon(pause_poly,
-		Color(INK, 0.85) if paused else Color(1.0, 1.0, 1.0, 0.55 if pause_hovered else 0.35))
+		Color(INK, 0.85) if paused else Color(1.0, 1.0, 1.0, 0.65 if pause_hovered else 0.42))
 	draw_polyline(DrawUtil.closed(pause_poly), Color(INK, 0.4), 1.5, true)
 	var pc := _pause_rect.get_center()
 	if paused:
 		# 恢复播放：三角形
 		var play := PackedVector2Array([
-			pc + Vector2(-5.0, -8.0), pc + Vector2(9.0, 0.0), pc + Vector2(-5.0, 8.0),
+			pc + Vector2(-10.0, -16.0), pc + Vector2(18.0, 0.0), pc + Vector2(-10.0, 16.0),
 		])
 		draw_colored_polygon(play, Color(1.0, 1.0, 1.0, 0.95))
 	else:
 		# 暂停：两条竖线
-		draw_rect(Rect2(pc + Vector2(-7.0, -8.0), Vector2(5.0, 16.0)), INK)
-		draw_rect(Rect2(pc + Vector2(2.0, -8.0), Vector2(5.0, 16.0)), INK)
+		draw_rect(Rect2(pc + Vector2(-14.0, -16.0), Vector2(10.0, 32.0)), INK)
+		draw_rect(Rect2(pc + Vector2(4.0, -16.0), Vector2(10.0, 32.0)), INK)
 	_speed_rects = []
 	for i in 3:
 		var rect := Rect2(start + Vector2(float(i) * (size.x + gap), 0.0), size)
 		_speed_rects.append(rect)
 		var active := is_equal_approx(speed, float(i + 1))
 		var hovered := rect.has_point(mouse)
-		var poly := DrawUtil.rounded_rect(rect, 8.0, 6)
+		var poly := DrawUtil.rounded_rect(rect, 12.0, 6)
 		if active:
 			draw_colored_polygon(poly, Color(INK, 0.85))
 		else:
-			draw_colored_polygon(poly, Color(1.0, 1.0, 1.0, 0.55 if hovered else 0.35))
+			draw_colored_polygon(poly, Color(1.0, 1.0, 1.0, 0.65 if hovered else 0.42))
 		draw_polyline(DrawUtil.closed(poly), Color(INK, 0.4), 1.5, true)
 		_text_centered(String(labels[i]), rect.position.x + rect.size.x * 0.5,
-			rect.position.y + 23.0, 17, Color(1.0, 1.0, 1.0, 0.95) if active else INK)
+			rect.position.y + 46.0, 26, Color(1.0, 1.0, 1.0, 0.95) if active else INK)
 
 
 ## 暂停按钮命中。
@@ -453,7 +482,7 @@ func _draw_resource_slots(vp: Vector2) -> void:
 		_draw_stock_icon(kind, center, count > 0)
 		_text("x%d" % count, Vector2(center.x + 34.0, row_y + 8.0), 22,
 			Color(INK, 0.85) if count > 0 else Color(MUTED, 0.5))
-		_stock_rects[kind] = Rect2(center - Vector2(34.0, 23.0), Vector2(82.0, 46.0))
+		_stock_rects[kind] = Rect2(center - Vector2(56.0, 48.0), Vector2(120.0, 96.0))
 
 	# 桥梁不是库存，是预算：画桥图标 + 已用/上限
 	var bridge_center := Vector2(690.0, row_y)
@@ -568,7 +597,7 @@ func _draw_mode_menu(vp: Vector2) -> void:
 	_draw_mode_cards(vp)
 	_text_centered(Loc.t("← → 切换城市 · 点击卡片或按 1 / 2 / 3 / 4 开始",
 		"Left / Right city · click a card or press 1 / 2 / 3 / 4"),
-		cx, cy + 300.0, 18, Color(1.0, 1.0, 1.0, 0.7))
+		cx, cy + 350.0, 18, Color(1.0, 1.0, 1.0, 0.7))
 	# 底部入口：每日榜 / 地图大厅 / 地图排行 / 地图编辑器
 	var menu_buttons := [
 		{"rect": _daily_board_rect, "text": Loc.t("每日排行榜", "Daily board"),
@@ -581,24 +610,20 @@ func _draw_mode_menu(vp: Vector2) -> void:
 			"action": "editor", "key": "E"},
 	]
 	var mouse := get_global_mouse_position()
-	var button_w := 200.0
-	var button_gap := 12.0
+	var button_w := 250.0
+	var button_gap := 16.0
 	var total_w := button_w * menu_buttons.size() + button_gap * (menu_buttons.size() - 1)
 	var start_x := cx - total_w * 0.5
 	for i in menu_buttons.size():
-		var rect := Rect2(Vector2(start_x + float(i) * (button_w + button_gap), cy + 212.0),
-			Vector2(button_w, 44.0))
+		var rect := Rect2(Vector2(start_x + float(i) * (button_w + button_gap), cy + 218.0),
+			Vector2(button_w, 88.0))
 		match String(menu_buttons[i]["action"]):
 			"daily": _daily_board_rect = rect
 			"hall": _map_hall_rect = rect
 			"rank": _map_rank_rect = rect
 			"editor": _editor_button_rect = rect
-		var hovered := rect.has_point(mouse)
-		var poly := DrawUtil.rounded_rect(rect, 12.0, 8)
-		draw_colored_polygon(poly, Color(1.0, 1.0, 1.0, 0.16 if hovered else 0.08))
-		draw_polyline(DrawUtil.closed(poly), Color(1.0, 1.0, 1.0, 0.35), 1.5, true)
-		_text_centered(String(menu_buttons[i]["text"]), rect.position.x + rect.size.x * 0.5,
-			rect.position.y + 28.0, 18, Color(1.0, 1.0, 1.0, 0.9))
+		_draw_touch_button(rect, String(menu_buttons[i]["text"]),
+			rect.has_point(mouse))
 
 
 func daily_board_button_at(pos: Vector2) -> bool:
@@ -660,30 +685,26 @@ func map_hall_back_at(pos: Vector2) -> bool:
 
 func _draw_leaderboard(vp: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.08, 0.09, 0.10, 0.78))
-	var panel_size := Vector2(minf(1760.0, vp.x - 120.0), 220.0 + float(leaderboard_lines.size()) * 38.0)
-	panel_size.y = minf(panel_size.y, vp.y - 120.0)
+	var panel_size := Vector2(minf(1760.0, vp.x - 120.0), 260.0 + float(leaderboard_lines.size()) * 44.0)
+	panel_size.y = minf(panel_size.y, vp.y - 100.0)
 	var panel := Rect2((vp - panel_size) * 0.5, panel_size)
 	var poly := DrawUtil.rounded_rect(panel, 22.0, 10)
 	draw_colored_polygon(poly, Color(0.99, 0.97, 0.92, 0.98))
 	draw_polyline(DrawUtil.closed(poly), Color(0.55, 0.52, 0.47), 2.0, true)
 	_text_centered(leaderboard_title, panel.position.x + panel.size.x * 0.5,
-		panel.position.y + 62.0, 36, INK)
+		panel.position.y + 68.0, 36, INK)
 	_text_centered(leaderboard_subtitle, panel.position.x + panel.size.x * 0.5,
-		panel.position.y + 98.0, 18, MUTED)
-	var y := panel.position.y + 146.0
+		panel.position.y + 106.0, 18, MUTED)
+	var y := panel.position.y + 156.0
 	for line in leaderboard_lines:
-		_text(line, Vector2(panel.position.x + 70.0, y), 20, INK)
-		y += 38.0
-		if y > panel.end.y - 90.0:
+		_text(line, Vector2(panel.position.x + 70.0, y), 21, INK)
+		y += 40.0
+		if y > panel.end.y - 110.0:
 			break
-	_leaderboard_back_rect = Rect2(Vector2(panel.position.x + panel.size.x * 0.5 - 110.0,
-		panel.end.y - 68.0), Vector2(220.0, 42.0))
-	var back_poly := DrawUtil.rounded_rect(_leaderboard_back_rect, 10.0, 6)
-	draw_colored_polygon(back_poly, Color(INK, 0.08))
-	draw_polyline(DrawUtil.closed(back_poly), Color(0.55, 0.52, 0.47), 1.5, true)
-	_text_centered(Loc.t("返回（Esc）", "Back (Esc)"),
-		_leaderboard_back_rect.position.x + 110.0, _leaderboard_back_rect.position.y + 28.0,
-		18, INK)
+	_leaderboard_back_rect = Rect2(Vector2(panel.position.x + panel.size.x * 0.5 - 160.0,
+		panel.end.y - 96.0), Vector2(320.0, 80.0))
+	_draw_touch_button(_leaderboard_back_rect, Loc.t("返回", "Back"),
+		_leaderboard_back_rect.has_point(get_global_mouse_position()))
 
 
 func _draw_name_modal(vp: Vector2) -> void:
@@ -700,47 +721,43 @@ func _draw_name_modal(vp: Vector2) -> void:
 
 func _draw_map_hall(vp: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.08, 0.09, 0.10, 0.78))
-	var panel_size := Vector2(minf(1760.0, vp.x - 120.0), 220.0 + float(map_hall_entries.size()) * 72.0)
-	panel_size.y = minf(panel_size.y, vp.y - 120.0)
+	var panel_size := Vector2(minf(1760.0, vp.x - 120.0), 260.0 + float(map_hall_entries.size()) * 96.0)
+	panel_size.y = minf(panel_size.y, vp.y - 100.0)
 	var panel := Rect2((vp - panel_size) * 0.5, panel_size)
 	var poly := DrawUtil.rounded_rect(panel, 22.0, 10)
 	draw_colored_polygon(poly, Color(0.99, 0.97, 0.92, 0.98))
 	draw_polyline(DrawUtil.closed(poly), Color(0.55, 0.52, 0.47), 2.0, true)
 	_text_centered(Loc.t("地图大厅", "Map Hall"), panel.position.x + panel.size.x * 0.5,
-		panel.position.y + 56.0, 36, INK)
+		panel.position.y + 64.0, 36, INK)
 	_text_centered(Loc.t("点击地图行即可下载到本地，随后会出现在城市列表",
 		"Click a map row to download it; it appears in the city list"),
-		panel.position.x + panel.size.x * 0.5, panel.position.y + 92.0, 17, MUTED)
+		panel.position.x + panel.size.x * 0.5, panel.position.y + 102.0, 17, MUTED)
 	_map_hall_row_rects = []
-	var y := panel.position.y + 124.0
+	var y := panel.position.y + 140.0
 	var row_w := panel.size.x - 120.0
 	var mouse := get_global_mouse_position()
 	for i in map_hall_entries.size():
 		var entry: Dictionary = map_hall_entries[i]
-		var row := Rect2(panel.position.x + 60.0, y, row_w, 60.0)
+		var row := Rect2(panel.position.x + 60.0, y, row_w, 84.0)
 		_map_hall_row_rects.append(row)
 		var hovered := row.has_point(mouse)
 		var row_poly := DrawUtil.rounded_rect(row, 12.0, 6)
 		draw_colored_polygon(row_poly, Color(INK, 0.06 if hovered else 0.03))
 		draw_polyline(DrawUtil.closed(row_poly), Color(0.72, 0.69, 0.62), 1.2, true)
 		_text(String(entry.get("name_zh", entry.get("name_en", "未命名"))),
-			row.position + Vector2(24.0, 26.0), 22, INK)
+			row.position + Vector2(28.0, 34.0), 24, INK)
 		_text(Loc.t("作者 %s · 下载 %d", "by %s · %d downloads") % [
 			String(entry.get("author", "?")), int(entry.get("downloads", 0)),
-		], row.position + Vector2(24.0, 48.0), 15, MUTED)
-		_text_centered(Loc.t("下载", "Download"), row.end.x - 90.0,
-			row.position.y + 36.0, 18, Color(INK, 0.75))
-		y += 72.0
-		if y > panel.end.y - 90.0:
+		], row.position + Vector2(28.0, 64.0), 17, MUTED)
+		_text_centered(Loc.t("下载", "Download"), row.end.x - 100.0,
+			row.position.y + 48.0, 22, Color(INK, 0.75))
+		y += 96.0
+		if y > panel.end.y - 110.0:
 			break
-	_map_hall_back_rect = Rect2(Vector2(panel.position.x + panel.size.x * 0.5 - 110.0,
-		panel.end.y - 68.0), Vector2(220.0, 42.0))
-	var back_poly := DrawUtil.rounded_rect(_map_hall_back_rect, 10.0, 6)
-	draw_colored_polygon(back_poly, Color(INK, 0.08))
-	draw_polyline(DrawUtil.closed(back_poly), Color(0.55, 0.52, 0.47), 1.5, true)
-	_text_centered(Loc.t("返回（Esc）", "Back (Esc)"),
-		_map_hall_back_rect.position.x + 110.0, _map_hall_back_rect.position.y + 28.0,
-		18, INK)
+	_map_hall_back_rect = Rect2(Vector2(panel.position.x + panel.size.x * 0.5 - 160.0,
+		panel.end.y - 96.0), Vector2(320.0, 80.0))
+	_draw_touch_button(_map_hall_back_rect, Loc.t("返回", "Back"),
+		_map_hall_back_rect.has_point(get_global_mouse_position()))
 
 
 ## 城市切换：左右箭头 + 城市名 + 迷你河道预览。
@@ -755,16 +772,16 @@ func _draw_city_selector(vp: Vector2) -> void:
 		_text_centered(city.display_name(), cx, cy - 216.0, 30, Color(1.0, 1.0, 1.0, 0.95))
 	_draw_city_preview(Rect2(cx - 180.0, cy - 204.0, 360.0, 176.0), city)
 	_city_arrow_rects = [
-		Rect2(cx - 232.0, cy - 140.0, 48.0, 48.0),
-		Rect2(cx + 184.0, cy - 140.0, 48.0, 48.0),
+		Rect2(cx - 292.0, cy - 160.0, 90.0, 90.0),
+		Rect2(cx + 202.0, cy - 160.0, 90.0, 90.0),
 	]
 	var mouse := get_global_mouse_position()
 	for i in 2:
 		var arrow_rect: Rect2 = _city_arrow_rects[i]
 		var hovered := arrow_rect.has_point(mouse)
 		var color := Color(1.0, 1.0, 1.0, 0.95 if hovered else 0.55)
-		_text_centered("‹" if i == 0 else "›", arrow_rect.position.x + 24.0,
-			arrow_rect.position.y + 36.0, 40, color)
+		_text_centered("‹" if i == 0 else "›", arrow_rect.position.x + 45.0,
+			arrow_rect.position.y + 67.0, 62, color)
 
 
 func _draw_city_preview(rect: Rect2, city: CityMap) -> void:
@@ -832,12 +849,12 @@ func _mode_kind_at(index: int) -> int:
 
 func _draw_settings(vp: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.10, 0.10, 0.11, 0.55))
-	var panel := Rect2(vp.x * 0.5 - 330.0, vp.y * 0.5 - 270.0, 660.0, 540.0)
+	var panel := Rect2(vp.x * 0.5 - 450.0, vp.y * 0.5 - 410.0, 900.0, 820.0)
 	var panel_poly := DrawUtil.rounded_rect(panel, 22.0, 10)
 	draw_colored_polygon(panel_poly, Color(0.12, 0.12, 0.13, 0.72))
 	draw_polyline(DrawUtil.closed(panel_poly), Color(1.0, 1.0, 1.0, 0.12), 2.0, true)
 	_text_centered(Loc.t("暂停 · 设置", "Paused · Settings"), vp.x * 0.5,
-		vp.y * 0.5 - 238.0, 34, Color(1.0, 1.0, 1.0, 0.96))
+		vp.y * 0.5 - 365.0, 34, Color(1.0, 1.0, 1.0, 0.96))
 	var labels := [
 		Loc.t("继续", "Resume"),
 		Loc.t("主音量", "Master volume"),
@@ -856,38 +873,78 @@ func _draw_settings(vp: Vector2) -> void:
 		String(settings_values.get("player_name", "玩家")),
 		"", "",
 	]
-	var row_width := 560.0
-	var row_height := 46.0
-	var step := 54.0
+	var row_width := 820.0
+	var row_height := 78.0
+	var step := 86.0
 	var start_x := (vp.x - row_width) * 0.5
-	var start_y := vp.y * 0.5 - 185.0
+	var start_y := vp.y * 0.5 - 350.0
+	_settings_minus_rects = [Rect2(), Rect2()]
+	_settings_plus_rects = [Rect2(), Rect2()]
 	for i in labels.size():
 		var row := Rect2(start_x, start_y + float(i) * step, row_width, row_height)
 		if i == settings_index:
 			var poly := DrawUtil.rounded_rect(row, 12.0, 6)
 			draw_colored_polygon(poly, Color(1.0, 1.0, 1.0, 0.16))
-		_text(String(labels[i]), Vector2(row.position.x + 26.0, row.position.y + 30.0), 21,
+		_text(String(labels[i]), Vector2(row.position.x + 40.0, row.position.y + 50.0), 30,
 			Color(1.0, 1.0, 1.0, 0.94 if i == settings_index else 0.72))
+		if i in [1, 2]:
+			var minus_rect := Rect2(row.end.x - 290.0, row.position.y + 12.0, 54.0, 54.0)
+			var plus_rect := Rect2(row.end.x - 220.0, row.position.y + 12.0, 54.0, 54.0)
+			_settings_minus_rects[i - 1] = minus_rect
+			_settings_plus_rects[i - 1] = plus_rect
+			for pair in [{"rect": minus_rect, "text": "−"}, {"rect": plus_rect, "text": "+"}]:
+				var br: Rect2 = pair["rect"]
+				var bp := DrawUtil.rounded_rect(br, 12.0, 6)
+				draw_colored_polygon(bp, Color(1.0, 1.0, 1.0, 0.14))
+				draw_polyline(DrawUtil.closed(bp), Color(1.0, 1.0, 1.0, 0.35), 1.5, true)
+				_text_centered(String(pair["text"]), br.position.x + 27.0,
+					br.position.y + 38.0, 30, Color(1.0, 1.0, 1.0, 0.9))
 		if values[i] != "":
 			var text := String(values[i])
-			var width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 20).x
-			_text(text, Vector2(row.position.x + row.size.x - 26.0 - width, row.position.y + 30.0),
-				20, Color(1.0, 1.0, 1.0, 0.85))
-	_text_centered(Loc.t("↑↓ 选择 · ←→ 调整 · Enter 确认 · Esc 返回",
-		"Up/Down select · Left/Right adjust · Enter confirm · Esc back"),
-		vp.x * 0.5, vp.y * 0.5 + 300.0, 16, Color(1.0, 1.0, 1.0, 0.6))
+			var width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 28).x
+			_text(text, Vector2(row.position.x + row.size.x - 40.0 - width, row.position.y + 50.0),
+				28, Color(1.0, 1.0, 1.0, 0.85))
+	_text_centered(Loc.t("点击行切换/确认 · 音量行可点 − / + · Esc 返回",
+		"Tap a row to toggle/confirm · tap − / + for volume · Esc back"),
+		vp.x * 0.5, vp.y * 0.5 + 382.0, 18, Color(1.0, 1.0, 1.0, 0.6))
 
 
 func _draw_game_over(vp: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.10, 0.10, 0.11, 0.58))
-	_text_centered(Loc.t("拥堵失控", "Overcrowded"), vp.x * 0.5, vp.y * 0.5 - 40.0, 60,
+	var cx := vp.x * 0.5
+	var cy := vp.y * 0.5
+	_text_centered(Loc.t("拥堵失控", "Overcrowded"), cx, cy - 40.0, 60,
 		Color(1.0, 1.0, 1.0, 0.96))
 	_text_centered(Loc.t("送达 %d 名乘客 · 最高 %d", "Delivered %d · Best %d") % [
 		final_score, best_score,
-	], vp.x * 0.5, vp.y * 0.5 + 20.0, 26, Color(1.0, 1.0, 1.0, 0.9))
-	_text_centered(Loc.t("按 R 重新开始 · M 返回模式选择",
-		"R restart · M mode menu"), vp.x * 0.5, vp.y * 0.5 + 76.0, 20,
-		Color(1.0, 1.0, 1.0, 0.65))
+	], cx, cy + 20.0, 26, Color(1.0, 1.0, 1.0, 0.9))
+	var button_size := Vector2(340.0, 96.0)
+	var gap := 40.0
+	if game_over_can_restart:
+		_game_over_restart_rect = Rect2(
+			Vector2(cx - button_size.x - gap * 0.5, cy + 78.0), button_size)
+		_game_over_menu_rect = Rect2(
+			Vector2(cx + gap * 0.5, cy + 78.0), button_size)
+	else:
+		_game_over_restart_rect = Rect2()
+		_game_over_menu_rect = Rect2(Vector2(cx - button_size.x * 0.5, cy + 78.0), button_size)
+	_draw_touch_button(_game_over_restart_rect,
+		Loc.t("重新开始", "Restart"), _game_over_restart_rect.has_point(get_global_mouse_position()))
+	_draw_touch_button(_game_over_menu_rect,
+		Loc.t("返回模式选择", "Mode menu"), _game_over_menu_rect.has_point(get_global_mouse_position()))
+	_text_centered(Loc.t("也可按 R 重新开始 · M 返回模式选择",
+		"Keyboard: R restart · M mode menu"), cx, cy + 208.0, 18,
+		Color(1.0, 1.0, 1.0, 0.55))
+
+
+## 大号触屏按钮：绘制 + 文本。
+func _draw_touch_button(rect: Rect2, label: String, hovered: bool) -> void:
+	if rect.size.x <= 0.0:
+		return
+	var poly := DrawUtil.rounded_rect(rect, 16.0, 10)
+	draw_colored_polygon(poly, Color(1.0, 1.0, 1.0, 0.92 if hovered else 0.80))
+	draw_polyline(DrawUtil.closed(poly), Color(0.42, 0.39, 0.35), 2.0, true)
+	_text_centered(label, rect.get_center().x, rect.position.y + 58.0, 28, INK)
 
 
 # ---------------------------------------------------------------------------

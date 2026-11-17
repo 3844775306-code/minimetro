@@ -221,11 +221,11 @@ func _toast_now(text: String) -> void:
 
 func _map_rect() -> Rect2:
 	var vp := get_viewport_rect().size
-	var avail := Vector2(vp.x - 72.0, vp.y - 250.0)
+	var avail := Vector2(vp.x - 72.0, vp.y - 390.0)
 	map_scale = minf(avail.x / WORLD.x, avail.y / WORLD.y)
 	map_scale = maxf(map_scale, 0.1)
 	var size := WORLD * map_scale
-	map_origin = Vector2((vp.x - size.x) * 0.5, 170.0 + (avail.y - size.y) * 0.5)
+	map_origin = Vector2((vp.x - size.x) * 0.5, 292.0 + (avail.y - size.y) * 0.5)
 	return Rect2(map_origin, size)
 
 
@@ -270,9 +270,9 @@ func _draw() -> void:
 	# 工具栏
 	_buttons.clear()
 	var cx := vp.x * 0.5
-	_text_centered("地图编辑器 · 拖拽自由绘制河流", cx, 64.0, 30, INK)
+	_text_centered("地图编辑器 · 拖拽自由绘制河流", cx, 56.0, 30, INK)
 	_text_centered("保存后会出现在模式选择的城市列表里；分享码通过剪贴板交换",
-		cx, 98.0, 16, MUTED)
+		cx, 90.0, 16, MUTED)
 	var labels := [
 		{"action": "new", "text": "新建"},
 		{"action": "undo", "text": "撤销"},
@@ -285,19 +285,23 @@ func _draw() -> void:
 		{"action": "import", "text": "导入"},
 		{"action": "back", "text": "返回"},
 	]
-	var button_size := Vector2(112.0, 42.0)
-	var gap := 12.0
-	var total := button_size.x * labels.size() + gap * (labels.size() - 1)
+	var button_size := Vector2(180.0, 70.0)
+	var gap := 14.0
+	var per_row := 5
+	var total := button_size.x * per_row + gap * (per_row - 1)
 	var start_x := cx - total * 0.5
 	for i in labels.size():
-		var rect := Rect2(Vector2(start_x + float(i) * (button_size.x + gap), 128.0), button_size)
+		var row := i / per_row
+		var col := i % per_row
+		var rect := Rect2(Vector2(start_x + float(col) * (button_size.x + gap),
+			112.0 + float(row) * (button_size.y + 14.0)), button_size)
 		_buttons.append({"rect": rect, "action": String(labels[i]["action"])})
 		var hovered := rect.has_point(get_global_mouse_position())
-		var poly := DrawUtil.rounded_rect(rect, 10.0, 8)
+		var poly := DrawUtil.rounded_rect(rect, 14.0, 8)
 		draw_colored_polygon(poly, Color(PAPER, 0.96) if hovered else Color(PAPER, 0.82))
 		draw_polyline(DrawUtil.closed(poly), Color(0.55, 0.52, 0.47, 0.7), 1.5, true)
 		_text_centered(String(labels[i]["text"]), rect.position.x + rect.size.x * 0.5,
-			rect.position.y + 27.0, 17, INK)
+			rect.position.y + 45.0, 23, INK)
 	_text_centered("河宽 %d px · 已画 %d 条河" % [int(width), rivers.size()],
 		cx, vp.y - 34.0, 16, MUTED)
 	if _toast != "":

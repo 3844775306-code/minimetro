@@ -394,6 +394,23 @@ func _unhandled_input(event: InputEvent) -> void:
 	if hud != null and hud.week_modal:
 		_handle_week_input(event)
 		return
+	if hud != null and hud.game_over:
+		if event is InputEventMouseButton and event.pressed \
+				and event.button_index == MOUSE_BUTTON_LEFT:
+			var pos: Vector2 = (event as InputEventMouseButton).position
+			if hud.game_over_restart_at(pos):
+				_restart()
+				return
+			if hud.game_over_menu_at(pos):
+				_back_to_menu()
+				return
+		if event is InputEventKey and event.pressed and not event.echo:
+			match event.keycode:
+				KEY_R:
+					_restart()
+				KEY_M:
+					_back_to_menu()
+		return
 	if not (event is InputEventKey):
 		return
 	if not event.pressed or event.echo:
@@ -509,14 +526,24 @@ func _handle_settings_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		var pos: Vector2 = (event as InputEventMouseButton).position
 		var vp := get_viewport_rect().size
-		var row_width := 560.0
-		var step := 54.0
+		var row_width := 820.0
+		var step := 86.0
 		var start_x := (vp.x - row_width) * 0.5
-		var start_y := vp.y * 0.5 - 185.0
+		var start_y := vp.y * 0.5 - 350.0
 		var index := int(floor((pos.y - start_y) / step))
 		if index >= 0 and index < hud.settings_row_count():
-			var row := Rect2(start_x, start_y + float(index) * step, row_width, 46.0)
+			var row := Rect2(start_x, start_y + float(index) * step, row_width, 78.0)
 			if row.has_point(pos):
+				var minus_row := hud.settings_minus_at(pos)
+				if minus_row >= 0:
+					hud.settings_index = minus_row + 1
+					_adjust_setting(minus_row + 1, -1)
+					return
+				var plus_row := hud.settings_plus_at(pos)
+				if plus_row >= 0:
+					hud.settings_index = plus_row + 1
+					_adjust_setting(plus_row + 1, 1)
+					return
 				hud.settings_index = index
 				if index in [0, 3, 4, 5, 6, 7]:
 					_activate_setting(index)
@@ -667,7 +694,7 @@ func _on_game_over(_station: Station) -> void:
 	var score := 0 if simulation == null else simulation.score
 	_record_run_result()
 	if hud != null:
-		hud.show_game_over(score, maxi(score, _best_for_mode()))
+		hud.show_game_over(score, maxi(score, _best_for_mode()), not Game.is_daily())
 
 
 func _on_passengers_delivered(station: Station, count: int) -> void:
