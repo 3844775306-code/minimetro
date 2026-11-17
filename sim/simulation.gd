@@ -12,6 +12,9 @@ signal passengers_delivered(station: Station, count: int)
 signal overload_started(station: Station)
 
 const STEP := 1.0 / 60.0
+## 乘客选车评分：线路剩余代价为主，列车到站距离为辅。
+const BOARD_ROUTE_WEIGHT := 10.0
+const BOARD_DISTANCE_WEIGHT := 0.01
 ## 时间换算：1 现实秒 = 1 游戏小时。
 const HOURS_PER_DAY := 24.0
 
@@ -1056,14 +1059,61 @@ func _station_activity(train: Train, line: MetroLine, station_index: int) -> int
 	var capacity_left := train.capacity - (train.riders.size() - alight)
 	if capacity_left > 0 and next_id >= 0:
 		for waiting in station.waiting:
-			var choice := routing.next_for(station.id, waiting.target_shape)
-			if int(choice.get("line", -1)) == train.line_id \
-					and int(choice.get("station", -1)) == next_id:
+			if _passenger_should_board(train, line, station, waiting, next_id):
 				activity += 1
 				capacity_left -= 1
 				if capacity_left <= 0:
 					break
 	return activity
+
+
+## 乘客是否上当前列车：把“剩余线路代价”和“其他列车到站距离”一起打分。
+## 环线上如果首选方向的列车还很远，反方向列车可能因距离优势被选中。
+func _passenger_should_board(train: Train, line: MetroLine, station: Station,
+		passenger: Passenger, next_departure: int) -> bool:
+	var current_route := routing.stay_cost(line.id, station.id, next_departure,
+		passenger.target_shape)
+	if current_route >= Routing.INF * 0.5:
+		return false
+	var best_alt := Routing.INF
+	for other_line in network.lines:
+		var idx := other_line.stops.find(station)
+		if idx < 0:
+			continue
+		for other in other_line.trains:
+			if other == train:
+				continue
+			var next_idx := _next_station_index(other_line, idx, other.dir)
+			if next_idx < 0:
+				continue
+			var next_id := other_line.stops[next_idx].id
+			var route := routing.stay_cost(other_line.id, station.id, next_id,
+				passenger.target_shape)
+			if route >= Routing.INF * 0.5:
+				continue
+			var distance := _train_distance_to_station(other, other_line, station)
+			if distance >= Routing.INF * 0.5:
+				continue
+			var score := route * BOARD_ROUTE_WEIGHT + distance * BOARD_DISTANCE_WEIGHT
+			best_alt = minf(best_alt, score)
+	var current_score := current_route * BOARD_ROUTE_WEIGHT
+	return current_score <= best_alt + 0.01
+
+
+## 列车沿当前方向到某站的近似距离（世界像素）。
+func _train_distance_to_station(train: Train, line: MetroLine, station: Station) -> float:
+	var idx := line.stops.find(station)
+	if idx < 0 or line.geometry.stop_offsets.size() <= idx:
+		return Routing.INF
+	var target := line.geometry.stop_offsets[idx]
+	var total := line.geometry.total_length
+	if train.state == Train.State.DWELL and train.stop_index == idx:
+		return 0.0
+	if line.is_loop and total > 0.001:
+		if train.dir >= 0:
+			return fposmod(target - train.dist, total)
+		return fposmod(train.dist - target, total)
+	return absf(target - train.dist)
 
 
 func _depart(train: Train, line: MetroLine) -> void:
@@ -1130,6 +1180,9 @@ func _begin_stop(train: Train, line: MetroLine, station: Station) -> void:
 			if not choice.is_empty() \
 					and int(choice["line"]) == train.line_id \
 					and int(choice["station"]) == next_departure:
+				train.stop_actions.append({"kind": "board", "passenger": passenger})
+				capacity_left -= 1
+			elif _passenger_should_board(train, line, station, passenger, next_departure):
 				train.stop_actions.append({"kind": "board", "passenger": passenger})
 				capacity_left -= 1
 

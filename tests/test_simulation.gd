@@ -5,6 +5,7 @@ static func run(h: TestHarness) -> void:
 	_test_delivery(h)
 	_test_transfer(h)
 	_test_overflow(h)
+	_test_loop_opposite_board(h)
 
 
 static func _make_level(train_count: int = 2) -> LevelData:
@@ -104,3 +105,59 @@ static func _test_overflow(h: TestHarness) -> void:
 	h.eq(over_ids.size(), 1, "game_over 只发一次")
 	h.check(over_ids.size() == 1 and int(over_ids[0]) == a.id, "失败站点是拥堵站")
 	h.eq(net.train_count(), 0, "没有线路时不生成列车")
+
+
+## 环线上首选方向的列车很远时，乘客会改坐反方向、但已经到站的车。
+static func _test_loop_opposite_board(h: TestHarness) -> void:
+	h.section("sim/loop_opposite_board")
+	var level := _make_level()
+	var net := MetroNetwork.new(level)
+	var a := net.add_station(Vector2(200, 200), Shape.Kind.CIRCLE)
+	var b := net.add_station(Vector2(800, 200), Shape.Kind.TRIANGLE)
+	var c := net.add_station(Vector2(800, 800), Shape.Kind.PLUS)
+	var d := net.add_station(Vector2(200, 800), Shape.Kind.SQUARE)
+	var line := net.create_line()
+	line.add_stop(a)
+	line.add_stop(b)
+	line.add_stop(c)
+	line.add_stop(d)
+	line.is_loop = true
+	line.rebuild()
+	net.touch()
+	var sim := _make_sim(net, level)
+	var total := line.geometry.total_length
+	var offsets := line.geometry.stop_offsets
+
+	# 反方向列车已经停在 A；首选方向（经闭合段直去 D）的列车停在远处的 D
+	var opposite := Train.new()
+	opposite.id = 1
+	opposite.line_id = line.id
+	opposite.line_version = line.version
+	opposite.dir = 1
+	opposite.stop_index = 0
+	opposite.target_index = 1
+	opposite.dist = offsets[0]
+	opposite.target_dist = offsets[1]
+	opposite.state = Train.State.DWELL
+	opposite.refresh_capacity()
+	line.trains.append(opposite)
+	var preferred := Train.new()
+	preferred.id = 2
+	preferred.line_id = line.id
+	preferred.line_version = line.version
+	preferred.dir = 1
+	preferred.stop_index = 3
+	preferred.target_index = 0
+	preferred.dist = offsets[3]
+	preferred.target_dist = total
+	preferred.state = Train.State.MOVING
+	preferred.refresh_capacity()
+	line.trains.append(preferred)
+
+	a.waiting.append(Passenger.new(Shape.Kind.SQUARE))
+	sim.routing.rebuild(net)
+	sim._begin_stop(opposite, line, a)
+	h.eq(opposite.riders.size(), 1, "乘客坐上反方向但已到站的车")
+	h.eq(a.waiting.size(), 0, "乘客不再死等首选方向")
+	h.check(sim._passenger_should_board(opposite, line, a,
+		Passenger.new(Shape.Kind.SQUARE), b.id), "综合评分允许反方向上车")
