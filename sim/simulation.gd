@@ -1100,7 +1100,7 @@ func _passenger_should_board(train: Train, line: MetroLine, station: Station,
 	return current_score <= best_alt + 0.01
 
 
-## 列车沿当前方向到某站的近似距离（世界像素）。
+## 列车沿当前方向到某站的沿线距离（线路弧长，不是直线距离）。
 func _train_distance_to_station(train: Train, line: MetroLine, station: Station) -> float:
 	var idx := line.stops.find(station)
 	if idx < 0 or line.geometry.stop_offsets.size() <= idx:
@@ -1113,7 +1113,14 @@ func _train_distance_to_station(train: Train, line: MetroLine, station: Station)
 		if train.dir >= 0:
 			return fposmod(target - train.dist, total)
 		return fposmod(train.dist - target, total)
-	return absf(target - train.dist)
+	# 开放线路：沿当前方向开到端点后掉头再折返，不能直接用两点的直线距离
+	if train.dir >= 0:
+		if target >= train.dist:
+			return target - train.dist
+		return (total - train.dist) + (total - target)
+	if target <= train.dist:
+		return train.dist - target
+	return train.dist + target
 
 
 func _depart(train: Train, line: MetroLine) -> void:

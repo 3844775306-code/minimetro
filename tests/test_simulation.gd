@@ -6,6 +6,7 @@ static func run(h: TestHarness) -> void:
 	_test_transfer(h)
 	_test_overflow(h)
 	_test_loop_opposite_board(h)
+	_test_along_line_train_distance(h)
 
 
 static func _make_level(train_count: int = 2) -> LevelData:
@@ -161,3 +162,30 @@ static func _test_loop_opposite_board(h: TestHarness) -> void:
 	h.eq(a.waiting.size(), 0, "乘客不再死等首选方向")
 	h.check(sim._passenger_should_board(opposite, line, a,
 		Passenger.new(Shape.Kind.SQUARE), b.id), "综合评分允许反方向上车")
+
+
+## 车到乘客的距离必须是线路弧长；L 形线路不能拿两点直线距离近似。
+static func _test_along_line_train_distance(h: TestHarness) -> void:
+	h.section("sim/along_line_distance")
+	var level := _make_level()
+	var net := MetroNetwork.new(level)
+	var a := net.add_station(Vector2(100, 100), Shape.Kind.CIRCLE)
+	var b := net.add_station(Vector2(700, 100), Shape.Kind.SQUARE)
+	var c := net.add_station(Vector2(700, 700), Shape.Kind.TRIANGLE)
+	var line := net.create_line()
+	line.add_stop(a)
+	line.add_stop(b)
+	line.add_stop(c)
+	net.touch()
+	var sim := _make_sim(net, level)
+	var train := Train.new()
+	train.line_id = line.id
+	train.dir = 1
+	train.dist = line.geometry.stop_offsets[0]
+	train.stop_index = 0
+	train.state = Train.State.MOVING
+	var along := sim._train_distance_to_station(train, line, c)
+	var straight := a.pos.distance_to(c.pos)
+	h.near(along, line.geometry.stop_offsets[2], 0.1, "距离等于沿线弧长")
+	h.check(along > straight + 100.0,
+		"L 形线路的沿线距离明显大于直线距离（%.0f vs %.0f）" % [along, straight])
