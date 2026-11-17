@@ -5,6 +5,8 @@ extends RefCounted
 
 var level: LevelData
 var rng: RandomNumberGenerator
+## 当前相机可见的世界范围；非空时新站只在这个范围内生成
+var spawn_rect := Rect2()
 
 
 func _init(p_level: LevelData, p_rng: RandomNumberGenerator) -> void:
@@ -42,6 +44,13 @@ func _random_land_point(network: MetroNetwork) -> Vector2:
 	var max_x: float = level.world_size.x - margin
 	var min_y: float = margin
 	var max_y: float = level.world_size.y - margin
+	if spawn_rect.size.x > 0.0 and spawn_rect.size.y > 0.0:
+		min_x = maxf(min_x, spawn_rect.position.x)
+		max_x = minf(max_x, spawn_rect.end.x)
+		min_y = maxf(min_y, spawn_rect.position.y)
+		max_y = minf(max_y, spawn_rect.end.y)
+	if max_x < min_x or max_y < min_y:
+		return Vector2.INF
 	for attempt in 140:
 		var p := Vector2(rng.randf_range(min_x, max_x), rng.randf_range(min_y, max_y))
 		if network.is_point_in_water(p):

@@ -27,6 +27,9 @@ var speed: float = 0.0
 var dir: int = 1
 var state: int = State.DWELL
 var dwell_left: float = 0.0
+## 到站后的上下客队列：每人 0.5s，依次执行（视觉上逐个上下）
+var stop_actions: Array[Dictionary] = []
+var action_timer: float = 0.0
 
 ## 当前所在站（DWELL）或目标站（MOVING）在下行线的站序。
 var stop_index: int = 0

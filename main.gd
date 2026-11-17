@@ -189,7 +189,8 @@ func _input(event: InputEvent) -> void:
 	if hud.mode_menu or hud.settings_menu or hud.week_modal or hud.game_over:
 		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		var pos := get_global_mouse_position()
+		# HUD 在 CanvasLayer 里，必须用屏幕坐标命中；世界拖拽才用世界坐标
+		var pos: Vector2 = (event as InputEventMouseButton).position
 		# 左上角库存图标：拖到地图上放资源
 		var stock := hud.stock_icon_at(pos)
 		if stock != "" and simulation != null:
@@ -198,7 +199,7 @@ func _input(event: InputEvent) -> void:
 				"train": count = simulation.inventory_trains
 				"carriage": count = simulation.inventory_carriages
 				"interchange": count = simulation.inventory_interchanges
-			if count > 0 and editor.begin_stock_drag(stock, pos):
+			if count > 0 and editor.begin_stock_drag(stock, get_global_mouse_position()):
 				Audio.play("click")
 				get_viewport().set_input_as_handled()
 				return
@@ -253,7 +254,7 @@ func _handle_mode_menu_input(event: InputEvent) -> void:
 				_cycle_city(1)
 		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		var pos := get_global_mouse_position()
+		var pos: Vector2 = (event as InputEventMouseButton).position
 		var index := hud.mode_card_at(pos)
 		if index >= 0:
 			_choose_mode(hud._mode_kind_at(index))
@@ -294,6 +295,23 @@ func _sync_settings_values() -> void:
 
 
 func _handle_settings_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		var pos: Vector2 = (event as InputEventMouseButton).position
+		var vp := get_viewport_rect().size
+		var row_width := 560.0
+		var step := 54.0
+		var start_x := (vp.x - row_width) * 0.5
+		var start_y := vp.y * 0.5 - 160.0
+		var index := int(floor((pos.y - start_y) / step))
+		if index >= 0 and index < hud.settings_row_count():
+			var row := Rect2(start_x, start_y + float(index) * step, row_width, 46.0)
+			if row.has_point(pos):
+				hud.settings_index = index
+				if index in [0, 3, 4, 5, 6]:
+					_activate_setting(index)
+				else:
+					_adjust_setting(index, 1)
+		return
 	if not (event is InputEventKey) or not event.pressed or event.echo:
 		return
 	var rows := hud.settings_row_count()
@@ -362,7 +380,7 @@ func _handle_week_input(event: InputEvent) -> void:
 		elif event.keycode == KEY_2:
 			_choose_upgrade(1)
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		var index := hud.card_at(get_global_mouse_position())
+		var index := hud.card_at((event as InputEventMouseButton).position)
 		if index >= 0:
 			_choose_upgrade(index)
 
@@ -456,7 +474,7 @@ func _build_world() -> void:
 	camera = Camera2D.new()
 	camera.name = "Camera"
 	camera.position = level.world_size * 0.5
-	camera.zoom = Vector2(1.25, 1.25)
+	camera.zoom = Vector2(0.5, 0.5)
 	camera.enabled = true
 	add_child(camera)
 
@@ -610,6 +628,7 @@ func _start_session() -> void:
 		_apply_pose()
 	else:
 		# 开局固定三座基础车站：圆形（居民区）、三角形（商务区）、方形（车站）
+		simulation.spawner.spawn_rect = simulation.visible_world_rect()
 		simulation.spawner.spawn_starting_trio(network)
 
 
@@ -807,6 +826,25 @@ func _apply_pose() -> void:
 				editor.move_gesture(
 					target_line.geometry.sample(target_line.geometry.total_length * 0.5).origin
 				)
+				editor.set_process_unhandled_input(false)
+		"boarding":
+			# 演示：列车停站后逐个上下客（每 0.5s 一名），站上有呼吸提示环
+			if not network.lines.is_empty() and network.lines[0].stops.size() >= 2:
+				var line: MetroLine = network.lines[0]
+				var station: Station = line.stops[0]
+				if line.trains.is_empty():
+					simulation._spawn_train_at(line, station.pos)
+				var train: Train = line.trains[0]
+				train.dist = line.geometry.stop_offsets[0]
+				train.stop_index = 0
+				train.target_index = 1
+				train.speed = 0.0
+				train.riders.clear()
+				for i in 4:
+					station.waiting.append(Passenger.new(line.stops[1].shape))
+				simulation._begin_stop(train, line, station)
+				train.state = Train.State.DWELL
+				_advance_sim(20)
 				editor.set_process_unhandled_input(false)
 		"night":
 			_advance_sim(60)

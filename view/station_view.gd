@@ -39,7 +39,8 @@ func set_hovered(value: bool) -> void:
 func _process(_delta: float) -> void:
 	if station == null:
 		return
-	if station.overload_timer > 0.0 or station.waiting.size() != _last_waiting:
+	if station.overload_timer > 0.0 or station.waiting.size() != _last_waiting \
+			or station.boarding:
 		_last_waiting = station.waiting.size()
 		queue_redraw()
 
@@ -74,6 +75,11 @@ func _draw() -> void:
 		draw_polyline(DrawUtil.closed(pts), stroke, 3.0, true)
 	if hovered:
 		draw_arc(Vector2.ZERO, r + 13.0, 0.0, TAU, 48, HOVER_RING, 2.5, true)
+	if station.boarding:
+		# 正在逐个上下客：轻微呼吸环，配合等待图标逐个减少
+		var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.008)
+		draw_arc(Vector2.ZERO, r + 8.0, 0.0, TAU, 32,
+			Color(STROKE, 0.18 + 0.16 * pulse), 2.0, true)
 	if station.capacity > 6:
 		# 换乘站再加一圈细描边，和普通站的"更大"一起构成视觉区别
 		draw_arc(Vector2.ZERO, r + 7.0, 0.0, TAU, 48, Color(STROKE, 0.22), 1.5, true)

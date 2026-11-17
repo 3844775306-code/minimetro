@@ -108,17 +108,26 @@ static func _test_dwell_proportional(h: TestHarness) -> void:
 	var sim := _make_sim(net, level)
 	sim.tick(Simulation.STEP)
 	var train: Train = line.trains[0]
-	h.eq(train.riders.size(), 3, "三名乘客上车")
-	h.near(train.dwell_left, 3.0 * Train.DWELL_PER_PASSENGER, 0.05,
-		"停站时间 = 0.5s × 上车人数")
-	# 开到 B（终点）后三人下车，停站时间同样是 0.5s × 下车人数
-	for i in 600:
+	# 逐个上车：每 0.5s 一名，不再一帧上完
+	h.eq(train.riders.size(), 1, "第 1 名立即上车")
+	h.near(train.dwell_left, 3.0 * Train.DWELL_PER_PASSENGER, 0.06,
+		"总停站时间仍 = 0.5s × 人数")
+	for i in 15:
+		sim.tick(Simulation.STEP)
+	h.eq(train.riders.size(), 1, "0.25s 时仍只有 1 名上车")
+	for i in 15:
+		sim.tick(Simulation.STEP)
+	h.eq(train.riders.size(), 2, "0.5s 时第 2 名上车")
+	for i in 30:
+		sim.tick(Simulation.STEP)
+	h.eq(train.riders.size(), 3, "1.0s 时第 3 名上车")
+	# 开到 B（终点）后三人逐个下车并送达
+	for i in 900:
 		sim.tick(Simulation.STEP)
 		if sim.delivered >= 3:
 			break
 	h.eq(sim.delivered, 3, "三人送达")
-	h.near(train.dwell_left, 3.0 * Train.DWELL_PER_PASSENGER, 0.05,
-		"到站停站时间 = 0.5s × 下车人数")
+	h.eq(train.riders.size(), 0, "送达后车内清空")
 
 
 static func _test_curve_limit(h: TestHarness) -> void:

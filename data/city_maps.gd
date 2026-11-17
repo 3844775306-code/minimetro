@@ -65,8 +65,9 @@ static func band(centerline: PackedVector2Array, width: float) -> PackedVector2A
 static func _meander(center: PackedVector2Array, width: float) -> PackedVector2Array:
 	if center.size() < 3 or width <= 0.0:
 		return center
-	var amplitude := width * 0.26
-	var wavelength := maxf(width * 2.0, 80.0)
+	# 振幅/波长控制在"河宽的一半"以内，避免曲流把河道自身挤成一个个水泡
+	var amplitude := width * 0.16
+	var wavelength := maxf(width * 2.6, 100.0)
 	var phase := fmod(absf(center[0].x) * 0.021 + absf(center[0].y) * 0.017, TAU)
 	var out := PackedVector2Array()
 	var travelled := 0.0

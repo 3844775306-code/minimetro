@@ -104,7 +104,10 @@ static func _test_stages(h: TestHarness) -> void:
 		"村庄有居民区和车站")
 	h.check(weights0.has(Shape.Kind.TRIANGLE), "村庄也有商务区（开局三站之一）")
 	h.check(not weights0.has(Shape.Kind.PENTAGON), "村庄没有市政厅")
-	h.near(sim.camera_zoom_target(), 1.25, 0.001, "开局相机较近（1.25）")
+	h.near(sim.camera_zoom_target(), 0.5, 0.001, "开局相机 0.5（看全地图+外圈）")
+	var start_visible := sim.visible_world_rect()
+	h.check(start_visible.encloses(Rect2(Vector2.ZERO, level.world_size)),
+		"开局可见范围覆盖整张地图（新车站不会生成在屏幕外）")
 
 	_add_stations(net, 6)
 	h.eq(sim.development_stage(), 1, "9 站时是小镇")
@@ -128,7 +131,10 @@ static func _test_stages(h: TestHarness) -> void:
 	h.check(sim.station_shape_weights().has(Shape.Kind.RING), "都会解锁公园")
 	h.check(sim.station_shape_weights().has(Shape.Kind.CLOVER), "都会解锁花园")
 	_add_stations(net, 8)
-	h.near(sim.camera_zoom_target(), 1.0, 0.001, "车站足够多时相机回到正常距离 1.0")
+	h.near(sim.camera_zoom_target(), 1.0, 0.001, "车站足够多时相机到 1.0（地图铺满）")
+	var late_visible := sim.visible_world_rect()
+	h.near(late_visible.size.x, level.world_size.x, 0.1, "后期可见范围恰好是整张地图宽")
+	h.near(late_visible.size.y, level.world_size.y, 0.1, "后期可见范围恰好是整张地图高")
 	h.check(sim.station_interval() < level.station_spawn_interval,
 		"城镇越大，新车站出现越快")
 

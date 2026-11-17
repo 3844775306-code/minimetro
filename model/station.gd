@@ -20,6 +20,9 @@ var line_ids: Array[int] = []
 ## M2：>0 表示正在溢出倒计时。
 var overload_timer: float = 0.0
 
+## 有列车正在本站逐个上下客（视图据此画提示环）
+var boarding := false
+
 
 func _init(p_id: int = 0, p_shape: int = Shape.Kind.CIRCLE, p_pos: Vector2 = Vector2.ZERO) -> void:
 	id = p_id
