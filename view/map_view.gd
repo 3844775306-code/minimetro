@@ -6,6 +6,7 @@ extends Node2D
 const WATER := Color("#CFE4EA")
 const PAPER := Color("#F3EFE6")
 const PAPER_EDGE := Color("#E2DAC9")
+const RIVER_EDGE := Color("#B7D3DB")
 const PAPER_SHADOW := Color(0.10, 0.12, 0.14, 0.07)
 
 var level: LevelData = null
@@ -26,3 +27,9 @@ func _draw() -> void:
 	draw_colored_polygon(DrawUtil.offset(_land, Vector2(9, 11)), PAPER_SHADOW)
 	draw_colored_polygon(_land, PAPER)
 	draw_polyline(DrawUtil.closed(_land), PAPER_EDGE, 3.0, true)
+	# 河道画在陆地之上
+	for river in level.rivers:
+		if river.size() < 3:
+			continue
+		draw_colored_polygon(river, WATER)
+		draw_polyline(DrawUtil.closed(river), RIVER_EDGE, 2.5, true)

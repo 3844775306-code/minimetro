@@ -120,6 +120,98 @@ func total_carriages() -> int:
 	return total
 
 
+# ---------------------------------------------------------------------------
+# 水域 / 桥隧
+# ---------------------------------------------------------------------------
+
+## 已使用的桥隧数量 = 所有线路穿过河道的段数之和。
+func used_bridges() -> int:
+	if level == null or level.rivers.is_empty():
+		return 0
+	var total := 0
+	for line in lines:
+		total += line_bridge_count(line)
+	return total
+
+
+func available_bridges() -> int:
+	if level == null:
+		return 0
+	return maxi(0, level.start_bridges - used_bridges())
+
+
+func line_bridge_count(line: MetroLine) -> int:
+	if level == null or level.rivers.is_empty():
+		return 0
+	var count := 0
+	for i in range(line.stops.size() - 1):
+		var a: Vector2 = line.stops[i].pos
+		var b: Vector2 = line.stops[i + 1].pos
+		if segment_crosses_water(a, b, line.is_segment_flipped(i)):
+			count += 1
+	return count
+
+
+## 两站之间的八向折线是否穿过任意河道（考虑该段的弯曲翻转）。
+func segment_crosses_water(a: Vector2, b: Vector2, flipped: bool = false) -> bool:
+	if level == null or level.rivers.is_empty():
+		return false
+	var path := LineGeometry.octilinear_segment(a, b, flipped)
+	for i in range(path.size() - 1):
+		for river in level.rivers:
+			if _segment_hits_polygon(path[i], path[i + 1], river):
+				return true
+	return false
+
+
+func is_point_in_water(p: Vector2) -> bool:
+	if level == null:
+		return false
+	for river in level.rivers:
+		if river.size() >= 3 and Geometry2D.is_point_in_polygon(p, river):
+			return true
+	return false
+
+
+## 点到河道的距离（在河道内返回 0）。
+func water_distance(p: Vector2) -> float:
+	if level == null or level.rivers.is_empty():
+		return INF
+	var best := INF
+	for river in level.rivers:
+		if river.size() < 3:
+			continue
+		if Geometry2D.is_point_in_polygon(p, river):
+			return 0.0
+		for i in river.size():
+			var a: Vector2 = river[i]
+			var b: Vector2 = river[(i + 1) % river.size()]
+			best = minf(best, _distance_to_segment(p, a, b))
+	return best
+
+
+func _segment_hits_polygon(a: Vector2, b: Vector2, poly: PackedVector2Array) -> bool:
+	if poly.size() < 3:
+		return false
+	if Geometry2D.is_point_in_polygon(a, poly) or Geometry2D.is_point_in_polygon(b, poly):
+		return true
+	for i in poly.size():
+		var c: Vector2 = poly[i]
+		var d: Vector2 = poly[(i + 1) % poly.size()]
+		if Geometry2D.segment_intersects_segment(a, b, c, d) != null:
+			return true
+	return false
+
+
+func _distance_to_segment(p: Vector2, a: Vector2, b: Vector2) -> float:
+	var ab := b - a
+	var len_sq := ab.length_squared()
+	if len_sq <= 0.0001:
+		return p.distance_to(a)
+	var t := clampf((p - a).dot(ab) / len_sq, 0.0, 1.0)
+	return p.distance_to(a + ab * t)
+
+
 ## 撤销 / 重建线路前调用：把车上乘客放回最近站台，避免"删线时乘客蒸发"。
 func rescue_riders() -> void:
 	for line in lines:

@@ -4,8 +4,8 @@ extends RefCounted
 ## 只用于截图/回归对比，不参与正式玩法。
 
 const STATION_POINTS := [
-	Vector2(300, 300), Vector2(620, 250), Vector2(950, 300), Vector2(1290, 240), Vector2(1590, 380),
-	Vector2(420, 640), Vector2(760, 560), Vector2(1120, 660), Vector2(1470, 720),
+	Vector2(300, 300), Vector2(620, 250), Vector2(950, 300), Vector2(1420, 240), Vector2(1590, 380),
+	Vector2(420, 640), Vector2(760, 560), Vector2(1000, 620), Vector2(1470, 720),
 	Vector2(900, 870), Vector2(560, 900),
 ]
 

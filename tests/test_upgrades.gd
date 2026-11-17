@@ -7,6 +7,8 @@ static func run(h: TestHarness) -> void:
 	_test_apply_line(h)
 	_test_apply_train(h)
 	_test_apply_carriage(h)
+	_test_apply_bridge(h)
+	_test_apply_interchange(h)
 
 
 static func _make_level(week_seconds: float = 999.0) -> LevelData:
@@ -144,3 +146,37 @@ static func _test_apply_carriage(h: TestHarness) -> void:
 		if line.carriages > 0 and not line.trains.is_empty():
 			capacities.append(line.trains[0].capacity)
 	h.check(capacities.size() == 2, "两条线路各有一节车厢")
+
+
+static func _test_apply_bridge(h: TestHarness) -> void:
+	h.section("upgrades/bridge")
+	var level := _make_level()
+	level.start_bridges = 2
+	level.max_bridges = 6
+	var net := _make_network(level)
+	var sim := _make_sim(net, level)
+	sim.apply_upgrade("bridge")
+	h.eq(level.start_bridges, 3, "桥隧额度 +1")
+	h.eq(net.available_bridges(), 3, "可用额度同步")
+
+
+static func _test_apply_interchange(h: TestHarness) -> void:
+	h.section("upgrades/interchange")
+	var level := _make_level()
+	var net := _make_network(level)
+	var sim := _make_sim(net, level)
+	var stations := net.stations
+	stations[0].waiting.append(Passenger.new(Shape.Kind.SQUARE))
+	stations[0].waiting.append(Passenger.new(Shape.Kind.SQUARE))
+	stations[2].waiting.append(Passenger.new(Shape.Kind.CIRCLE))
+
+	sim.apply_upgrade("interchange")
+	h.eq(stations[0].capacity, 12, "最拥挤站点升级为换乘站")
+	h.eq(stations[2].capacity, 6, "其他站容量不变")
+
+	sim.apply_upgrade("interchange")
+	var upgraded := 0
+	for st in net.stations:
+		if st.capacity > 6:
+			upgraded += 1
+	h.eq(upgraded, 2, "第二座换乘站落在下一个拥挤站")

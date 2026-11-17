@@ -17,6 +17,7 @@ var simulation: Simulation = null
 
 var map_view: MapView = null
 var line_layer: LineLayer = null
+var bridge_layer: BridgeLayer = null
 var train_layer: TrainLayer = null
 var station_layer: StationLayer = null
 var passenger_layer: PassengerLayer = null
@@ -125,6 +126,11 @@ func _build_world() -> void:
 	line_layer.z_index = 100
 	world.add_child(line_layer)
 
+	bridge_layer = BridgeLayer.new()
+	bridge_layer.name = "BridgeLayer"
+	bridge_layer.z_index = 110
+	world.add_child(bridge_layer)
+
 	train_layer = TrainLayer.new()
 	train_layer.name = "TrainLayer"
 	train_layer.z_index = 150
@@ -150,6 +156,7 @@ func _build_world() -> void:
 	overlay.add_child(editor)
 
 	line_layer.setup(network)
+	bridge_layer.setup(network)
 	train_layer.setup(network)
 	station_layer.setup(network)
 	passenger_layer.setup(network)
@@ -210,7 +217,7 @@ func _start_session() -> void:
 					mid = candidate
 					break
 			editor.begin_gesture(mid)
-			editor.move_gesture(network.stations[8].pos)
+			editor.move_gesture(network.stations[6].pos)
 			editor.set_process_unhandled_input(false)
 		elif _pose == "riders":
 			# 摆出"列车满载乘客行驶中"的姿态（直接给 1 号线列车装 6 名乘客）
@@ -228,6 +235,13 @@ func _start_session() -> void:
 				train.state = Train.State.MOVING
 				train.line_version = line.version
 			editor.set_process_unhandled_input(false)
+		elif _pose == "interchange":
+			# 把一座换乘站升级到 12 容量，展示更大的站点图标
+			var st: Station = network.stations[6]
+			st.capacity = 12
+			for i in 5:
+				st.waiting.append(Passenger.new(Shape.Kind.SQUARE))
+			_advance_sim(90)
 		elif _pose == "overload":
 			# 一座没有线路的站 + 超容等待乘客，展示红色超载计时环
 			var st := network.add_station(Vector2(1450, 900), Shape.Kind.DIAMOND)

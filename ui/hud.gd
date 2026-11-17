@@ -138,7 +138,8 @@ func _draw_resource_slots(vp: Vector2) -> void:
 	var carriages := 0 if network == null else network.total_carriages()
 	_text("%d" % carriages, Vector2(268.0, 143.0), 18, Color(INK, 0.75))
 	_text("桥梁", Vector2(302.0, 143.0), 18, MUTED)
-	_text("%d" % level.start_bridges, Vector2(358.0, 143.0), 18, Color(INK, 0.75))
+	var bridges := 0 if network == null else network.used_bridges()
+	_text("%d/%d" % [bridges, level.start_bridges], Vector2(358.0, 143.0), 18, Color(INK, 0.75))
 
 
 func _draw_week(vp: Vector2) -> void:

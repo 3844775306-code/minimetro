@@ -1,8 +1,7 @@
 class_name LevelData
 extends Resource
 ## 一局的地图 / 资源 / 节奏配置。
-## M1 阶段由 Game.start_run() 直接 new() 出默认值；
-## M4 起改为 res://data/levels/*.tres 资源文件，字段保持兼容。
+## M1 起由 Game.start_run() 直接 new() 出默认值；M4 起支持手写河道多边形。
 
 @export var title: String = "纸城 · 手势原型"
 
@@ -12,16 +11,26 @@ extends Resource
 @export var land_corner_radius: float = 72.0
 @export var station_margin: float = 150.0
 
+@export_group("水域与桥梁")
+## 河道多边形（闭合）。线路每穿过一条河道消耗 1 座桥/隧道。
+@export var rivers: Array[PackedVector2Array] = []
+## 站点离河道边缘至少这么远（避免"贴着河岸没地方画线"）。
+@export var station_water_clearance: float = 36.0
+@export var max_bridges: int = 6
+
 @export_group("站点生成")
 @export var start_station_count: int = 8
 @export var max_stations: int = 40
 @export var station_min_distance: float = 105.0
 @export var station_spawn_interval: float = 13.0
-@export var station_shapes: Array[int] = [
-	Shape.Kind.CIRCLE,
-	Shape.Kind.TRIANGLE,
-	Shape.Kind.SQUARE,
-]
+## 形状权重：越大越常见。菱形 / 星形是稀有站，给乘客目的地增加多样性。
+@export var station_shape_weights: Dictionary = {
+	Shape.Kind.CIRCLE: 5.0,
+	Shape.Kind.TRIANGLE: 4.0,
+	Shape.Kind.SQUARE: 4.0,
+	Shape.Kind.DIAMOND: 1.2,
+	Shape.Kind.STAR: 0.8,
+}
 
 @export_group("乘客与压力")
 ## 乘客生成间隔：从 start 随时间线性降到 end（秒）。
@@ -56,3 +65,25 @@ extends Resource
 	Color("#17A2B8"),
 	Color("#E84393"),
 ]
+
+
+## 默认河道：竖着把地图切成左右两半，带轻微弯曲。
+static func default_river(world_size: Vector2) -> PackedVector2Array:
+	var top := Vector2(world_size.x * 0.62, world_size.y * 0.08)
+	var bottom := Vector2(world_size.x * 0.64, world_size.y * 0.92)
+	var width := world_size.x * 0.10
+	var left := PackedVector2Array()
+	var right := PackedVector2Array()
+	var steps := 5
+	for i in range(steps + 1):
+		var t := float(i) / float(steps)
+		var y := lerpf(top.y, bottom.y, t)
+		var center_x := lerpf(top.x, bottom.x, t) + sin(t * TAU) * world_size.x * 0.03
+		left.append(Vector2(center_x - width * 0.5, y))
+		right.append(Vector2(center_x + width * 0.5, y))
+	var poly := PackedVector2Array()
+	for point in left:
+		poly.append(point)
+	for i in range(right.size() - 1, -1, -1):
+		poly.append(right[i])
+	return poly

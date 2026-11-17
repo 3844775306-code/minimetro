@@ -272,6 +272,12 @@ func _draft_tip_index() -> int:
 
 
 func _extend_with(st: Station) -> void:
+	var tip: Station = _draft_line.stops[_draft_tip_index()]
+	var from_pos: Vector2 = st.pos if _draft_at_start else tip.pos
+	var to_pos: Vector2 = tip.pos if _draft_at_start else st.pos
+	if network.segment_crosses_water(from_pos, to_pos, false) and network.available_bridges() <= 0:
+		toast_requested.emit("没有可用的桥 / 隧道了")
+		return
 	if _draft_at_start:
 		_draft_line.prepend_stop(st)
 	else:
@@ -355,6 +361,18 @@ func _apply_segment_insert() -> void:
 	var st := hover_station
 	if st == null or line.has_station(st):
 		return
+	var a: Station = line.stops[_segment_index]
+	var b: Station = line.stops[_segment_index + 1]
+	var delta := 0
+	if network.segment_crosses_water(a.pos, st.pos, false):
+		delta += 1
+	if network.segment_crosses_water(st.pos, b.pos, false):
+		delta += 1
+	if network.segment_crosses_water(a.pos, b.pos, line.is_segment_flipped(_segment_index)):
+		delta -= 1
+	if delta > network.available_bridges():
+		toast_requested.emit("没有可用的桥 / 隧道了")
+		return
 	_push_undo()
 	line.insert_stop(_segment_index + 1, st)
 	network.touch()
@@ -418,6 +436,11 @@ func _reorder_update() -> void:
 		var other: Station = _reorder_line.stops[ni]
 		if cursor.distance_to(other.pos) <= REORDER_SNAP:
 			_swap(idx, ni)
+			# 重排可能让某段跨河：桥隧不够就回滚
+			if level != null and network.used_bridges() > level.start_bridges:
+				_swap(idx, ni)
+				toast_requested.emit("没有可用的桥 / 隧道了")
+				return
 			_gesture_dirty = true
 			_swap_cooldown = SWAP_COOLDOWN
 			network.touch()

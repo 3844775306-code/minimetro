@@ -47,7 +47,8 @@ func _process(_delta: float) -> void:
 func _draw() -> void:
 	if station == null:
 		return
-	var r := Shape.STATION_RADIUS
+	# 换乘站（容量 12）画得更大，和普通站一眼区分
+	var r := Shape.STATION_RADIUS * (1.18 if station.capacity > 6 else 1.0)
 	var overloading := station.overload_timer > 0.0
 	var progress: float = 0.0
 	if overloading:

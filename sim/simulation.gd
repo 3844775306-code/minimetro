@@ -120,8 +120,32 @@ func apply_upgrade(card_id: String) -> void:
 			level.start_trains = mini(level.start_trains + 1, level.max_trains)
 		"carriage":
 			_apply_carriage()
+		"bridge":
+			level.start_bridges = mini(level.start_bridges + 1, level.max_bridges)
+		"interchange":
+			_apply_interchange()
 		_:
 			push_warning("未知的升级卡: " + card_id)
+
+
+## 换乘站：把"容量未升级且等待最多"的站点容量提到 12。
+func _interchange_station() -> Station:
+	var best: Station = null
+	var best_waiting := -1
+	for st in network.stations:
+		if st.capacity > 6:
+			continue
+		if st.waiting.size() > best_waiting:
+			best_waiting = st.waiting.size()
+			best = st
+	return best
+
+
+func _apply_interchange() -> void:
+	var st := _interchange_station()
+	if st == null:
+		return
+	st.capacity = 12
 
 
 func _apply_carriage() -> void:
@@ -154,6 +178,10 @@ func _roll_cards() -> Array[Dictionary]:
 		pool.append(UpgradeCards.get_card("train"))
 	if _carriage_line() != null:
 		pool.append(UpgradeCards.get_card("carriage"))
+	if level.start_bridges < level.max_bridges:
+		pool.append(UpgradeCards.get_card("bridge"))
+	if _interchange_station() != null:
+		pool.append(UpgradeCards.get_card("interchange"))
 
 	var picked: Array[Dictionary] = []
 	while picked.size() < 2 and not pool.is_empty():
