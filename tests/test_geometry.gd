@@ -5,6 +5,7 @@ static func run(h: TestHarness) -> void:
 	_test_three_stops(h)
 	_test_two_stops(h)
 	_test_corner_clamp(h)
+	_test_octilinear(h)
 
 
 static func _test_three_stops(h: TestHarness) -> void:
@@ -49,3 +50,40 @@ static func _test_corner_clamp(h: TestHarness) -> void:
 	h.check(g.is_drawable(), "相邻站很近时仍可绘制")
 	h.check(is_finite(g.total_length) and g.total_length > 0.0, "总长有限且为正")
 	h.check(g.stop_offsets.size() == 3, "站点偏移依然完整")
+
+
+## 八向约束：所有线段只能是水平 / 垂直 / 45°。
+static func _test_octilinear(h: TestHarness) -> void:
+	h.section("geometry/octilinear")
+	var a := Vector2(100, 100)
+	var b := Vector2(500, 300)
+	var path := LineGeometry.octilinear_segment(a, b)
+	h.eq(path.size(), 3, "斜向连接被拆成 45° + 水平两段")
+	h.check(path[0] == a and path[2] == b, "端点保持原样")
+	h.check(LineGeometry.is_octilinear(path), "所有线段都满足八向约束")
+	h.check(path[1].distance_to(Vector2(300, 300)) < 0.01, "折点在对角位置")
+	h.check(absf(path[1].x - a.x) == absf(path[1].y - a.y), "第一段严格 45°")
+
+	# 已经八向的连接不插折点
+	h.eq(LineGeometry.octilinear_segment(Vector2.ZERO, Vector2(200, 200)).size(), 2, "45° 直连")
+	h.eq(LineGeometry.octilinear_segment(Vector2.ZERO, Vector2(200, 0)).size(), 2, "水平直连")
+	h.eq(LineGeometry.octilinear_segment(Vector2.ZERO, Vector2(0, 200)).size(), 2, "垂直直连")
+
+	# 纵轴为主时先斜后竖直
+	var vertical := LineGeometry.octilinear_segment(Vector2(100, 100), Vector2(300, 500))
+	h.eq(vertical.size(), 3, "纵向连接同样两段")
+	h.check(vertical[1].distance_to(Vector2(300, 300)) < 0.01, "纵向折点位置正确")
+	h.check(LineGeometry.is_octilinear(vertical), "纵向路径八向合法")
+
+	# 整条线路（含站点）也必须八向
+	var s1 := Station.new(0, Shape.Kind.CIRCLE, Vector2(0, 0))
+	var s2 := Station.new(1, Shape.Kind.SQUARE, Vector2(300, 100))
+	var route := LineGeometry.octilinear_route([s1, s2])
+	h.check(LineGeometry.is_octilinear(route), "整条线路八向合法")
+	var g := LineGeometry.new()
+	g.build([s1, s2])
+	h.check(g.total_length > 333.0 and g.total_length < 342.0,
+		"八向绕行总长约 341（实际 %.2f）" % g.total_length)
+	h.check(g.stop_offsets.size() == 2, "两个站都有弧长位置")
+	h.check(g.sample(g.stop_offsets[0]).origin.distance_to(s1.pos) < 0.01, "首站落在路径上")
+	h.check(g.sample(g.stop_offsets[1]).origin.distance_to(s2.pos) < 0.01, "末站落在路径上")

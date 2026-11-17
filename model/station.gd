@@ -10,8 +10,8 @@ var pos: Vector2 = Vector2.ZERO
 ## 容量：普通站 6，换乘站升级后 12（M4）。
 var capacity: int = 6
 
-## M2：Array[Passenger] 等待队列。
-var waiting: Array = []
+## 等待上车的乘客（Arrival 顺序即上车优先级）。
+var waiting: Array[Passenger] = []
 
 ## 派生缓存：经过本站的线路 id（由 MetroNetwork._rebuild_station_lines 维护）。
 ## 只存 id 不存对象：若直接持有 MetroLine，会与 MetroLine.stops 形成引用环，RefCounted 永远不释放。

@@ -23,6 +23,15 @@ extends Resource
 	Shape.Kind.SQUARE,
 ]
 
+@export_group("乘客与压力")
+## 乘客生成间隔：从 start 随时间线性降到 end（秒）。
+@export var passenger_spawn_start: float = 2.6
+@export var passenger_spawn_end: float = 0.9
+## 从 start 降到 end 所需的游戏时长（秒）。
+@export var passenger_ramp_seconds: float = 420.0
+## 站点超载后多久判定游戏结束（秒）。
+@export var overload_grace: float = 30.0
+
 @export_group("初始资源")
 @export var start_lines: int = 3
 @export var start_trains: int = 3

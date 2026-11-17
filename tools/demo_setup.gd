@@ -15,7 +15,7 @@ const STATION_SHAPES := [
 	Shape.Kind.TRIANGLE,
 ]
 
-## [线路名, 站点索引序列]
+## 线路 = 站点索引序列
 const LINES := [
 	[0, 1, 2, 3, 4],
 	[5, 6, 7, 8],
@@ -33,3 +33,22 @@ static func build(network: MetroNetwork, level: LevelData, line_count: int = 3) 
 			line.add_stop(stations[index])
 	network.touch()
 	level.start_station_count = stations.size()
+
+
+## 给每座站预置一个"去别的形状"的乘客，让截图里能看到等待图标与送达。
+static func seed_passengers(network: MetroNetwork) -> void:
+	var shapes: Array[int] = []
+	for st in network.stations:
+		if not shapes.has(st.shape):
+			shapes.append(st.shape)
+	shapes.sort()
+	if shapes.size() < 2:
+		return
+	var fallback: int = shapes[0]
+	for st in network.stations:
+		var target := fallback
+		for candidate in shapes:
+			if candidate != st.shape:
+				target = candidate
+				break
+		st.waiting.append(Passenger.new(target))

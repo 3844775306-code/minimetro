@@ -1,7 +1,7 @@
 class_name Hud
 extends Control
-## M1 HUD：标题、线路资源槽、站点数、操作提示、Toast、暂停/倍速状态。
-## 用 SystemFont 取系统中文字体（不随项目分发字体文件），避免中文变成豆腐块。
+## HUD：标题、资源槽、送达分数、操作提示、Toast、暂停/倍速、游戏结束遮罩。
+## 中文字体用 SystemFont 取系统字体（不随项目分发字体文件），避免豆腐块。
 
 const INK := Color("#2B2B2B")
 const MUTED := Color("#7C7568")
@@ -15,6 +15,10 @@ var font: SystemFont = null
 
 var paused := false
 var speed := 1.0
+var score := 0
+
+var game_over := false
+var final_score := 0
 
 var toast_text := ""
 var toast_left := 0.0
@@ -45,6 +49,12 @@ func show_toast(message: String) -> void:
 	queue_redraw()
 
 
+func show_game_over(final: int) -> void:
+	game_over = true
+	final_score = final
+	queue_redraw()
+
+
 func _process(delta: float) -> void:
 	if toast_left > 0.0:
 		toast_left = maxf(0.0, toast_left - delta)
@@ -57,17 +67,22 @@ func _draw() -> void:
 	var vp := get_viewport_rect().size
 	_text_centered("MINI METRO · 手势原型", vp.x * 0.5, 74.0, 17, Color(MUTED, 0.8))
 	_draw_resource_slots(vp)
-	_text_right("%d 座车站" % (0 if network == null else network.stations.size()),
-		vp.x - 72.0, 107.0, 18, MUTED)
+	_text_right("已送达 %d" % score, vp.x - 72.0, 116.0, 28, INK)
+	_text_right("车站 %d · 列车 %d" % [
+		0 if network == null else network.stations.size(),
+		0 if network == null else network.train_count(),
+	], vp.x - 72.0, 146.0, 16, Color(MUTED, 0.85))
 	_text_centered(
 		"按住车站拖拽连线 · 拖端点继续延伸 · 拖中途车站调整顺序 · Ctrl+Z 撤销 · 空格暂停",
 		vp.x * 0.5, vp.y - 46.0, 18, Color(MUTED, 0.9))
-	if paused:
+	if paused and not game_over:
 		_text_centered("已暂停", vp.x * 0.5, vp.y * 0.5, 44, Color(INK, 0.75))
 	_text_right("%s 倍速" % _speed_label(), vp.x - 72.0, vp.y - 46.0, 16, Color(MUTED, 0.7))
 	if toast_left > 0.0:
 		var alpha: float = clampf(toast_left / 0.5, 0.0, 1.0)
 		_text_centered(toast_text, vp.x * 0.5, vp.y - 120.0, 22, Color(INK, alpha))
+	if game_over:
+		_draw_game_over(vp)
 
 
 func _draw_resource_slots(vp: Vector2) -> void:
@@ -79,14 +94,22 @@ func _draw_resource_slots(vp: Vector2) -> void:
 		if i < used:
 			_draw_capsule(Vector2(x, y), level.line_colors[i % level.line_colors.size()], CHIP_W, CHIP_H)
 		else:
-			_draw_capsule_outline(Vector2(x, y), Color(level.line_colors[i % level.line_colors.size()], 0.32),
-				CHIP_W, CHIP_H)
+			_draw_capsule_outline(Vector2(x, y),
+				Color(level.line_colors[i % level.line_colors.size()], 0.32), CHIP_W, CHIP_H)
 	var count_x := 130.0 + float(level.start_lines) * (CHIP_W + CHIP_GAP) + 6.0
 	_text("%d/%d" % [used, level.start_lines], Vector2(count_x, 107.0), 16, Color(MUTED, 0.85))
 	_text("列车", Vector2(72.0, 143.0), 18, MUTED)
-	_text("%d" % level.start_trains, Vector2(130.0, 143.0), 18, Color(INK, 0.75))
-	_text("桥梁", Vector2(196.0, 143.0), 18, MUTED)
-	_text("%d" % level.start_bridges, Vector2(252.0, 143.0), 18, Color(INK, 0.75))
+	var trains := 0 if network == null else network.train_count()
+	_text("%d/%d" % [trains, level.start_trains], Vector2(130.0, 143.0), 18, Color(INK, 0.75))
+	_text("桥梁", Vector2(212.0, 143.0), 18, MUTED)
+	_text("%d" % level.start_bridges, Vector2(268.0, 143.0), 18, Color(INK, 0.75))
+
+
+func _draw_game_over(vp: Vector2) -> void:
+	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.10, 0.10, 0.11, 0.58))
+	_text_centered("拥堵失控", vp.x * 0.5, vp.y * 0.5 - 16.0, 64, Color(1, 1, 1, 0.96))
+	_text_centered("送达 %d 名乘客" % final_score, vp.x * 0.5, vp.y * 0.5 + 44.0, 26, Color(1, 1, 1, 0.9))
+	_text_centered("按 R 重新开始", vp.x * 0.5, vp.y * 0.5 + 96.0, 20, Color(1, 1, 1, 0.65))
 
 
 func _draw_capsule(center: Vector2, color: Color, w: float, h: float) -> void:

@@ -6,6 +6,8 @@ extends RefCounted
 var id: int = 0
 var color: Color = Color.WHITE
 var stops: Array[Station] = []
+## 这条线上的列车（由 Simulation 负责投放 / 回收）。
+var trains: Array[Train] = []
 var geometry := LineGeometry.new()
 var version: int = 0
 

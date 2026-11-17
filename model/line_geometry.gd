@@ -1,10 +1,15 @@
 class_name LineGeometry
 extends RefCounted
-## 线路的"几何缓存"：圆角折线 + 弧长表 + 每个站点的弧长位置。
-## 列车位置、飞线吸附、站点重排都基于这里的弧长，而不是站序。
+## 线路的"几何缓存"：八向（水平 / 垂直 / 45°）折线 + 圆角 + 弧长表 + 站点弧长位置。
+##
+## 八向约束统一在这里实现：任意两站之间都被拆成「45° 斜段 + 剩余水平/竖直段」，
+## 所以线路无论怎么画，渲染出来只可能出现水平线、竖直线和 45° 斜线。
+## 列车位置、飞线预览、站点重排都基于这里的弧长，而不是站序。
 
 const CORNER_RADIUS := 16.0
 const CORNER_SEGMENTS := 8
+## 判定"已经是水平 / 垂直 / 45°"的容差（像素）。
+const OCTILINEAR_EPS := 0.5
 
 ## 采样点（已做拐角圆角化，密集点）。
 var points := PackedVector2Array()
@@ -18,9 +23,7 @@ var total_length := 0.0
 
 ## 按站点顺序重建几何。
 func build(stops: Array[Station]) -> void:
-	var raw := PackedVector2Array()
-	for st in stops:
-		raw.append(st.pos)
+	var raw := octilinear_route(stops)
 	points = _round_corners(raw)
 	_rebuild_lengths()
 	stop_offsets = PackedFloat32Array()
@@ -31,6 +34,73 @@ func build(stops: Array[Station]) -> void:
 func is_drawable() -> bool:
 	return points.size() >= 2 and total_length > 0.001
 
+
+# ---------------------------------------------------------------------------
+# 八向折线
+# ---------------------------------------------------------------------------
+
+## 完整八向折线（含站点与折点，未圆角）。
+static func octilinear_route(stops: Array[Station]) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	if stops.is_empty():
+		return out
+	out.append(stops[0].pos)
+	for i in range(stops.size() - 1):
+		var a: Vector2 = stops[i].pos
+		var b: Vector2 = stops[i + 1].pos
+		for bend in bends_between(a, b):
+			out.append(bend)
+		out.append(b)
+	return out
+
+
+## 两站之间需要插入的折点（0 或 1 个）。
+## 规则：从 a 出发先走 45° 斜段（消耗较短的那个轴），再走剩余的水平/竖直段进 b。
+static func bends_between(a: Vector2, b: Vector2) -> PackedVector2Array:
+	var d := b - a
+	var adx := absf(d.x)
+	var ady := absf(d.y)
+	if adx < OCTILINEAR_EPS or ady < OCTILINEAR_EPS:
+		return PackedVector2Array()          # 已是水平 / 垂直
+	if absf(adx - ady) < OCTILINEAR_EPS:
+		return PackedVector2Array()          # 已是 45°
+	var bend: Vector2
+	if adx > ady:
+		bend = a + Vector2(signf(d.x) * ady, d.y)
+	else:
+		bend = a + Vector2(d.x, signf(d.y) * adx)
+	if bend.distance_to(a) < 1.0 or bend.distance_to(b) < 1.0:
+		return PackedVector2Array()
+	return PackedVector2Array([bend])
+
+
+## 单段八向折线（用于画线时的飞线预览）：[a, 折点?, b]
+static func octilinear_segment(a: Vector2, b: Vector2) -> PackedVector2Array:
+	var out := PackedVector2Array([a])
+	for bend in bends_between(a, b):
+		out.append(bend)
+	out.append(b)
+	return out
+
+
+## 判断一段折线是否严格满足八向约束（测试/调试用）。
+static func is_octilinear(points_in: PackedVector2Array) -> bool:
+	for i in range(points_in.size() - 1):
+		var d: Vector2 = points_in[i + 1] - points_in[i]
+		if d.length() < OCTILINEAR_EPS:
+			continue
+		var adx := absf(d.x)
+		var ady := absf(d.y)
+		var axis_aligned := adx < OCTILINEAR_EPS or ady < OCTILINEAR_EPS
+		var diagonal := absf(adx - ady) < OCTILINEAR_EPS
+		if not (axis_aligned or diagonal):
+			return false
+	return true
+
+
+# ---------------------------------------------------------------------------
+# 弧长采样（列车 / 拾取 / 手柄都用这一套）
+# ---------------------------------------------------------------------------
 
 ## 取弧长 distance 处的位置 + 朝向。
 func sample(distance: float) -> Transform2D:

@@ -23,11 +23,12 @@ func _sync() -> void:
 	var live := {}
 	for line in network.lines:
 		live[line.id] = line
-	for id in _views.keys().duplicate():
-		if not live.has(id):
-			var dead: Line2D = _views[id]
+	var ids: Array = _views.keys()
+	for i in ids.size():
+		if not live.has(ids[i]):
+			var dead: Line2D = _views[ids[i]]
 			dead.queue_free()
-			_views.erase(id)
+			_views.erase(ids[i])
 	for line in network.lines:
 		var view: Line2D = _views.get(line.id)
 		if view == null:

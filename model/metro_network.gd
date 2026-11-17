@@ -1,7 +1,7 @@
 class_name MetroNetwork
 extends RefCounted
-## 线路网络：站点 + 线路的唯一事实来源。
-## 变更后调 touch()：刷新 station.lines 缓存并 bump version，视图据此重绘。
+## 线路网络：站点 + 线路 + 列车资源的唯一事实来源。
+## 变更后调 touch()：刷新 station.line_ids 缓存并 bump version，视图/寻路据此重建。
 
 signal station_added(station: Station)
 signal line_added(line: MetroLine)
@@ -44,9 +44,17 @@ func create_line() -> MetroLine:
 func remove_line(line: MetroLine) -> void:
 	if line == null:
 		return
+	_rescue_line_riders(line)
 	lines.erase(line)
 	touch()
 	line_removed.emit(line.id)
+
+
+func line_by_id(line_id: int) -> MetroLine:
+	for line in lines:
+		if line.id == line_id:
+			return line
+	return null
 
 
 ## 半径内最近的站点（拾取用）。
@@ -61,10 +69,15 @@ func station_at(pos: Vector2, radius: float) -> Station:
 	return best
 
 
-func available_lines() -> int:
-	if level == null:
-		return 0
-	return maxi(0, level.start_lines - lines.size())
+func nearest_station(pos: Vector2) -> Station:
+	var best: Station = null
+	var best_dist := INF
+	for st in stations:
+		var d := pos.distance_squared_to(st.pos)
+		if d < best_dist:
+			best_dist = d
+			best = st
+	return best
 
 
 func station_by_id(station_id: int) -> Station:
@@ -72,6 +85,38 @@ func station_by_id(station_id: int) -> Station:
 		if st.id == station_id:
 			return st
 	return null
+
+
+func available_lines() -> int:
+	if level == null:
+		return 0
+	return maxi(0, level.start_lines - lines.size())
+
+
+func train_count() -> int:
+	var total := 0
+	for line in lines:
+		total += line.trains.size()
+	return total
+
+
+func available_trains() -> int:
+	if level == null:
+		return 0
+	return maxi(0, level.start_trains - train_count())
+
+
+func total_waiting() -> int:
+	var total := 0
+	for st in stations:
+		total += st.waiting.size()
+	return total
+
+
+## 撤销 / 重建线路前调用：把车上乘客放回最近站台，避免"删线时乘客蒸发"。
+func rescue_riders() -> void:
+	for line in lines:
+		_rescue_line_riders(line)
 
 
 func touch() -> void:
@@ -86,3 +131,18 @@ func _rebuild_station_lines() -> void:
 		for st in line.stops:
 			if not st.line_ids.has(line.id):
 				st.line_ids.append(line.id)
+
+
+func _rescue_line_riders(line: MetroLine) -> void:
+	for train in line.trains:
+		if train.riders.is_empty():
+			continue
+		var pos: Vector2 = Vector2.ZERO
+		if not line.stops.is_empty():
+			pos = line.geometry.sample(train.dist).origin
+		var target := nearest_station(pos)
+		if target == null:
+			continue
+		for passenger in train.riders:
+			target.waiting.append(passenger)
+		train.riders.clear()

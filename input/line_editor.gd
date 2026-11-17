@@ -349,11 +349,15 @@ func _drop_pending_undo() -> void:
 
 
 func _apply_snapshot(snap: Dictionary) -> void:
+	network.rescue_riders()
 	network.lines.clear()
-	for entry in snap["lines"]:
+	var entries: Array = snap["lines"]
+	for raw_entry in entries:
+		var entry: Dictionary = raw_entry
 		var line := MetroLine.new(int(entry["id"]), entry["color"])
-		for sid in entry["stops"]:
-			var st := network.station_by_id(int(sid))
+		var stop_ids: Array = entry["stops"]
+		for raw_id in stop_ids:
+			var st := network.station_by_id(int(raw_id))
 			if st != null:
 				line.stops.append(st)
 		line.rebuild()
@@ -395,7 +399,9 @@ func _draw() -> void:
 		var tip: Station = _draft_line.stops[_draft_tip_index()]
 		var to := hover_station.pos if hover_station != null else cursor
 		var col := _draft_line.color
-		draw_dashed_line(tip.pos, to, Color(col, 0.9), 8.0, 14.0, true, true)
+		var preview := LineGeometry.octilinear_segment(tip.pos, to)
+		for i in range(preview.size() - 1):
+			draw_dashed_line(preview[i], preview[i + 1], Color(col, 0.9), 8.0, 14.0, true, true)
 		draw_circle(to, 7.0, Color(col, 0.95), true, -1.0, true)
 	elif state == State.REORDER and _reorder_station != null:
 		draw_dashed_line(_reorder_station.pos, cursor, Color(0.16, 0.17, 0.19, 0.55), 4.0, 8.0, true, true)

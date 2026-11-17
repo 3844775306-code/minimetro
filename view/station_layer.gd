@@ -23,12 +23,13 @@ func _ensure_view(st: Station) -> void:
 	var view := StationView.new()
 	view.name = "Station%d" % st.id
 	add_child(view)
-	view.setup(st)
+	view.setup(st, network.level.overload_grace if network.level != null else 30.0)
 	_views[st.id] = view
 
 
 ## 只让传入站点处于悬停态；传 null 清空所有悬停。
 func set_hover(st: Station) -> void:
-	for id in _views:
-		var view: StationView = _views[id]
+	var ids: Array = _views.keys()
+	for i in ids.size():
+		var view: StationView = _views[ids[i]]
 		view.set_hovered(view.station == st)

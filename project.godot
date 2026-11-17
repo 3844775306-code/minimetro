@@ -1,6 +1,10 @@
 ; Engine configuration file.
-; MiniMetro —— M1 手势原型
-; 注意：这是 2D 游戏，刻意不用 3D 物理（Jolt）与 D3D12 专用后端。
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
 
 config_version=5
 
@@ -25,7 +29,6 @@ window/size/window_width_override=1600
 window/size/window_height_override=900
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
-window/dpi/allow_hidpi=true
 
 [rendering]
 

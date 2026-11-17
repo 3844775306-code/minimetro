@@ -7,6 +7,8 @@ const TEST_SCRIPTS := [
 	"res://tests/test_geometry.gd",
 	"res://tests/test_network.gd",
 	"res://tests/test_editor.gd",
+	"res://tests/test_routing.gd",
+	"res://tests/test_simulation.gd",
 ]
 
 
