@@ -479,6 +479,9 @@ func _remove_dwelled_station() -> void:
 	_mark_removed(_draft_line, target)
 	_gesture_dirty = true
 	_loop_candidate = false
+	if not _draft_is_new and _draft_line.stops.size() < 2:
+		_cancel_short_line(_draft_line)
+		_reset_gesture()
 
 
 ## 拖线段时，在段两端的车站上停留 1.5s 也能把该站移出线路。
@@ -500,6 +503,23 @@ func _remove_segment_endpoint() -> void:
 	_segment_dragging = false
 	_segment_removed = true
 	_gesture_dirty = true
+	if line.stops.size() < 2:
+		_cancel_short_line(line)
+
+
+## 编辑后不足两站：移除线路并返还列车（有模拟层时由 Simulation 处理库存）。
+func _cancel_short_line(line: MetroLine) -> void:
+	if line == null or line.stops.size() >= 2:
+		return
+	if simulation != null:
+		simulation.cancel_line(line)
+	else:
+		network.remove_line(line)
+
+
+## 是否正在画线/拖线（供 Simulation 避免剪掉草稿线）。
+func is_busy() -> bool:
+	return _dragging or state != State.IDLE
 
 
 # ---------------------------------------------------------------------------

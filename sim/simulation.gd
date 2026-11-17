@@ -62,6 +62,8 @@ var _week_end_hour: float = 0.0
 var _train_id: int = 0
 ## 已经做过"新线自动配车"判定的线路 id
 var _auto_lines := {}
+## 玩家正在拖拽/编辑线路时，不要立刻剪掉"暂时不足两站"的草稿线。
+var edit_in_progress := false
 
 
 func _init(p_network: MetroNetwork, p_level: LevelData, p_rng: RandomNumberGenerator) -> void:
@@ -798,9 +800,12 @@ func _auto_assign_new_lines() -> void:
 	for id in _auto_lines.keys().duplicate():
 		if not live.has(id):
 			_auto_lines.erase(id)
+	var _invalid_lines: Array[MetroLine] = []
 	for line in network.lines:
 		if line.stops.size() < 2 or not line.geometry.is_drawable():
 			_drop_trains(line)
+			if not edit_in_progress:
+				_invalid_lines.append(line)
 			continue
 		if _auto_lines.has(line.id):
 			continue
@@ -808,6 +813,10 @@ func _auto_assign_new_lines() -> void:
 		if inventory_trains > 0:
 			inventory_trains -= 1
 			_spawn_train_at(line, line.stops[0].pos)
+	# 编辑手势结束后，失效线路自动取消并释放颜色
+	for line in _invalid_lines:
+		_auto_lines.erase(line.id)
+		network.remove_line(line)
 
 
 func _spawn_train_at(line: MetroLine, pos: Vector2, high_speed: bool = false) -> void:
@@ -836,11 +845,37 @@ func _spawn_train_at(line: MetroLine, pos: Vector2, high_speed: bool = false) ->
 		train.state = Train.State.DWELL
 
 
+## 玩家主动取消整条线路（或线路失效）：把列车/车厢退回库存并移除线路。
+## 返回退回的列车数量。
+func cancel_line(line: MetroLine) -> int:
+	if line == null or not network.lines.has(line):
+		return 0
+	var returned := 0
+	for train in line.trains:
+		_rescue_riders(train, line)
+		if train.high_speed:
+			inventory_high_speed += 1
+		else:
+			inventory_trains += 1
+		inventory_carriages += train.carriages
+		returned += 1
+	line.trains.clear()
+	_auto_lines.erase(line.id)
+	network.remove_line(line)
+	return returned
+
+
 func _drop_trains(line: MetroLine) -> void:
 	if line.trains.is_empty():
 		return
 	for train in line.trains:
 		_rescue_riders(train, line)
+		# 线被编辑到不足两站而失效时，列车不能凭空消失，退回库存
+		if train.high_speed:
+			inventory_high_speed += 1
+		else:
+			inventory_trains += 1
+		inventory_carriages += train.carriages
 	line.trains.clear()
 
 

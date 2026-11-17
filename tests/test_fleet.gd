@@ -7,6 +7,7 @@ static func run(h: TestHarness) -> void:
 	_test_carriage_drag(h)
 	_test_express(h)
 	_test_interchange_dwell(h)
+	_test_line_cancel(h)
 
 
 static func _make_level() -> LevelData:
@@ -216,3 +217,47 @@ static func _test_carriage_drag(h: TestHarness) -> void:
 	h.eq(source.capacity, Train.BASE_CAPACITY, "源列车容量回落")
 	h.eq(target.capacity, Train.BASE_CAPACITY + Train.CARRIAGE_CAPACITY, "目标列车容量 +6")
 	editor.free()
+
+
+## 取消线路 / 线路不足两站：列车与车厢退回库存。
+static func _test_line_cancel(h: TestHarness) -> void:
+	h.section("fleet/line_cancel")
+	var level := _make_level()
+	var made := _make_net(level)
+	var network: MetroNetwork = made[0]
+	var line: MetroLine = made[1]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	var sim := Simulation.new(network, level, rng)
+	sim.auto_spawn = false
+	sim.inventory_trains = 0
+	var train := _make_train(line, 2)
+	h.eq(line.trains.size(), 1, "线路有一列车 + 2 节车厢")
+	var returned := sim.cancel_line(line)
+	h.eq(returned, 1, "取消线路返还 1 列车")
+	h.eq(sim.inventory_trains, 1, "列车回到库存")
+	h.eq(sim.inventory_carriages, 2, "车厢也回到库存")
+	h.check(not network.lines.has(line), "整条线路被移除")
+	h.eq(line.trains.size(), 0, "旧线路不再持有列车")
+
+	# 编辑后不足两站：模拟层自动取消线路并返还列车
+	var level2 := _make_level()
+	var made2 := _make_net(level2)
+	var net2: MetroNetwork = made2[0]
+	var line2: MetroLine = made2[1]
+	var rng2 := RandomNumberGenerator.new()
+	rng2.seed = 6
+	var sim2 := Simulation.new(net2, level2, rng2)
+	sim2.auto_spawn = false
+	sim2.inventory_trains = 0
+	for other in net2.lines:
+		if other != line2:
+			sim2._auto_lines[other.id] = true
+	var train2 := _make_train(line2, 1)
+	line2.remove_stop_at(1)
+	net2.touch()
+	sim2.edit_in_progress = false
+	sim2._auto_assign_new_lines()
+	h.eq(sim2.inventory_trains, 1, "线路不足两站时列车退回库存")
+	h.eq(sim2.inventory_carriages, 1, "不足两站时车厢退回库存")
+	h.check(not net2.lines.has(line2), "失效线路自动取消")

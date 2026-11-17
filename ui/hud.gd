@@ -42,6 +42,9 @@ var _speed_rects: Array[Rect2] = []
 var _pause_rect := Rect2()
 var _settings_rect := Rect2()
 var _stock_rects := {}
+var _line_chips: Array[Dictionary] = []
+var line_cancel_id := -1
+var _line_cancel_rect := Rect2()
 
 var game_over := false
 var final_score := 0
@@ -290,6 +293,8 @@ func _draw() -> void:
 		_draw_map_hall(vp)
 	if name_edit_open:
 		_draw_name_modal(vp)
+	if line_cancel_id >= 0:
+		_draw_line_cancel(vp)
 
 
 # ---------------------------------------------------------------------------
@@ -458,10 +463,17 @@ func speed_button_at(pos: Vector2) -> int:
 func _draw_resource_slots(vp: Vector2) -> void:
 	var used := 0 if network == null else network.lines.size()
 	var y := 88.0
+	_line_chips = []
 	for i in level.start_lines:
 		var x := 64.0 + float(i) * (CHIP_W + CHIP_GAP)
 		if i < used:
-			_draw_capsule(Vector2(x, y), level.line_colors[i % level.line_colors.size()], CHIP_W, CHIP_H)
+			var line: MetroLine = network.lines[i]
+			_draw_capsule(Vector2(x, y), line.color, CHIP_W, CHIP_H)
+			# 放大的点击区：点颜色条弹出取消线路的叉按钮
+			_line_chips.append({
+				"id": line.id,
+				"rect": Rect2(x - 6.0, y - 30.0, 58.0, 60.0),
+			})
 		else:
 			_draw_capsule_outline(Vector2(x, y),
 				Color(level.line_colors[i % level.line_colors.size()], 0.32), CHIP_W, CHIP_H)
@@ -683,6 +695,29 @@ func map_hall_back_at(pos: Vector2) -> bool:
 	return _map_hall_back_rect.has_point(pos)
 
 
+## 左上角线路颜色条的命中：返回线路 id，-1 表示没点中。
+func line_chip_at(pos: Vector2) -> int:
+	for raw in _line_chips:
+		if (raw["rect"] as Rect2).has_point(pos):
+			return int(raw["id"])
+	return -1
+
+
+func show_line_cancel(id: int) -> void:
+	line_cancel_id = id
+	queue_redraw()
+
+
+func hide_line_cancel() -> void:
+	line_cancel_id = -1
+	_line_cancel_rect = Rect2()
+	queue_redraw()
+
+
+func line_cancel_at(pos: Vector2) -> bool:
+	return line_cancel_id >= 0 and _line_cancel_rect.has_point(pos)
+
+
 func _draw_leaderboard(vp: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.08, 0.09, 0.10, 0.78))
 	var panel_size := Vector2(minf(1760.0, vp.x - 120.0), 260.0 + float(leaderboard_lines.size()) * 44.0)
@@ -705,6 +740,38 @@ func _draw_leaderboard(vp: Vector2) -> void:
 		panel.end.y - 96.0), Vector2(320.0, 80.0))
 	_draw_touch_button(_leaderboard_back_rect, Loc.t("返回", "Back"),
 		_leaderboard_back_rect.has_point(get_global_mouse_position()))
+
+
+func _draw_line_cancel(vp: Vector2) -> void:
+	var line: MetroLine = null
+	if network != null:
+		line = network.line_by_id(line_cancel_id)
+	if line == null:
+		return
+	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.08, 0.09, 0.10, 0.55))
+	var panel := Rect2(vp.x * 0.5 - 320.0, vp.y * 0.5 - 210.0, 640.0, 420.0)
+	var poly := DrawUtil.rounded_rect(panel, 22.0, 10)
+	draw_colored_polygon(poly, Color(0.99, 0.97, 0.92, 0.98))
+	draw_polyline(DrawUtil.closed(poly), Color(0.55, 0.52, 0.47), 2.0, true)
+	_draw_capsule(Vector2(vp.x * 0.5, panel.position.y + 70.0), line.color, 150.0, 26.0)
+	_text_centered(Loc.t("取消整条线路？", "Cancel this line?"), vp.x * 0.5,
+		panel.position.y + 132.0, 34, INK)
+	_text_centered(Loc.t("线路上的列车和车厢会退回库存", "Trains and carriages return to inventory"),
+		vp.x * 0.5, panel.position.y + 170.0, 18, MUTED)
+	_line_cancel_rect = Rect2(Vector2(vp.x * 0.5 - 72.0, panel.position.y + 200.0),
+		Vector2(144.0, 144.0))
+	var center := _line_cancel_rect.get_center()
+	var hovered := _line_cancel_rect.has_point(get_global_mouse_position())
+	draw_circle(center, 70.0, Color(0.86, 0.28, 0.26, 0.94 if hovered else 0.82), true, -1.0, true)
+	draw_polyline(PackedVector2Array([
+		center + Vector2(-26.0, -26.0), center + Vector2(26.0, 26.0),
+	]), Color.WHITE, 11.0, true)
+	draw_polyline(PackedVector2Array([
+		center + Vector2(26.0, -26.0), center + Vector2(-26.0, 26.0),
+	]), Color.WHITE, 11.0, true)
+	_text_centered(Loc.t("点击 × 确认 · 点其他位置关闭",
+		"Tap × to confirm · tap elsewhere to close"),
+		vp.x * 0.5, panel.end.y - 26.0, 16, MUTED)
 
 
 func _draw_name_modal(vp: Vector2) -> void:

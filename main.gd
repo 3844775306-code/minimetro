@@ -118,6 +118,7 @@ func _process(delta: float) -> void:
 		if hud.settings_menu:
 			_sync_settings_values()
 	if simulation != null and not Game.paused:
+		simulation.edit_in_progress = editor != null and editor.is_busy()
 		simulation.advance(delta, Game.speed)
 	if camera != null and simulation != null:
 		var target_zoom := simulation.camera_zoom_target()
@@ -240,6 +241,26 @@ func _on_cloud_updated() -> void:
 		hud.show_map_hall(Cloud.maps(20))
 
 
+func _cancel_line_by_id(line_id: int) -> void:
+	if hud == null or network == null:
+		return
+	var line := network.line_by_id(line_id)
+	if line == null:
+		hud.hide_line_cancel()
+		return
+	if editor != null and editor.is_busy():
+		editor.cancel_gesture()
+	var returned := 0
+	if simulation != null:
+		returned = simulation.cancel_line(line)
+	else:
+		network.remove_line(line)
+	hud.hide_line_cancel()
+	hud.show_toast(Loc.t("已取消线路 · 返还 %d 列车", "Line cancelled · %d trains returned")
+		% returned)
+	Audio.play("click")
+
+
 func _download_hall_map(index: int) -> void:
 	if hud == null or index < 0 or index >= hud.map_hall_entries.size():
 		return
@@ -323,11 +344,28 @@ func _back_to_menu() -> void:
 func _input(event: InputEvent) -> void:
 	if hud == null:
 		return
+	if hud.line_cancel_id >= 0:
+		if event is InputEventMouseButton and event.pressed \
+				and event.button_index == MOUSE_BUTTON_LEFT:
+			var pos: Vector2 = (event as InputEventMouseButton).position
+			if hud.line_cancel_at(pos):
+				_cancel_line_by_id(hud.line_cancel_id)
+			else:
+				hud.hide_line_cancel()
+			get_viewport().set_input_as_handled()
+		return
 	if hud.mode_menu or hud.settings_menu or hud.week_modal or hud.game_over:
 		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		# HUD 在 CanvasLayer 里，必须用屏幕坐标命中；世界拖拽才用世界坐标
 		var pos: Vector2 = (event as InputEventMouseButton).position
+		# 左上角线路颜色条：点开"取消整条线路"的叉按钮
+		var chip_line_id := hud.line_chip_at(pos)
+		if chip_line_id >= 0:
+			hud.show_line_cancel(chip_line_id)
+			Audio.play("click")
+			get_viewport().set_input_as_handled()
+			return
 		# 左上角库存图标：拖到地图上放资源
 		var stock := hud.stock_icon_at(pos)
 		if stock != "" and simulation != null:
@@ -360,6 +398,11 @@ func _input(event: InputEvent) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if hud != null and hud.line_cancel_id >= 0:
+		if event is InputEventKey and event.pressed and not event.echo \
+				and event.keycode == KEY_ESCAPE:
+			hud.hide_line_cancel()
+		return
 	if hud != null and hud.leaderboard_open:
 		var back := false
 		if event is InputEventKey and event.pressed and not event.echo \
@@ -966,6 +1009,11 @@ func _apply_pose() -> void:
 			if _name_edit_arg and Save != null:
 				hud.show_name_editor(String(Save.get_setting("player_name", "玩家")))
 			editor.set_process_unhandled_input(false)
+		"cancel":
+			if not network.lines.is_empty():
+				hud.show_line_cancel(network.lines[0].id)
+				Game.paused = true
+				editor.set_process_unhandled_input(false)
 		"carriages":
 			simulation.apply_upgrade("carriage")
 			simulation.apply_upgrade("carriage")
