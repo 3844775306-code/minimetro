@@ -104,10 +104,14 @@ static func _test_stages(h: TestHarness) -> void:
 		"村庄有居民区和车站")
 	h.check(weights0.has(Shape.Kind.TRIANGLE), "村庄也有商务区（开局三站之一）")
 	h.check(not weights0.has(Shape.Kind.PENTAGON), "村庄没有市政厅")
-	h.near(sim.camera_zoom_target(), 0.5, 0.001, "开局相机 0.5（看全地图+外圈）")
+	h.near(sim.camera_zoom_target(), 2.0, 0.001, "开局相机 2.0（近看城镇中央）")
 	var start_visible := sim.visible_world_rect()
-	h.check(start_visible.encloses(Rect2(Vector2.ZERO, level.world_size)),
-		"开局可见范围覆盖整张地图（新车站不会生成在屏幕外）")
+	h.near(start_visible.size.x, level.world_size.x * 0.5, 0.1,
+		"开局可见范围约为半张地图宽")
+	h.near(start_visible.size.y, level.world_size.y * 0.5, 0.1,
+		"开局可见范围约为半张地图高")
+	h.near(sim.spawn_world_rect().position.y, 410.0, 0.5,
+		"开局生成区域避开顶部 HUD（y=220 屏幕以下）")
 
 	_add_stations(net, 6)
 	h.eq(sim.development_stage(), 1, "9 站时是小镇")

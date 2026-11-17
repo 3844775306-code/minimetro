@@ -23,6 +23,10 @@ var rng: RandomNumberGenerator
 
 ## 已过去的游戏小时（= 现实秒数）。
 var elapsed: float = 0.0
+## 主循环每帧写入当前相机 zoom；-1 表示测试/无相机时按目标值
+var current_camera_zoom := -1.0
+## 设计分辨率下的屏幕尺寸（用于把 HUD 顶部安全区换算到世界坐标）
+var screen_size := Vector2(2400.0, 1200.0)
 var paused: bool = false
 var auto_spawn: bool = true
 var is_over: bool = false
@@ -207,17 +211,30 @@ func camera_progress() -> float:
 	return clampf((float(network.stations.size()) - 3.0) / 32.0, 0.0, 1.0)
 
 
-## 相机目标缩放：开局 0.5（看全整张地图+外圈），城镇发展后回到 1.0（地图铺满窗口）。
+## 相机目标缩放：开局 2.0（近看城镇中央），城镇发展后回到 1.0（地图铺满窗口）。
 func camera_zoom_target() -> float:
-	return lerpf(0.5, 1.0, camera_progress())
+	return lerpf(2.0, 1.0, camera_progress())
 
 
 ## 当前相机可见的世界范围（用于只生成屏幕内的新车站）。
 func visible_world_rect() -> Rect2:
-	var zoom := maxf(camera_zoom_target(), 0.01)
+	var zoom := maxf(current_camera_zoom if current_camera_zoom > 0.0
+		else camera_zoom_target(), 0.01)
 	var view_size := level.world_size / zoom
 	var centered := Rect2(level.world_size * 0.5 - view_size * 0.5, view_size)
 	return centered.intersection(Rect2(Vector2.ZERO, level.world_size))
+
+
+## 实际用于生成车站的世界矩形：相机可见范围 + 避开顶部 HUD 安全区。
+func spawn_world_rect() -> Rect2:
+	var rect := visible_world_rect()
+	var zoom := maxf(current_camera_zoom if current_camera_zoom > 0.0
+		else camera_zoom_target(), 0.01)
+	# 屏幕 y=220 以上是顶部 HUD；换到世界坐标后作为生成下界
+	var safe_top := level.world_size.y * 0.5 + (220.0 - screen_size.y * 0.5) / zoom
+	var bottom := rect.end.y
+	var top := clampf(safe_top, rect.position.y, bottom)
+	return Rect2(Vector2(rect.position.x, top), Vector2(rect.size.x, maxf(0.0, bottom - top)))
 
 
 ## 高斯型"时段热度"（小时, 中心, 宽度）。
@@ -628,7 +645,7 @@ func _update_spawns(dt: float) -> void:
 	_station_spawn_timer -= dt
 	if _station_spawn_timer <= 0.0:
 		_station_spawn_timer = station_interval()
-		spawner.spawn_rect = visible_world_rect()
+		spawner.spawn_rect = spawn_world_rect()
 		spawner.try_spawn(network, station_shape_weights())
 
 	if network.stations.is_empty():

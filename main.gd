@@ -106,6 +106,8 @@ func _process(delta: float) -> void:
 		var target_zoom := simulation.camera_zoom_target()
 		var next_zoom := lerpf(camera.zoom.x, target_zoom, clampf(delta * 0.9, 0.0, 1.0))
 		camera.zoom = Vector2(next_zoom, next_zoom)
+		simulation.current_camera_zoom = next_zoom
+		simulation.screen_size = get_viewport_rect().size
 
 
 # ---------------------------------------------------------------------------
@@ -474,7 +476,7 @@ func _build_world() -> void:
 	camera = Camera2D.new()
 	camera.name = "Camera"
 	camera.position = level.world_size * 0.5
-	camera.zoom = Vector2(0.5, 0.5)
+	camera.zoom = Vector2(2.0, 2.0)
 	camera.enabled = true
 	add_child(camera)
 
@@ -609,6 +611,9 @@ func _start_session() -> void:
 	if _pose == "night":
 		level.start_hour = 19.0
 	simulation = Simulation.new(network, level, Game.rng)
+	simulation.screen_size = get_viewport_rect().size
+	if camera != null:
+		simulation.current_camera_zoom = camera.zoom.x
 	if editor != null:
 		editor.simulation = simulation
 	simulation.game_over.connect(_on_game_over)
@@ -628,7 +633,7 @@ func _start_session() -> void:
 		_apply_pose()
 	else:
 		# 开局固定三座基础车站：圆形（居民区）、三角形（商务区）、方形（车站）
-		simulation.spawner.spawn_rect = simulation.visible_world_rect()
+		simulation.spawner.spawn_rect = simulation.spawn_world_rect()
 		simulation.spawner.spawn_starting_trio(network)
 
 
