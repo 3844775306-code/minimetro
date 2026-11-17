@@ -61,6 +61,28 @@ func daily_best(date_string: String) -> int:
 	return profile.daily_best(date_string)
 
 
+func daily_attempt_used(date_string: String) -> bool:
+	return profile.daily_attempt_used(date_string)
+
+
+func mark_daily_attempt(date_string: String) -> void:
+	profile.mark_daily_attempt(date_string)
+	save_profile()
+
+
+func map_best(mode_key: String, city_id: String) -> int:
+	return profile.map_best_score(mode_key, city_id)
+
+
+func record_map_run(mode_key: String, city_id: String, score: int) -> void:
+	profile.record_map_score(mode_key, city_id, score)
+	save_profile()
+
+
+func player_name() -> String:
+	return String(profile.get_setting("player_name", "玩家"))
+
+
 func apply_settings() -> void:
 	var master := clampf(float(profile.get_setting("master_volume", 0.8)), 0.0, 1.0)
 	var music := clampf(float(profile.get_setting("music_volume", 0.7)), 0.0, 1.0)

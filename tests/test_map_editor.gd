@@ -37,4 +37,5 @@ static func _test_map_share(h: TestHarness) -> void:
 	h.eq(String(decoded.get("name_zh", "")), "测试地图", "分享码保留地图名")
 	var city := CustomMapStore.to_city_map(decoded)
 	h.eq(city.rivers.size(), 1, "分享码导入后保留河道")
+	h.check(city.is_custom, "自定义地图标记为 custom（每日挑战只在官方地图里随机）")
 	h.eq(CustomMapStore.decode_share("not-a-code").size(), 0, "非法分享码被拒绝")

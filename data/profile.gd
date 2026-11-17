@@ -9,6 +9,7 @@ const DEFAULT_SETTINGS := {
 	"fullscreen": false,
 	"language": "zh",
 	"city": "paper",
+	"player_name": "玩家",
 }
 
 var settings := {}
@@ -16,12 +17,18 @@ var settings := {}
 var best := {}
 ## 日期 "YYYY-MM-DD" -> 当日最高分
 var daily := {}
+## 每日挑战已用机会：日期 -> true
+var daily_attempts := {}
+## "mode|city_id" -> 该地图最高分
+var map_best := {}
 
 
 func _init() -> void:
 	settings = DEFAULT_SETTINGS.duplicate()
 	best = {}
 	daily = {}
+	daily_attempts = {}
+	map_best = {}
 
 
 func get_setting(setting_key: String, fallback: Variant = null) -> Variant:
@@ -60,11 +67,35 @@ func daily_best(date_string: String) -> int:
 	return int(daily.get(date_string, 0))
 
 
+func daily_attempt_used(date_string: String) -> bool:
+	return bool(daily_attempts.get(date_string, false))
+
+
+func mark_daily_attempt(date_string: String) -> void:
+	if date_string != "":
+		daily_attempts[date_string] = true
+
+
+func map_best_score(mode_key: String, city_id: String) -> int:
+	return int(map_best.get("%s|%s" % [mode_key, city_id], 0))
+
+
+func record_map_score(mode_key: String, city_id: String, score: int) -> bool:
+	var key := "%s|%s" % [mode_key, city_id]
+	var previous := int(map_best.get(key, 0))
+	if score > previous:
+		map_best[key] = score
+		return true
+	return false
+
+
 func to_json() -> String:
 	return JSON.stringify({
 		"settings": settings,
 		"best": best,
 		"daily": daily,
+		"daily_attempts": daily_attempts,
+		"map_best": map_best,
 	})
 
 
@@ -87,4 +118,10 @@ static func from_json(text: String) -> Profile:
 	var loaded_daily: Variant = data.get("daily", {})
 	if loaded_daily is Dictionary:
 		profile.daily = loaded_daily.duplicate()
+	var loaded_attempts: Variant = data.get("daily_attempts", {})
+	if loaded_attempts is Dictionary:
+		profile.daily_attempts = loaded_attempts.duplicate()
+	var loaded_map_best: Variant = data.get("map_best", {})
+	if loaded_map_best is Dictionary:
+		profile.map_best = loaded_map_best.duplicate()
 	return profile

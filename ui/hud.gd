@@ -54,6 +54,20 @@ var mode_menu := false
 var mode_bests := {}
 var _mode_rects: Array[Rect2] = []
 var _editor_button_rect := Rect2()
+var _daily_board_rect := Rect2()
+var _map_hall_rect := Rect2()
+var _map_rank_rect := Rect2()
+
+## 排行榜 / 地图大厅浮层
+var leaderboard_open := false
+var leaderboard_title := ""
+var leaderboard_subtitle := ""
+var leaderboard_lines: Array[String] = []
+var _leaderboard_back_rect := Rect2()
+var map_hall_open := false
+var map_hall_entries: Array = []
+var _map_hall_row_rects: Array[Rect2] = []
+var _map_hall_back_rect := Rect2()
 ## 模式菜单里的城市选择
 var menu_cities: Array = []
 var city_index := 0
@@ -199,6 +213,10 @@ func _draw() -> void:
 		_draw_game_over(vp)
 	if mode_menu:
 		_draw_mode_menu(vp)
+	if leaderboard_open:
+		_draw_leaderboard(vp)
+	if map_hall_open:
+		_draw_map_hall(vp)
 
 
 # ---------------------------------------------------------------------------
@@ -490,19 +508,166 @@ func _draw_mode_menu(vp: Vector2) -> void:
 	_text_centered(Loc.t("← → 切换城市 · 点击卡片或按 1 / 2 / 3 / 4 开始",
 		"Left / Right city · click a card or press 1 / 2 / 3 / 4"),
 		cx, cy + 300.0, 18, Color(1.0, 1.0, 1.0, 0.7))
-	# 地图编辑器入口
-	_editor_button_rect = Rect2(Vector2(cx - 150.0, cy + 212.0), Vector2(300.0, 46.0))
+	# 底部入口：每日榜 / 地图大厅 / 地图排行 / 地图编辑器
+	var menu_buttons := [
+		{"rect": _daily_board_rect, "text": Loc.t("每日排行榜", "Daily board"),
+			"action": "daily", "key": "D"},
+		{"rect": _map_hall_rect, "text": Loc.t("地图大厅", "Map hall"),
+			"action": "hall", "key": "H"},
+		{"rect": _map_rank_rect, "text": Loc.t("地图排行榜", "Map ranks"),
+			"action": "rank", "key": "L"},
+		{"rect": _editor_button_rect, "text": Loc.t("地图编辑器", "Map editor"),
+			"action": "editor", "key": "E"},
+	]
 	var mouse := get_global_mouse_position()
-	var editor_hovered := _editor_button_rect.has_point(mouse)
-	var editor_poly := DrawUtil.rounded_rect(_editor_button_rect, 14.0, 8)
-	draw_colored_polygon(editor_poly, Color(1.0, 1.0, 1.0, 0.16 if editor_hovered else 0.08))
-	draw_polyline(DrawUtil.closed(editor_poly), Color(1.0, 1.0, 1.0, 0.35), 1.5, true)
-	_text_centered(Loc.t("地图编辑器（E）", "Map Editor (E)"), cx,
-		_editor_button_rect.position.y + 30.0, 20, Color(1.0, 1.0, 1.0, 0.9))
+	var button_w := 200.0
+	var button_gap := 12.0
+	var total_w := button_w * menu_buttons.size() + button_gap * (menu_buttons.size() - 1)
+	var start_x := cx - total_w * 0.5
+	for i in menu_buttons.size():
+		var rect := Rect2(Vector2(start_x + float(i) * (button_w + button_gap), cy + 212.0),
+			Vector2(button_w, 44.0))
+		match String(menu_buttons[i]["action"]):
+			"daily": _daily_board_rect = rect
+			"hall": _map_hall_rect = rect
+			"rank": _map_rank_rect = rect
+			"editor": _editor_button_rect = rect
+		var hovered := rect.has_point(mouse)
+		var poly := DrawUtil.rounded_rect(rect, 12.0, 8)
+		draw_colored_polygon(poly, Color(1.0, 1.0, 1.0, 0.16 if hovered else 0.08))
+		draw_polyline(DrawUtil.closed(poly), Color(1.0, 1.0, 1.0, 0.35), 1.5, true)
+		_text_centered(String(menu_buttons[i]["text"]), rect.position.x + rect.size.x * 0.5,
+			rect.position.y + 28.0, 18, Color(1.0, 1.0, 1.0, 0.9))
+
+
+func daily_board_button_at(pos: Vector2) -> bool:
+	return _daily_board_rect.has_point(pos)
+
+
+func map_hall_button_at(pos: Vector2) -> bool:
+	return _map_hall_rect.has_point(pos)
+
+
+func map_rank_button_at(pos: Vector2) -> bool:
+	return _map_rank_rect.has_point(pos)
 
 
 func editor_button_at(pos: Vector2) -> bool:
 	return _editor_button_rect.has_point(pos)
+
+
+func show_leaderboard(title: String, subtitle: String, lines: Array[String]) -> void:
+	leaderboard_open = true
+	leaderboard_title = title
+	leaderboard_subtitle = subtitle
+	leaderboard_lines = lines.duplicate()
+	map_hall_open = false
+	queue_redraw()
+
+
+func hide_leaderboard() -> void:
+	leaderboard_open = false
+	queue_redraw()
+
+
+func show_map_hall(entries: Array) -> void:
+	map_hall_open = true
+	map_hall_entries = entries.duplicate(true)
+	leaderboard_open = false
+	queue_redraw()
+
+
+func hide_map_hall() -> void:
+	map_hall_open = false
+	queue_redraw()
+
+
+func map_hall_row_at(pos: Vector2) -> int:
+	for i in _map_hall_row_rects.size():
+		if _map_hall_row_rects[i].has_point(pos):
+			return i
+	return -1
+
+
+func leaderboard_back_at(pos: Vector2) -> bool:
+	return _leaderboard_back_rect.has_point(pos)
+
+
+func map_hall_back_at(pos: Vector2) -> bool:
+	return _map_hall_back_rect.has_point(pos)
+
+
+func _draw_leaderboard(vp: Vector2) -> void:
+	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.08, 0.09, 0.10, 0.78))
+	var panel_size := Vector2(minf(1760.0, vp.x - 120.0), 220.0 + float(leaderboard_lines.size()) * 38.0)
+	panel_size.y = minf(panel_size.y, vp.y - 120.0)
+	var panel := Rect2((vp - panel_size) * 0.5, panel_size)
+	var poly := DrawUtil.rounded_rect(panel, 22.0, 10)
+	draw_colored_polygon(poly, Color(0.99, 0.97, 0.92, 0.98))
+	draw_polyline(DrawUtil.closed(poly), Color(0.55, 0.52, 0.47), 2.0, true)
+	_text_centered(leaderboard_title, panel.position.x + panel.size.x * 0.5,
+		panel.position.y + 62.0, 36, INK)
+	_text_centered(leaderboard_subtitle, panel.position.x + panel.size.x * 0.5,
+		panel.position.y + 98.0, 18, MUTED)
+	var y := panel.position.y + 146.0
+	for line in leaderboard_lines:
+		_text(line, Vector2(panel.position.x + 70.0, y), 20, INK)
+		y += 38.0
+		if y > panel.end.y - 90.0:
+			break
+	_leaderboard_back_rect = Rect2(Vector2(panel.position.x + panel.size.x * 0.5 - 110.0,
+		panel.end.y - 68.0), Vector2(220.0, 42.0))
+	var back_poly := DrawUtil.rounded_rect(_leaderboard_back_rect, 10.0, 6)
+	draw_colored_polygon(back_poly, Color(INK, 0.08))
+	draw_polyline(DrawUtil.closed(back_poly), Color(0.55, 0.52, 0.47), 1.5, true)
+	_text_centered(Loc.t("返回（Esc）", "Back (Esc)"),
+		_leaderboard_back_rect.position.x + 110.0, _leaderboard_back_rect.position.y + 28.0,
+		18, INK)
+
+
+func _draw_map_hall(vp: Vector2) -> void:
+	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.08, 0.09, 0.10, 0.78))
+	var panel_size := Vector2(minf(1760.0, vp.x - 120.0), 220.0 + float(map_hall_entries.size()) * 72.0)
+	panel_size.y = minf(panel_size.y, vp.y - 120.0)
+	var panel := Rect2((vp - panel_size) * 0.5, panel_size)
+	var poly := DrawUtil.rounded_rect(panel, 22.0, 10)
+	draw_colored_polygon(poly, Color(0.99, 0.97, 0.92, 0.98))
+	draw_polyline(DrawUtil.closed(poly), Color(0.55, 0.52, 0.47), 2.0, true)
+	_text_centered(Loc.t("地图大厅", "Map Hall"), panel.position.x + panel.size.x * 0.5,
+		panel.position.y + 56.0, 36, INK)
+	_text_centered(Loc.t("点击地图行即可下载到本地，随后会出现在城市列表",
+		"Click a map row to download it; it appears in the city list"),
+		panel.position.x + panel.size.x * 0.5, panel.position.y + 92.0, 17, MUTED)
+	_map_hall_row_rects = []
+	var y := panel.position.y + 124.0
+	var row_w := panel.size.x - 120.0
+	var mouse := get_global_mouse_position()
+	for i in map_hall_entries.size():
+		var entry: Dictionary = map_hall_entries[i]
+		var row := Rect2(panel.position.x + 60.0, y, row_w, 60.0)
+		_map_hall_row_rects.append(row)
+		var hovered := row.has_point(mouse)
+		var row_poly := DrawUtil.rounded_rect(row, 12.0, 6)
+		draw_colored_polygon(row_poly, Color(INK, 0.06 if hovered else 0.03))
+		draw_polyline(DrawUtil.closed(row_poly), Color(0.72, 0.69, 0.62), 1.2, true)
+		_text(String(entry.get("name_zh", entry.get("name_en", "未命名"))),
+			row.position + Vector2(24.0, 26.0), 22, INK)
+		_text(Loc.t("作者 %s · 下载 %d", "by %s · %d downloads") % [
+			String(entry.get("author", "?")), int(entry.get("downloads", 0)),
+		], row.position + Vector2(24.0, 48.0), 15, MUTED)
+		_text_centered(Loc.t("下载", "Download"), row.end.x - 90.0,
+			row.position.y + 36.0, 18, Color(INK, 0.75))
+		y += 72.0
+		if y > panel.end.y - 90.0:
+			break
+	_map_hall_back_rect = Rect2(Vector2(panel.position.x + panel.size.x * 0.5 - 110.0,
+		panel.end.y - 68.0), Vector2(220.0, 42.0))
+	var back_poly := DrawUtil.rounded_rect(_map_hall_back_rect, 10.0, 6)
+	draw_colored_polygon(back_poly, Color(INK, 0.08))
+	draw_polyline(DrawUtil.closed(back_poly), Color(0.55, 0.52, 0.47), 1.5, true)
+	_text_centered(Loc.t("返回（Esc）", "Back (Esc)"),
+		_map_hall_back_rect.position.x + 110.0, _map_hall_back_rect.position.y + 28.0,
+		18, INK)
 
 
 ## 城市切换：左右箭头 + 城市名 + 迷你河道预览。

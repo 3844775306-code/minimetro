@@ -12,6 +12,8 @@ extends Resource
 @export var start_lines: int = 3
 @export var start_trains: int = 3
 @export var start_bridges: int = 2
+## 是否为玩家自定义/地图大厅下载的地图（每日挑战只在官方地图里随机）
+var is_custom := false
 
 
 func display_name() -> String:

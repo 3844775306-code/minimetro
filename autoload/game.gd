@@ -30,7 +30,17 @@ func start_run(p_seed: int = 0, p_mode: int = -1) -> void:
 
 	city_id = pending_city if pending_city != "" else CityMaps.default_city_id()
 	pending_city = ""
+	if mode == GameMode.Kind.DAILY:
+		# 每日挑战随机抽一张官方地图，不跟随菜单里选的城市
+		var official: Array[CityMap] = []
+		for candidate in CityMaps.all():
+			if not candidate.is_custom:
+				official.append(candidate)
+		if not official.is_empty():
+			city_id = official[GameMode.daily_city_index(daily_date, official.size())].id
 	city = CityMaps.get_city(city_id)
+	if mode == GameMode.Kind.DAILY and has_node("/root/Save"):
+		get_node("/root/Save").mark_daily_attempt(daily_date)
 
 	if p_seed != 0:
 		run_seed = p_seed

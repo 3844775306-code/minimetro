@@ -41,7 +41,8 @@ static func description(kind: int) -> String:
 			return Loc.t("不会失败；评价指标与升级奖励都基于每 30 秒客运量",
 				"No failure; metric and milestone upgrades use passengers per 30s")
 		Kind.DAILY:
-			return Loc.t("每天同一张地图，冲本地最高分", "Same map for everyone today")
+			return Loc.t("每天随机一张地图，每人每天 1 次机会，成绩上传云端榜",
+				"Random map each day; one attempt per player; cloud leaderboard")
 		Kind.MANAGER:
 			return Loc.t("40 站开局、7 线 5 隧道、固定 1x 视角，不再生成新车站",
 				"Start with 40 stations, 7 lines, 5 tunnels; fixed 1x camera; no new stations")
@@ -52,6 +53,13 @@ static func description(kind: int) -> String:
 ## 每日挑战种子：由日期字符串决定，同一天所有人一致。
 static func daily_seed(date_string: String) -> int:
 	return hash("minimetro-daily-" + date_string) & 0x7FFFFFFF
+
+
+## 每日挑战地图：同一天固定随机选一张官方地图。
+static func daily_city_index(date_string: String, count: int) -> int:
+	if count <= 0:
+		return 0
+	return absi(hash("minimetro-daily-city-" + date_string)) % count
 
 
 static func today() -> String:

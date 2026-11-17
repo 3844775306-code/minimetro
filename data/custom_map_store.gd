@@ -81,6 +81,7 @@ static func new_map(polygons: Array, width: float, name: String = "") -> Diction
 static func to_city_map(map: Dictionary) -> CityMap:
 	var city := CityMap.new()
 	city.id = String(map.get("id", ""))
+	city.is_custom = true
 	city.name_zh = String(map.get("name_zh", "自定义地图"))
 	city.name_en = String(map.get("name_en", "Custom Map"))
 	city.start_lines = int(map.get("start_lines", 3))

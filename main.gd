@@ -41,6 +41,7 @@ var _mode_arg := -1
 var _menu_mode := false
 var _lang_arg := ""
 var _city_arg := ""
+var _open_arg := ""
 
 
 func _ready() -> void:
@@ -56,6 +57,13 @@ func _ready() -> void:
 		editor.set_process_unhandled_input(false)
 		_refresh_mode_bests()
 		hud.show_mode_menu()
+		match _open_arg:
+			"daily":
+				_open_daily_leaderboard()
+			"hall":
+				_open_map_hall()
+			"rank":
+				_open_map_leaderboard()
 	else:
 		_start_session()
 	if _smoke_ticks > 0:
@@ -143,17 +151,20 @@ func _best_for_mode() -> int:
 		return 0
 	if Game.is_daily():
 		return Save.daily_best(Game.daily_date)
-	return Save.best_score(Game.mode_key)
+	return Save.map_best(Game.mode_key, Game.city_id)
 
 
 func _refresh_mode_bests() -> void:
 	if hud == null or Save == null:
 		return
+	var city_id := "paper"
+	if not hud.menu_cities.is_empty():
+		city_id = hud.menu_cities[clampi(hud.city_index, 0, hud.menu_cities.size() - 1)].id
 	hud.mode_bests = {
-		"classic": Save.best_score("classic"),
-		"endless": Save.best_score("endless"),
+		"classic": Save.map_best("classic", city_id),
+		"endless": Save.map_best("endless", city_id),
 		"daily": Save.daily_best(GameMode.today()),
-		"manager": Save.best_score("manager"),
+		"manager": Save.map_best("manager", city_id),
 	}
 
 
@@ -161,7 +172,72 @@ func _open_map_editor() -> void:
 	get_tree().change_scene_to_file("res://map_editor/map_editor.tscn")
 
 
+func _open_daily_leaderboard() -> void:
+	if hud == null:
+		return
+	hud.show_leaderboard(Loc.t("每日挑战排行榜", "Daily Challenge Leaderboard"),
+		Loc.t("最近 7 天 · 每名玩家每天只有 1 次机会", "Last 7 days · one attempt per player per day"),
+		Cloud.recent_daily_lines(7, 3))
+
+
+func _open_map_leaderboard() -> void:
+	if hud == null:
+		return
+	var city: CityMap = null
+	if not hud.menu_cities.is_empty():
+		city = hud.menu_cities[clampi(hud.city_index, 0, hud.menu_cities.size() - 1)]
+	var city_id := "paper"
+	var city_name := "纸城"
+	if city != null:
+		city_id = city.id
+		city_name = city.display_name()
+	var lines: Array[String] = []
+	for mode in ["classic", "endless", "manager"]:
+		lines.append("【%s】" % GameMode.title(GameMode.from_key(mode)))
+		var entries := Cloud.best_leaderboard(mode, city_id, 3)
+		if entries.is_empty():
+			lines.append("  暂无成绩")
+		for i in entries.size():
+			var entry: Dictionary = entries[i]
+			lines.append("  %d. %s   %d" % [i + 1, String(entry.get("name", "?")),
+				int(entry.get("score", 0))])
+		var personal := 0
+		if Save != null:
+			personal = Save.map_best(mode, city_id)
+		lines.append("  你的最高：%d" % personal)
+		lines.append("")
+	hud.show_leaderboard(Loc.t("地图排行榜 · %s", "Map Leaderboard · %s") % city_name,
+		Loc.t("分地图最高纪录与云端排行榜", "Best records and cloud board per map"),
+		lines)
+
+
+func _open_map_hall() -> void:
+	if hud == null:
+		return
+	hud.show_map_hall(Cloud.maps(20))
+
+
+func _download_hall_map(index: int) -> void:
+	if hud == null or index < 0 or index >= hud.map_hall_entries.size():
+		return
+	var entry: Dictionary = hud.map_hall_entries[index]
+	var map := Cloud.download_map(String(entry.get("id", "")))
+	if map.is_empty():
+		hud.show_toast(Loc.t("下载失败", "Download failed"))
+		return
+	if CustomMapStore.save_map(map):
+		CityMaps.reload()
+		hud.menu_cities = CityMaps.all()
+		hud.hide_map_hall()
+		hud.show_toast(Loc.t("已下载地图：%s" % String(map.get("name_zh", "?")),
+			"Downloaded: %s" % String(map.get("name_en", "?"))))
+
+
 func _choose_mode(kind: int) -> void:
+	if kind == GameMode.Kind.DAILY and Save != null \
+			and Save.daily_attempt_used(GameMode.today()):
+		_open_daily_leaderboard()
+		return
 	if hud != null and not hud.menu_cities.is_empty():
 		var city: CityMap = hud.menu_cities[hud.city_index]
 		Game.pending_city = city.id
@@ -175,22 +251,43 @@ func _cycle_city(direction: int) -> void:
 	if hud == null or hud.menu_cities.is_empty():
 		return
 	hud.city_index = (hud.city_index + direction + hud.menu_cities.size()) % hud.menu_cities.size()
+	_refresh_mode_bests()
 	Audio.play("click")
 
 
+func _record_run_result() -> void:
+	if simulation == null or Save == null:
+		return
+	var score := simulation.score
+	if Game.is_daily():
+		Save.record_run("daily", score, Game.daily_date)
+		if Cloud != null:
+			Cloud.submit_daily(Game.daily_date, score)
+		return
+	if Game.is_endless():
+		score = simulation.endless_best()
+	Save.record_run(Game.mode_key, score, "")
+	Save.record_map_run(Game.mode_key, Game.city_id, score)
+	if Cloud != null:
+		Cloud.submit_best(Game.mode_key, Game.city_id, score)
+
+
 func _record_endless_best() -> void:
-	if simulation != null and Game.is_endless() and Save != null:
-		Save.record_run("endless", simulation.endless_best())
+	_record_run_result()
 
 
 func _restart() -> void:
-	_record_endless_best()
+	_record_run_result()
+	if Game.is_daily():
+		Game.pending_mode = -1
+		get_tree().reload_current_scene()
+		return
 	Game.pending_mode = Game.mode
 	get_tree().reload_current_scene()
 
 
 func _back_to_menu() -> void:
-	_record_endless_best()
+	_record_run_result()
 	Game.pending_mode = -1
 	get_tree().reload_current_scene()
 
@@ -235,6 +332,31 @@ func _input(event: InputEvent) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if hud != null and hud.leaderboard_open:
+		var back := false
+		if event is InputEventKey and event.pressed and not event.echo \
+				and event.keycode == KEY_ESCAPE:
+			back = true
+		elif event is InputEventMouseButton and event.pressed \
+				and event.button_index == MOUSE_BUTTON_LEFT:
+			back = hud.leaderboard_back_at((event as InputEventMouseButton).position)
+		if back:
+			hud.hide_leaderboard()
+		return
+	if hud != null and hud.map_hall_open:
+		if event is InputEventKey and event.pressed and not event.echo \
+				and event.keycode == KEY_ESCAPE:
+			hud.hide_map_hall()
+			return
+		if event is InputEventMouseButton and event.pressed \
+				and event.button_index == MOUSE_BUTTON_LEFT:
+			var pos: Vector2 = (event as InputEventMouseButton).position
+			var row := hud.map_hall_row_at(pos)
+			if row >= 0:
+				_download_hall_map(row)
+			elif hud.map_hall_back_at(pos):
+				hud.hide_map_hall()
+		return
 	if hud != null and hud.mode_menu:
 		_handle_mode_menu_input(event)
 		return
@@ -276,6 +398,12 @@ func _handle_mode_menu_input(event: InputEvent) -> void:
 				_choose_mode(GameMode.Kind.MANAGER)
 			KEY_E:
 				_open_map_editor()
+			KEY_D:
+				_open_daily_leaderboard()
+			KEY_H:
+				_open_map_hall()
+			KEY_L:
+				_open_map_leaderboard()
 			KEY_LEFT:
 				_cycle_city(-1)
 			KEY_RIGHT:
@@ -285,6 +413,15 @@ func _handle_mode_menu_input(event: InputEvent) -> void:
 		var pos: Vector2 = (event as InputEventMouseButton).position
 		if hud.editor_button_at(pos):
 			_open_map_editor()
+			return
+		if hud.daily_board_button_at(pos):
+			_open_daily_leaderboard()
+			return
+		if hud.map_hall_button_at(pos):
+			_open_map_hall()
+			return
+		if hud.map_rank_button_at(pos):
+			_open_map_leaderboard()
 			return
 		var index := hud.mode_card_at(pos)
 		if index >= 0:
@@ -483,8 +620,7 @@ func _on_game_over(_station: Station) -> void:
 	Game.paused = true
 	Audio.play("gameover")
 	var score := 0 if simulation == null else simulation.score
-	if Save != null:
-		Save.record_run(Game.mode_key, score, Game.daily_date)
+	_record_run_result()
 	if hud != null:
 		hud.show_game_over(score, maxi(score, _best_for_mode()))
 
@@ -941,6 +1077,8 @@ func _parse_args() -> void:
 			_lang_arg = arg.trim_prefix("--lang=")
 		elif arg.begins_with("--city="):
 			_city_arg = arg.trim_prefix("--city=")
+		elif arg.begins_with("--open="):
+			_open_arg = arg.trim_prefix("--open=")
 		elif arg == "--demo":
 			_demo = true
 

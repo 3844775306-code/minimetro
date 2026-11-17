@@ -151,6 +151,8 @@ func _run_action(action: String) -> void:
 			_save_map()
 		"share":
 			_share_map()
+		"upload":
+			_upload_map()
 		"import":
 			_import_share()
 		"back":
@@ -185,6 +187,19 @@ func _share_map() -> void:
 	var code := CustomMapStore.share_code(map)
 	DisplayServer.clipboard_set(code)
 	_toast_now("分享码已复制到剪贴板（%d 字符）" % code.length())
+
+
+func _upload_map() -> void:
+	if rivers.is_empty():
+		_toast_now("先画一条河再上传")
+		return
+	var map := CustomMapStore.new_map(rivers, width, "自定义地图 %d" % (CustomMapStore.load_maps().size() + 1))
+	if editing_id != "":
+		map["id"] = editing_id
+	if Cloud != null and Cloud.upload_map(map):
+		_toast_now("已上传到地图大厅")
+	else:
+		_toast_now("上传失败")
 
 
 func _import_share() -> void:
@@ -266,6 +281,7 @@ func _draw() -> void:
 		{"action": "width_plus", "text": "河宽 +"},
 		{"action": "save", "text": "保存"},
 		{"action": "share", "text": "分享码"},
+		{"action": "upload", "text": "上传大厅"},
 		{"action": "import", "text": "导入"},
 		{"action": "back", "text": "返回"},
 	]
