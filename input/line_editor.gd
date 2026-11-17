@@ -1040,6 +1040,12 @@ func _drop_pending_undo() -> void:
 
 
 func _apply_snapshot(snap: Dictionary) -> void:
+	# 快照只保存线路结构，不保存列车对象。撤销/取消一条草稿线时，
+	# 必须按 line id 把已有线路上的列车接回新线路对象，否则车会凭空消失。
+	var kept_trains := {}
+	for line in network.lines:
+		if not line.trains.is_empty():
+			kept_trains[line.id] = line.trains.duplicate()
 	network.rescue_riders()
 	network.lines.clear()
 	var entries: Array = snap["lines"]
@@ -1055,6 +1061,20 @@ func _apply_snapshot(snap: Dictionary) -> void:
 		line.bend_flips = flips
 		line.is_loop = bool(entry.get("loop", false))
 		line.rebuild()
+		# 已有线路的列车接回新对象；线路 id 在快照里不变
+		for train in kept_trains.get(line.id, []):
+			train.line_id = line.id
+			line.trains.append(train)
+			if simulation != null:
+				simulation.remap_train(train, line)
+			else:
+				train.line_version = line.version
+				train.dist = clampf(train.dist, 0.0, line.geometry.total_length)
+				train.stop_index = clampi(train.stop_index, 0, line.stops.size() - 1)
+				train.target_index = clampi(train.target_index, 0, line.stops.size() - 1)
+				train.target_dist = line.geometry.stop_offsets[train.target_index]
+				train.state = Train.State.DWELL
+				train.speed = 0.0
 		network.lines.append(line)
 	network.next_line_id = int(snap["next_line_id"])
 	network.touch()

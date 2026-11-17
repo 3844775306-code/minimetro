@@ -1188,6 +1188,11 @@ func _next_departure_station_id(train: Train, line: MetroLine) -> int:
 
 
 ## 线路被玩家编辑后：按最近站重新落位，避免列车卡在线外。
+## 重建线路对象后，把旧列车的状态映射到新几何上（撤销快照用）。
+func remap_train(train: Train, line: MetroLine) -> void:
+	_remap_train(train, line)
+
+
 func _remap_train(train: Train, line: MetroLine) -> void:
 	train.line_version = line.version
 	train.stop_actions.clear()

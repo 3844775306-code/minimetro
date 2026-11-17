@@ -15,6 +15,7 @@ static func run(h: TestHarness) -> void:
 	_test_dwell_remove(h)
 	_test_dwell_remove_endpoint(h)
 	_test_segment_dwell_remove(h)
+	_test_abandon_new_line_keeps_trains(h)
 	_test_reconnect_cooldown(h)
 	_test_loop(h)
 	_test_loop_closing_segment(h)
@@ -272,6 +273,43 @@ static func _test_dwell_remove(h: TestHarness) -> void:
 
 
 ## 拖线段的两个端点站上停留 0.8s 也能把站移出线路。
+## 按住站台开始画新线但放弃：撤销快照不能弄丢其他线路上的列车。
+static func _test_abandon_new_line_keeps_trains(h: TestHarness) -> void:
+	h.section("editor/abandon_new_line")
+	var level := LevelData.new()
+	var network := MetroNetwork.new(level)
+	var a := network.add_station(Vector2(300, 300), Shape.Kind.CIRCLE)
+	var b := network.add_station(Vector2(700, 300), Shape.Kind.SQUARE)
+	var old_line := network.create_line()
+	old_line.add_stop(a)
+	old_line.add_stop(b)
+	var train := Train.new()
+	train.id = 1
+	train.line_id = old_line.id
+	train.line_version = old_line.version
+	train.dist = old_line.geometry.stop_offsets[1]
+	train.stop_index = 1
+	train.target_index = 1
+	train.state = Train.State.DWELL
+	old_line.trains.append(train)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3
+	var sim := Simulation.new(network, level, rng)
+	sim.auto_spawn = false
+	var editor := LineEditor.new()
+	editor.setup(network, level, null)
+	editor.simulation = sim
+	h.eq(editor.begin_gesture(a.pos), true, "在站台上开始画新线")
+	h.eq(network.lines.size(), 2, "草稿阶段有两条线")
+	editor.end_gesture(a.pos)
+	h.eq(network.lines.size(), 1, "放弃后草稿线回滚")
+	var restored: MetroLine = network.lines[0]
+	h.eq(restored.trains.size(), 1, "原本线路上的列车不会消失")
+	h.eq(restored.trains[0], train, "保留的是同一辆列车")
+	h.eq(train.line_id, restored.id, "列车重新挂回线路")
+	editor.free()
+
+
 static func _test_segment_dwell_remove(h: TestHarness) -> void:
 	h.section("editor/segment_dwell")
 	var level := LevelData.new()
