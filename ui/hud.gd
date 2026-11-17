@@ -483,19 +483,31 @@ func _draw_resource_slots(vp: Vector2) -> void:
 	var chip_gap := 8.0
 	var chip_start_x := 40.0
 	_line_chips = []
-	for i in used:
-		var line: MetroLine = network.lines[i]
+	for i in level.start_lines:
 		var button := Rect2(Vector2(chip_start_x + float(i) * (chip_w + chip_gap), chip_y),
 			Vector2(chip_w, chip_h))
-		var hovered := button.has_point(mouse)
-		var chip_poly := DrawUtil.rounded_rect(button, 9.0, 6)
-		draw_colored_polygon(chip_poly, Color(1.0, 1.0, 1.0, 0.62 if hovered else 0.38))
-		draw_polyline(DrawUtil.closed(chip_poly), Color(INK, 0.30), 1.2, true)
-		_draw_capsule(Vector2(button.position.x + chip_w * 0.5 - 4.0, chip_y + chip_h * 0.5),
-			line.color, 40.0, 13.0)
-		_text_centered("×", button.end.x - 12.0, chip_y + 24.0, 17, Color(INK, 0.62))
-		# 放大后的点击区就是整只按钮
-		_line_chips.append({"id": line.id, "rect": button})
+		if i < used:
+			var line: MetroLine = network.lines[i]
+			var hovered := button.has_point(mouse)
+			var chip_poly := DrawUtil.rounded_rect(button, 9.0, 6)
+			draw_colored_polygon(chip_poly, Color(1.0, 1.0, 1.0, 0.62 if hovered else 0.38))
+			draw_polyline(DrawUtil.closed(chip_poly), Color(INK, 0.30), 1.2, true)
+			_draw_capsule(Vector2(button.position.x + chip_w * 0.5 - 4.0, chip_y + chip_h * 0.5),
+				line.color, 40.0, 13.0)
+			_text_centered("×", button.end.x - 12.0, chip_y + 24.0, 17, Color(INK, 0.62))
+			# 放大后的点击区就是整只按钮
+			_line_chips.append({"id": line.id, "rect": button})
+		else:
+			# 已拥有但尚未使用的线路：画出半透明空槽
+			var empty_poly := DrawUtil.rounded_rect(button, 9.0, 6)
+			draw_colored_polygon(empty_poly, Color(1.0, 1.0, 1.0, 0.16))
+			draw_polyline(DrawUtil.closed(empty_poly), Color(INK, 0.16), 1.0, true)
+			_draw_capsule_outline(
+				Vector2(button.position.x + chip_w * 0.5 - 4.0, chip_y + chip_h * 0.5),
+				Color(level.line_colors[i % level.line_colors.size()], 0.26), 40.0, 13.0)
+	# 显示“已用 / 总共拥有”的线路数量
+	_text_right(Loc.t("线路 %d/%d", "Lines %d/%d") % [used, level.start_lines],
+		740.0, chip_y + 23.0, 20, Color(INK, 0.70))
 
 	# 第二行：可拖拽的资源卡片（列车 / 车厢 / 换乘中心 / 新干线）+ 桥梁余量
 	var row_y := 140.0

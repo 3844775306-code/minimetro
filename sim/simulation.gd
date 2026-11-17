@@ -520,6 +520,8 @@ func apply_upgrade(card_id: String) -> void:
 	match card_id:
 		"line":
 			level.start_lines = mini(level.start_lines + 1, level.max_lines)
+			# 选线路奖励时额外送 1 节车厢
+			inventory_carriages += 1
 		"train":
 			inventory_trains += 1
 		"express":
@@ -680,7 +682,9 @@ func _place_train_at(train: Train, line: MetroLine, pos: Vector2) -> void:
 func _roll_cards() -> Array[Dictionary]:
 	var pool: Array[Dictionary] = []
 	if network.lines.size() < level.max_lines:
-		pool.append(UpgradeCards.get_card("line"))
+		var line_card := UpgradeCards.get_card("line").duplicate()
+		line_card["weight"] = line_reward_weight()
+		pool.append(line_card)
 	if total_trains_owned() < level.max_trains:
 		pool.append(UpgradeCards.get_card("train"))
 		pool.append(UpgradeCards.get_card("express"))
@@ -699,6 +703,11 @@ func _roll_cards() -> Array[Dictionary]:
 		picked.append(pool[index])
 		pool.remove_at(index)
 	return picked
+
+
+## 前几周线路奖励权重最高，之后逐渐回落到普通权重。
+func line_reward_weight() -> float:
+	return maxf(3.0, 12.0 - float(maxi(week_index, 1) - 1) * 2.5)
 
 
 ## 容量 6 的车站（换乘中心的目标）。

@@ -9,6 +9,7 @@ static func run(h: TestHarness) -> void:
 	_test_apply_carriage(h)
 	_test_apply_bridge(h)
 	_test_apply_interchange(h)
+	_test_early_line_weight(h)
 
 
 static func _make_level(week_seconds: float = 999.0) -> LevelData:
@@ -102,9 +103,24 @@ static func _test_apply_line(h: TestHarness) -> void:
 	var net := _make_network(level)
 	var sim := _make_sim(net, level)
 	var before := level.start_lines
+	var carriages_before := sim.inventory_carriages
 	sim.apply_upgrade("line")
 	h.eq(level.start_lines, before + 1, "新线路 +1")
+	h.eq(sim.inventory_carriages, carriages_before + 1, "线路奖励额外送 1 节车厢")
 	h.eq(net.available_lines(), level.start_lines - net.lines.size(), "可用线路数同步")
+
+
+static func _test_early_line_weight(h: TestHarness) -> void:
+	h.section("upgrades/early_line_weight")
+	var level := _make_level()
+	var net := _make_network(level)
+	var sim := _make_sim(net, level)
+	sim.week_index = 1
+	var early := sim.line_reward_weight()
+	sim.week_index = 5
+	var late := sim.line_reward_weight()
+	h.check(early > late, "前几周线路奖励权重更高")
+	h.check(early > 4.0, "第 1 周线路奖励权重明显高于其他奖励")
 
 
 static func _test_apply_train(h: TestHarness) -> void:
