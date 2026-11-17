@@ -857,17 +857,19 @@ func _start_legacy(train: Train, line: MetroLine) -> void:
 	if geometry == null or old_stops.size() < 2 or not geometry.is_drawable():
 		_remap_train(train, line)
 		return
-	var changed := _legacy_changed_range(geometry, old_stops, line.stops, line.is_loop)
-	var start_offset: float = changed.x
-	var end_offset: float = changed.y
-	if end_offset - start_offset <= 1.0:
-		# 线路没有实质变化（或差异段为空）：直接按新线重映射
+	var ranges := _legacy_changed_ranges(geometry, old_stops, line.edit_legacy_flips,
+		line.stops, line.bend_flips, line.is_loop)
+	var found := Vector2(-1.0, -1.0)
+	for candidate in ranges:
+		if train.dist > candidate.x + 1.0 and train.dist < candidate.y - 1.0:
+			found = candidate
+			break
+	if found.x < 0.0:
+		# 列车在没变的那一段上（或线路没有实质变化）：直接按新线重映射
 		_remap_train(train, line)
 		return
-	if train.dist <= start_offset + 1.0 or train.dist >= end_offset - 1.0:
-		# 列车在没变的那一段上：不需要旧线收尾
-		_remap_train(train, line)
-		return
+	var start_offset: float = found.x
+	var end_offset: float = found.y
 	train.legacy_geometry = geometry
 	train.legacy_stops = old_stops.duplicate()
 	train.legacy_active = true
@@ -902,29 +904,49 @@ func _start_legacy(train: Train, line: MetroLine) -> void:
 	train.legacy_lap_remaining = old_stops.size() if geometry.is_loop_geometry else 0
 
 
-## 旧/新站序的公共前后缀，得到旧几何上"真正变化"的弧长区间。
-## 环线编辑无法简单用前后缀判断，直接整圈收尾。
-func _legacy_changed_range(geometry: LineGeometry, old_stops: Array[Station],
-		new_stops: Array[Station], loop: bool) -> Vector2:
-	if loop:
-		return Vector2(0.0, geometry.total_length)
-	var prefix := 0
-	var old_size := old_stops.size()
+## 对比每条"相邻站对"是否在新线里仍是同一段（含弯曲方向一致），
+## 返回旧几何上真正变化的若干弧长区间（可处理改弯曲方向、增删站、换序）。
+func _legacy_changed_ranges(geometry: LineGeometry, old_stops: Array[Station],
+		old_flips: Dictionary, new_stops: Array[Station], new_flips: Dictionary,
+		loop: bool) -> Array[Vector2]:
+	var new_pairs := {}
 	var new_size := new_stops.size()
-	while prefix < mini(old_size, new_size) \
-			and old_stops[prefix].id == new_stops[prefix].id:
-		prefix += 1
-	var suffix := 0
-	while suffix < mini(old_size, new_size) - prefix \
-			and old_stops[old_size - 1 - suffix].id == new_stops[new_size - 1 - suffix].id:
-		suffix += 1
-	var start_offset := 0.0
-	if prefix > 0:
-		start_offset = geometry.stop_offsets[prefix - 1]
-	var end_offset := geometry.total_length
-	if suffix > 0:
-		end_offset = geometry.stop_offsets[old_size - suffix]
-	return Vector2(minf(start_offset, end_offset), maxf(start_offset, end_offset))
+	for i in range(new_size - 1):
+		var key := _pair_key(new_stops[i], new_stops[i + 1])
+		new_pairs[key] = new_flips.has(key)
+	if loop and new_size >= 3:
+		var key := _pair_key(new_stops[new_size - 1], new_stops[0])
+		new_pairs[key] = new_flips.has(key)
+	var changed: Array[Vector2] = []
+	var old_size := old_stops.size()
+	for i in range(old_size - 1):
+		var key := _pair_key(old_stops[i], old_stops[i + 1])
+		var same := new_pairs.has(key) and bool(new_pairs[key]) == old_flips.has(key)
+		if not same:
+			changed.append(Vector2(geometry.stop_offsets[i], geometry.stop_offsets[i + 1]))
+	if loop and old_size >= 3:
+		var key := _pair_key(old_stops[old_size - 1], old_stops[0])
+		var same := new_pairs.has(key) and bool(new_pairs[key]) == old_flips.has(key)
+		if not same:
+			changed.append(Vector2(geometry.stop_offsets[old_size - 1], geometry.total_length))
+	if changed.is_empty():
+		return changed
+	changed.sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
+	var merged: Array[Vector2] = []
+	for segment in changed:
+		if merged.is_empty():
+			merged.append(segment)
+			continue
+		var last: Vector2 = merged[merged.size() - 1]
+		if segment.x <= last.y + 1.0:
+			merged[merged.size() - 1] = Vector2(last.x, maxf(last.y, segment.y))
+		else:
+			merged.append(segment)
+	return merged
+
+
+static func _pair_key(a: Station, b: Station) -> String:
+	return "%d>%d" % [a.id, b.id]
 
 
 func _legacy_at_boundary(train: Train, offset: float) -> bool:

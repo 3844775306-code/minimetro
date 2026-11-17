@@ -64,6 +64,8 @@ var _swap_cooldown := 0.0
 var _segment_line: MetroLine = null
 var _segment_index := -1
 var _segment_dragging := false
+## 本次拖线段手势已经通过"停留"移出过站台：抬手时不要再触发插入/翻折
+var _segment_removed := false
 
 ## 拖动列车 / 车厢换线
 var _fleet_line: MetroLine = null
@@ -171,6 +173,7 @@ func begin_gesture(pos: Vector2) -> bool:
 	_segment_line = null
 	_segment_index = -1
 	_segment_dragging = false
+	_segment_removed = false
 	_loop_candidate = false
 	_fleet_line = null
 	_fleet_train = null
@@ -260,7 +263,9 @@ func end_gesture(pos: Vector2) -> void:
 			if not _gesture_dirty:
 				_drop_pending_undo()
 		State.SEGMENT:
-			if not _segment_dragging:
+			if _segment_removed:
+				pass
+			elif not _segment_dragging:
 				_apply_segment_tap()
 			elif hover_station != null:
 				_apply_segment_insert()
@@ -414,7 +419,8 @@ func _update_dwell(delta: float) -> void:
 	if state == State.DRAFT:
 		line = _draft_line
 		drafting = true
-	elif state == State.SEGMENT and _segment_dragging:
+	elif state == State.SEGMENT and _segment_line != null \
+			and (cursor.distance_to(_press_pos) >= TAP_MAX_MOVE or _segment_dragging):
 		line = _segment_line
 	else:
 		_reset_dwell()
@@ -479,6 +485,7 @@ func _remove_segment_endpoint() -> void:
 	_segment_line = null
 	_segment_index = -1
 	_segment_dragging = false
+	_segment_removed = true
 	_gesture_dirty = true
 
 
@@ -883,6 +890,7 @@ func _push_undo() -> void:
 	for line in network.lines:
 		line.edit_legacy_geometry = line.geometry.clone()
 		line.edit_legacy_stops = line.stops.duplicate()
+		line.edit_legacy_flips = line.bend_flips.duplicate()
 		line.edit_legacy_valid = line.stops.size() >= 2 and not line.geometry.points.is_empty()
 	_undo.append(_snapshot())
 	if _undo.size() > UNDO_LIMIT:
@@ -948,6 +956,7 @@ func _reset_gesture() -> void:
 	_segment_line = null
 	_segment_index = -1
 	_segment_dragging = false
+	_segment_removed = false
 	_loop_candidate = false
 	_fleet_line = null
 	_fleet_train = null

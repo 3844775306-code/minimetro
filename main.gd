@@ -478,7 +478,7 @@ func _build_world() -> void:
 
 	near_line_layer = NearLineMarkerLayer.new()
 	near_line_layer.name = "NearLineMarkerLayer"
-	near_line_layer.z_index = 210
+	near_line_layer.z_index = 145
 	world.add_child(near_line_layer)
 
 	train_layer = TrainLayer.new()
@@ -719,13 +719,33 @@ func _apply_pose() -> void:
 				network.touch()
 				_advance_sim(4)
 		"near-line":
-			# 演示：在线路旁边放一个 12px 远的站，显示"未接入"标记
+			# 演示：在弯折前放一个 12px 远的站，白线会跨过折点、跟着线路转弯
 			if not network.lines.is_empty():
 				var line: MetroLine = network.lines[0]
-				var xf := line.geometry.sample(line.geometry.total_length * 0.55)
+				var marker_offset := line.geometry.total_length * 0.55
+				for entry in line.geometry.curve_entries:
+					var bend_offset := float(entry.x)
+					if bend_offset < 50.0:
+						continue
+					var candidate_offset := bend_offset - 45.0
+					var candidate := line.geometry.sample(candidate_offset).origin
+					if network.station_at(candidate, 90.0) == null:
+						marker_offset = candidate_offset
+						break
+				var xf := line.geometry.sample(marker_offset)
 				var normal := xf.x.rotated(PI * 0.5)
 				network.add_station(xf.origin + normal * 12.0, Shape.Kind.STAR)
 				_advance_sim(2)
+		"segment-dwell":
+			# 演示：拖线段时在端点站上停留，红色进度环
+			if not network.lines.is_empty() and network.lines[0].stops.size() >= 2:
+				var line: MetroLine = network.lines[0]
+				var offsets := line.geometry.stop_offsets
+				var mid := line.geometry.sample((offsets[0] + offsets[1]) * 0.5).origin
+				editor.begin_gesture(mid)
+				editor.move_gesture(line.stops[0].pos)
+				editor.advance(1.0)
+				editor.set_process_unhandled_input(false)
 		"relocate":
 			# 演示：拖车换线时，车先靠站下客，目标位置显示浅色车
 			if network.lines.size() >= 2 and not network.lines[0].trains.is_empty():

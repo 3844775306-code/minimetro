@@ -5,6 +5,7 @@ static func run(h: TestHarness) -> void:
 	_test_place_train_facing(h)
 	_test_legacy_line(h)
 	_test_legacy_unchanged(h)
+	_test_legacy_flip(h)
 
 
 static func _make_level(trains: int = 2) -> LevelData:
@@ -101,15 +102,52 @@ static func _test_legacy_line(h: TestHarness) -> void:
 	h.check(train.legacy_range_end - train.legacy_range_start < line.geometry.total_length,
 		"浅色只覆盖变化段，不是整条线")
 
+	var start_dist := train.dist
+	var farthest_legacy := start_dist
 	var finished := false
 	for i in 2400:
 		sim.tick(Simulation.STEP)
+		if train.legacy_active:
+			farthest_legacy = maxf(farthest_legacy, train.dist)
 		if not train.legacy_active:
 			finished = true
 			break
 	h.check(finished, "列车跑完变化段后结束旧线状态")
+	h.check(farthest_legacy - start_dist > 50.0,
+		"列车确实沿旧线开了一段（不是瞬间跳到新线）")
 	h.check(train.legacy_geometry == null, "结束后释放旧几何")
 	h.eq(train.line_version, line.version, "列车切换回当前线路版本")
+	editor.free()
+
+
+## 只改弯曲方向（站序不变）也算"不一样的部分"：该段上的车要沿旧线收尾。
+static func _test_legacy_flip(h: TestHarness) -> void:
+	h.section("legacy/flip")
+	var level := _make_level(1)
+	var made := _make_line(level)
+	var net: MetroNetwork = made[0]
+	var line: MetroLine = made[1]
+	var sim := _make_sim(net, level)
+	sim.tick(Simulation.STEP)
+	var train: Train = line.trains[0]
+	for i in 60:
+		sim.tick(Simulation.STEP)
+	var editor := LineEditor.new()
+	editor.setup(net, level, null)
+	editor._push_undo()
+	line.flip_segment_by_index(0)
+	net.touch()
+	sim.tick(Simulation.STEP)
+	h.check(train.legacy_active, "改变弯曲方向的线段上的列车也做旧线收尾")
+	h.check(train.legacy_range_end - train.legacy_range_start
+		< line.geometry.total_length + 1.0, "变化区间只覆盖该线段")
+	var finished := false
+	for i in 1800:
+		sim.tick(Simulation.STEP)
+		if not train.legacy_active:
+			finished = true
+			break
+	h.check(finished, "弯曲方向变化的旧线也能收尾完成")
 	editor.free()
 
 
