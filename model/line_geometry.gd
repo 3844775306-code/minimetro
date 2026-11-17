@@ -3,7 +3,9 @@ extends RefCounted
 ## 线路的"几何缓存"：八向（水平 / 垂直 / 45°）折线 + 圆角 + 弧长表 + 站点弧长位置。
 ##
 ## 八向约束统一在这里实现：任意两站之间都被拆成「45° 斜段 + 剩余水平/竖直段」，
-## 所以线路无论怎么画，渲染出来只可能出现水平线、竖直线和 45° 斜线。
+## 默认「先 45° 后水平/竖直」；每个线段可以翻转成「先水平/竖直后 45°」，
+## 翻转状态由 MetroLine.bend_flips 维护（按有序站点 id 对存 key）。
+##
 ## 列车位置、飞线预览、站点重排都基于这里的弧长，而不是站序。
 
 const CORNER_RADIUS := 16.0
@@ -21,9 +23,9 @@ var stop_offsets := PackedFloat32Array()
 var total_length := 0.0
 
 
-## 按站点顺序重建几何。
-func build(stops: Array[Station]) -> void:
-	var raw := octilinear_route(stops)
+## 按站点顺序重建几何。# flips 的 key 形如 "3>7"（线段起点站 id > 终点站 id）。
+func build(stops: Array[Station], flips: Dictionary = {}) -> void:
+	var raw := octilinear_route(stops, flips)
 	points = _round_corners(raw)
 	_rebuild_lengths()
 	stop_offsets = PackedFloat32Array()
@@ -39,8 +41,13 @@ func is_drawable() -> bool:
 # 八向折线
 # ---------------------------------------------------------------------------
 
+## 线段 key：按"站序方向"区分，保证翻转状态不会串到反方向。
+static func segment_key(a_id: int, b_id: int) -> String:
+	return "%d>%d" % [a_id, b_id]
+
+
 ## 完整八向折线（含站点与折点，未圆角）。
-static func octilinear_route(stops: Array[Station]) -> PackedVector2Array:
+static func octilinear_route(stops: Array[Station], flips: Dictionary = {}) -> PackedVector2Array:
 	var out := PackedVector2Array()
 	if stops.is_empty():
 		return out
@@ -48,15 +55,17 @@ static func octilinear_route(stops: Array[Station]) -> PackedVector2Array:
 	for i in range(stops.size() - 1):
 		var a: Vector2 = stops[i].pos
 		var b: Vector2 = stops[i + 1].pos
-		for bend in bends_between(a, b):
+		var flipped: bool = flips.has(segment_key(stops[i].id, stops[i + 1].id))
+		for bend in bends_between(a, b, flipped):
 			out.append(bend)
 		out.append(b)
 	return out
 
 
 ## 两站之间需要插入的折点（0 或 1 个）。
-## 规则：从 a 出发先走 45° 斜段（消耗较短的那个轴），再走剩余的水平/竖直段进 b。
-static func bends_between(a: Vector2, b: Vector2) -> PackedVector2Array:
+## flipped=false：从 a 出发先走 45° 斜段，再走剩余的水平/竖直段进 b。
+## flipped=true ：先水平/竖直，再走 45° 斜段进 b。
+static func bends_between(a: Vector2, b: Vector2, flipped: bool = false) -> PackedVector2Array:
 	var d := b - a
 	var adx := absf(d.x)
 	var ady := absf(d.y)
@@ -66,18 +75,24 @@ static func bends_between(a: Vector2, b: Vector2) -> PackedVector2Array:
 		return PackedVector2Array()          # 已是 45°
 	var bend: Vector2
 	if adx > ady:
-		bend = a + Vector2(signf(d.x) * ady, d.y)
+		if flipped:
+			bend = a + Vector2(signf(d.x) * (adx - ady), 0.0)
+		else:
+			bend = a + Vector2(signf(d.x) * ady, d.y)
 	else:
-		bend = a + Vector2(d.x, signf(d.y) * adx)
+		if flipped:
+			bend = a + Vector2(0.0, signf(d.y) * (ady - adx))
+		else:
+			bend = a + Vector2(d.x, signf(d.y) * adx)
 	if bend.distance_to(a) < 1.0 or bend.distance_to(b) < 1.0:
 		return PackedVector2Array()
 	return PackedVector2Array([bend])
 
 
 ## 单段八向折线（用于画线时的飞线预览）：[a, 折点?, b]
-static func octilinear_segment(a: Vector2, b: Vector2) -> PackedVector2Array:
+static func octilinear_segment(a: Vector2, b: Vector2, flipped: bool = false) -> PackedVector2Array:
 	var out := PackedVector2Array([a])
-	for bend in bends_between(a, b):
+	for bend in bends_between(a, b, flipped):
 		out.append(bend)
 	out.append(b)
 	return out

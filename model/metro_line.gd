@@ -1,13 +1,21 @@
 class_name MetroLine
 extends RefCounted
-## 一条线路：颜色 + 有序站点 + 几何缓存。
+## 一条线路：颜色 + 有序站点 + 每段折线弯曲方向 + 车厢数 + 列车 + 几何缓存。
 ## 所有"结构变更"都必须 rebuild()，否则视图与列车会读到旧几何。
 
 var id: int = 0
 var color: Color = Color.WHITE
 var stops: Array[Station] = []
+
+## 每条线段是否翻转弯曲方向（key = LineGeometry.segment_key(起点 id, 终点 id)）。
+var bend_flips := {}
+
+## 挂在这条线上的车厢数：每节车厢给该线所有列车 +6 容量。
+var carriages: int = 0
+
 ## 这条线上的列车（由 Simulation 负责投放 / 回收）。
 var trains: Array[Train] = []
+
 var geometry := LineGeometry.new()
 var version: int = 0
 
@@ -18,8 +26,30 @@ func _init(p_id: int = 0, p_color: Color = Color.WHITE) -> void:
 
 
 func rebuild() -> void:
-	geometry.build(stops)
+	geometry.build(stops, bend_flips)
 	version += 1
+
+
+## 翻转第 segment 段（stops[segment] -> stops[segment + 1]）的弯曲方向。
+func flip_segment_by_index(segment: int) -> void:
+	if segment < 0 or segment + 1 >= stops.size():
+		return
+	flip_segment(stops[segment], stops[segment + 1])
+
+
+func flip_segment(a: Station, b: Station) -> void:
+	var key := LineGeometry.segment_key(a.id, b.id)
+	if bend_flips.has(key):
+		bend_flips.erase(key)
+	else:
+		bend_flips[key] = true
+	rebuild()
+
+
+func is_segment_flipped(segment: int) -> bool:
+	if segment < 0 or segment + 1 >= stops.size():
+		return false
+	return bend_flips.has(LineGeometry.segment_key(stops[segment].id, stops[segment + 1].id))
 
 
 func add_stop(st: Station) -> void:
@@ -36,6 +66,13 @@ func prepend_stop(st: Station) -> void:
 	rebuild()
 
 
+func insert_stop(index: int, st: Station) -> void:
+	if st == null:
+		return
+	stops.insert(clampi(index, 0, stops.size()), st)
+	rebuild()
+
+
 func remove_tail() -> void:
 	if stops.is_empty():
 		return
@@ -47,6 +84,13 @@ func remove_head() -> void:
 	if stops.is_empty():
 		return
 	stops.pop_front()
+	rebuild()
+
+
+func remove_stop_at(index: int) -> void:
+	if index < 0 or index >= stops.size():
+		return
+	stops.remove_at(index)
 	rebuild()
 
 

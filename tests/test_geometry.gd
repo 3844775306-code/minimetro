@@ -87,3 +87,22 @@ static func _test_octilinear(h: TestHarness) -> void:
 	h.check(g.stop_offsets.size() == 2, "两个站都有弧长位置")
 	h.check(g.sample(g.stop_offsets[0]).origin.distance_to(s1.pos) < 0.01, "首站落在路径上")
 	h.check(g.sample(g.stop_offsets[1]).origin.distance_to(s2.pos) < 0.01, "末站落在路径上")
+
+	# 翻转弯曲方向：先水平/竖直，再 45°
+	h.check(LineGeometry.octilinear_segment(Vector2(0, 0), Vector2(300, 100), false)[1]
+		.distance_to(Vector2(100, 100)) < 0.01, "默认折点在对角位置")
+	var flipped := LineGeometry.octilinear_segment(Vector2(0, 0), Vector2(300, 100), true)
+	h.eq(flipped.size(), 3, "翻转后仍是两段")
+	h.check(flipped[1].distance_to(Vector2(200, 0)) < 0.01, "翻转后折点落在水平轴上")
+	h.check(LineGeometry.is_octilinear(flipped), "翻转后仍满足八向约束")
+	h.check(LineGeometry.octilinear_segment(Vector2(100, 100), Vector2(300, 500), true)[1]
+		.distance_to(Vector2(100, 300)) < 0.01, "纵向翻转后先竖直再 45°")
+
+	# 线路几何读取 bend_flips（key = 起点 id > 终点 id）
+	var s3 := Station.new(3, Shape.Kind.CIRCLE, Vector2(0, 0))
+	var s4 := Station.new(4, Shape.Kind.CIRCLE, Vector2(300, 100))
+	var flips := {"3>4": true}
+	var flipped_route := LineGeometry.octilinear_route([s3, s4], flips)
+	h.check(LineGeometry.is_octilinear(flipped_route), "带翻转的线路仍八向合法")
+	h.check(flipped_route.size() == 3
+		and flipped_route[1].distance_to(Vector2(200, 0)) < 0.01, "带翻转线路的折点正确")

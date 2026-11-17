@@ -1,11 +1,16 @@
 class_name Simulation
 extends RefCounted
-## 固定步长模拟：1/60s tick 内推进所有逻辑（列车 / 乘客 / 溢出 / 生成）。
-## 视图层只做表现，配置全部来自 LevelData，方便 M3 抽卡时换参数。
+## 固定步长模拟：1/60s tick 内推进所有逻辑（生成 / 列车 / 上下车 / 溢出 / 周循环）。
+## 视图层只做表现，配置全部来自 LevelData。
 
 signal game_over(station: Station)
+## 每周结算：cards 为 1~2 张升级卡（Dictionary），week 为第几周。
+signal week_completed(cards: Array, week: int)
 
 const STEP := 1.0 / 60.0
+
+const TRAIN_BASE_CAPACITY := 6
+const CARRIAGE_CAPACITY := 6
 
 var network: MetroNetwork
 var level: LevelData
@@ -21,9 +26,15 @@ var is_over: bool = false
 var score: int = 0
 var delivered: int = 0
 
+## 周循环状态
+var week_index: int = 1
+var week_pending: bool = false
+var pending_cards: Array[Dictionary] = []
+
 var _accum: float = 0.0
 var _station_spawn_timer: float = 0.0
 var _passenger_spawn_timer: float = 0.0
+var _week_timer: float = 0.0
 var _train_id: int = 0
 
 
@@ -34,11 +45,12 @@ func _init(p_network: MetroNetwork, p_level: LevelData, p_rng: RandomNumberGener
 	spawner = StationSpawner.new(level, rng)
 	_station_spawn_timer = level.station_spawn_interval
 	_passenger_spawn_timer = level.passenger_spawn_start
+	_week_timer = level.week_seconds
 
 
 ## 由主循环每帧调用；speed 为倍速（倍速 = 多跑 tick，而不是放大 delta）。
 func advance(frame_delta: float, speed: float = 1.0) -> void:
-	if paused or is_over:
+	if paused or is_over or week_pending:
 		return
 	_accum += minf(frame_delta, 0.25) * maxf(speed, 0.0)
 	var guard := 0
@@ -49,7 +61,7 @@ func advance(frame_delta: float, speed: float = 1.0) -> void:
 
 
 func tick(dt: float) -> void:
-	if is_over:
+	if is_over or week_pending:
 		return
 	elapsed += dt
 	if routing.version != network.version:
@@ -59,6 +71,112 @@ func tick(dt: float) -> void:
 	_ensure_trains()
 	_update_trains(dt)
 	_update_stations(dt)
+	if is_over:
+		return
+	_update_week(dt)
+
+
+# ---------------------------------------------------------------------------
+# 周循环 / 升级
+# ---------------------------------------------------------------------------
+
+func _update_week(dt: float) -> void:
+	_week_timer -= dt
+	if _week_timer > 0.0:
+		return
+	var cards := _roll_cards()
+	if cards.is_empty():
+		# 所有资源都满了：跳过这一周
+		_week_timer = level.week_seconds
+		week_index += 1
+		return
+	week_pending = true
+	pending_cards.clear()
+	for card in cards:
+		pending_cards.append(card)
+	week_completed.emit(pending_cards, week_index)
+
+
+## 选择本周末的升级卡（暂停状态下由 UI 调用）。
+func choose_upgrade(index: int) -> void:
+	if not week_pending:
+		return
+	if index < 0 or index >= pending_cards.size():
+		return
+	apply_upgrade(String(pending_cards[index]["id"]))
+	week_pending = false
+	pending_cards = []
+	week_index += 1
+	_week_timer = level.week_seconds
+	_accum = 0.0
+
+
+## 直接应用一张升级卡（测试 / 调试也走这里）。
+func apply_upgrade(card_id: String) -> void:
+	match card_id:
+		"line":
+			level.start_lines = mini(level.start_lines + 1, level.max_lines)
+		"train":
+			level.start_trains = mini(level.start_trains + 1, level.max_trains)
+		"carriage":
+			_apply_carriage()
+		_:
+			push_warning("未知的升级卡: " + card_id)
+
+
+func _apply_carriage() -> void:
+	var line := _carriage_line()
+	if line == null:
+		return
+	line.carriages += 1
+	for train in line.trains:
+		train.capacity = TRAIN_BASE_CAPACITY + CARRIAGE_CAPACITY * line.carriages
+
+
+## 可以加挂车厢的线路：至少 2 站、未到车厢上限、当前车厢最少。
+func _carriage_line() -> MetroLine:
+	var best: MetroLine = null
+	for line in network.lines:
+		if line.stops.size() < 2:
+			continue
+		if line.carriages >= level.max_carriages:
+			continue
+		if best == null or line.carriages < best.carriages:
+			best = line
+	return best
+
+
+func _roll_cards() -> Array[Dictionary]:
+	var pool: Array[Dictionary] = []
+	if network.lines.size() < level.max_lines:
+		pool.append(UpgradeCards.get_card("line"))
+	if network.train_count() < level.max_trains:
+		pool.append(UpgradeCards.get_card("train"))
+	if _carriage_line() != null:
+		pool.append(UpgradeCards.get_card("carriage"))
+
+	var picked: Array[Dictionary] = []
+	while picked.size() < 2 and not pool.is_empty():
+		var index := _weighted_pick(pool)
+		if index < 0:
+			break
+		picked.append(pool[index])
+		pool.remove_at(index)
+	return picked
+
+
+func _weighted_pick(pool: Array[Dictionary]) -> int:
+	var total := 0.0
+	for card in pool:
+		total += float(card["weight"])
+	if total <= 0.0:
+		return -1
+	var r := rng.randf() * total
+	for i in pool.size():
+		r -= float(pool[i]["weight"])
+		if r <= 0.0:
+			return i
+	return pool.size() - 1
 
 
 # ---------------------------------------------------------------------------
@@ -130,28 +248,48 @@ func _spawn_passenger() -> void:
 # ---------------------------------------------------------------------------
 
 func _ensure_trains() -> void:
-	var used := network.train_count()
 	for line in network.lines:
 		if line.stops.size() < 2 or not line.geometry.is_drawable():
 			_drop_trains(line)
-			continue
-		if not line.trains.is_empty():
-			continue
-		if used >= level.start_trains:
-			continue
-		var train := Train.new()
-		train.id = _train_id
-		_train_id += 1
-		train.line_id = line.id
-		train.dir = 1
-		train.stop_index = 0
-		train.dist = line.geometry.stop_offsets[0]
-		train.state = Train.State.DWELL
-		train.dwell_left = 0.6
-		train.line_version = line.version
-		line.trains.append(train)
+
+	var used := network.train_count()
+	var guard := 0
+	while used < level.start_trains and guard < 12:
+		guard += 1
+		var best: MetroLine = null
+		for line in network.lines:
+			if line.stops.size() < 2 or not line.geometry.is_drawable():
+				continue
+			if best == null:
+				best = line
+				continue
+			if line.trains.size() < best.trains.size():
+				best = line
+			elif line.trains.size() == best.trains.size() and line.stops.size() > best.stops.size():
+				best = line
+		if best == null:
+			break
+		_spawn_train(best)
 		used += 1
-		_on_station(train, line, line.stops[0])
+
+
+func _spawn_train(line: MetroLine) -> void:
+	var train := Train.new()
+	train.id = _train_id
+	_train_id += 1
+	train.line_id = line.id
+	# 同线多车时按已有列车数错开站位与方向，避免两列车完全重叠
+	var existing := line.trains.size()
+	var stop_index := existing % line.stops.size()
+	train.dir = 1 if existing % 2 == 0 else -1
+	train.stop_index = stop_index
+	train.dist = line.geometry.stop_offsets[stop_index]
+	train.state = Train.State.DWELL
+	train.dwell_left = 0.6
+	train.line_version = line.version
+	train.capacity = TRAIN_BASE_CAPACITY + CARRIAGE_CAPACITY * line.carriages
+	line.trains.append(train)
+	_on_station(train, line, line.stops[stop_index])
 
 
 func _drop_trains(line: MetroLine) -> void:
@@ -164,6 +302,8 @@ func _drop_trains(line: MetroLine) -> void:
 
 func _rescue_riders(train: Train, line: MetroLine) -> void:
 	if train.riders.is_empty():
+		return
+	if not line.geometry.is_drawable():
 		return
 	var pos: Vector2 = line.geometry.sample(train.dist).origin
 	var target := network.nearest_station(pos)

@@ -35,8 +35,8 @@ static func build(network: MetroNetwork, level: LevelData, line_count: int = 3) 
 	level.start_station_count = stations.size()
 
 
-## 给每座站预置一个"去别的形状"的乘客，让截图里能看到等待图标与送达。
-static func seed_passengers(network: MetroNetwork) -> void:
+## 给每座站预置若干"去别的形状"的乘客，让截图里能看到等待图标与车内乘客。
+static func seed_passengers(network: MetroNetwork, per_station: int = 1) -> void:
 	var shapes: Array[int] = []
 	for st in network.stations:
 		if not shapes.has(st.shape):
@@ -51,4 +51,5 @@ static func seed_passengers(network: MetroNetwork) -> void:
 			if candidate != st.shape:
 				target = candidate
 				break
-		st.waiting.append(Passenger.new(target))
+		for i in per_station:
+			st.waiting.append(Passenger.new(target))

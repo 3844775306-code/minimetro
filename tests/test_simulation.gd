@@ -7,10 +7,10 @@ static func run(h: TestHarness) -> void:
 	_test_overflow(h)
 
 
-static func _make_level() -> LevelData:
+static func _make_level(train_count: int = 2) -> LevelData:
 	var level := LevelData.new()
 	level.start_lines = 3
-	level.start_trains = 2
+	level.start_trains = train_count
 	level.station_spawn_interval = 99999.0
 	level.passenger_spawn_start = 99999.0
 	level.passenger_spawn_end = 99999.0
@@ -33,7 +33,7 @@ static func _run(sim: Simulation, ticks: int) -> void:
 
 static func _test_delivery(h: TestHarness) -> void:
 	h.section("sim/delivery")
-	var level := _make_level()
+	var level := _make_level(1)
 	var net := MetroNetwork.new(level)
 	var a := net.add_station(Vector2(200, 200), Shape.Kind.CIRCLE)
 	var b := net.add_station(Vector2(800, 200), Shape.Kind.SQUARE)

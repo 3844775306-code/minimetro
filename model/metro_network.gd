@@ -113,6 +113,13 @@ func total_waiting() -> int:
 	return total
 
 
+func total_carriages() -> int:
+	var total := 0
+	for line in lines:
+		total += line.carriages
+	return total
+
+
 ## 撤销 / 重建线路前调用：把车上乘客放回最近站台，避免"删线时乘客蒸发"。
 func rescue_riders() -> void:
 	for line in lines:

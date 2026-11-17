@@ -10,6 +10,9 @@ static func run(h: TestHarness) -> void:
 	_test_extend_from_handle(h)
 	_test_reorder(h)
 	_test_no_line_resource(h)
+	_test_tap_flip(h)
+	_test_drag_insert(h)
+	_test_dwell_remove(h)
 
 
 static func _make(level: LevelData) -> Array:
@@ -178,4 +181,84 @@ static func _test_no_line_resource(h: TestHarness) -> void:
 	var fresh := network.add_station(Vector2(1400, 800), Shape.Kind.SQUARE)
 	h.eq(editor.begin_gesture(fresh.pos), false, "无资源时不能新建线路")
 	h.eq(network.lines.size(), 3, "线路数量不变")
+	editor.free()
+
+
+## 轻点线段 → 翻转该段弯曲方向；撤销可恢复。
+static func _test_tap_flip(h: TestHarness) -> void:
+	h.section("editor/tap_flip")
+	var level := LevelData.new()
+	var made := _make(level)
+	var network: MetroNetwork = made[0]
+	var editor: LineEditor = made[1]
+	var a := network.add_station(Vector2(200, 200), Shape.Kind.CIRCLE)
+	var b := network.add_station(Vector2(700, 500), Shape.Kind.SQUARE)
+	var line := network.create_line()
+	line.add_stop(a)
+	line.add_stop(b)
+	network.touch()
+	h.check(not line.is_segment_flipped(0), "初始未翻转")
+
+	var mid := line.geometry.sample(line.geometry.total_length * 0.5).origin
+	h.eq(editor.begin_gesture(mid), true, "按在线段上开始手势")
+	h.eq(editor.state, LineEditor.State.SEGMENT, "进入 SEGMENT")
+	editor.end_gesture(mid)
+	h.eq(line.bend_flips.size(), 1, "轻点后记录一次翻转")
+	h.check(line.is_segment_flipped(0), "第 0 段已翻转")
+
+	editor.undo()
+	var restored: MetroLine = network.lines[0]
+	h.check(restored.bend_flips.is_empty(), "撤销恢复弯曲方向")
+	editor.free()
+
+
+## 从线段中间拖到别的站 → 把该站插入这两站之间。
+static func _test_drag_insert(h: TestHarness) -> void:
+	h.section("editor/drag_insert")
+	var level := LevelData.new()
+	var made := _make(level)
+	var network: MetroNetwork = made[0]
+	var editor: LineEditor = made[1]
+	var a := network.add_station(Vector2(200, 200), Shape.Kind.CIRCLE)
+	var b := network.add_station(Vector2(700, 200), Shape.Kind.SQUARE)
+	var c := network.add_station(Vector2(450, 520), Shape.Kind.TRIANGLE)
+	var line := network.create_line()
+	line.add_stop(a)
+	line.add_stop(b)
+	network.touch()
+
+	var mid := line.geometry.sample(line.geometry.total_length * 0.5).origin
+	h.eq(editor.begin_gesture(mid), true, "按在线段上开始手势")
+	editor.move_gesture(c.pos)
+	editor.end_gesture(c.pos)
+	h.eq(line.stops.size(), 3, "站点插入后线路有三站")
+	h.check(line.stops[1] == c, "新站插入在 a、b 之间")
+	editor.free()
+
+
+## 拖拽中在前序站点停留 1.5s → 把它移出线路。
+static func _test_dwell_remove(h: TestHarness) -> void:
+	h.section("editor/dwell_remove")
+	var level := LevelData.new()
+	var made := _make(level)
+	var network: MetroNetwork = made[0]
+	var editor: LineEditor = made[1]
+	var a := network.add_station(Vector2(200, 200), Shape.Kind.CIRCLE)
+	var b := network.add_station(Vector2(500, 200), Shape.Kind.TRIANGLE)
+	var c := network.add_station(Vector2(800, 200), Shape.Kind.SQUARE)
+	var line := network.create_line()
+	line.add_stop(a)
+	line.add_stop(b)
+	line.add_stop(c)
+	network.touch()
+
+	var handle := line.geometry.handle_position(false)
+	h.eq(editor.begin_gesture(handle), true, "从末端手柄继续画线")
+	editor.move_gesture(a.pos)
+	h.eq(line.stops.size(), 3, "短暂停留不会立刻删站")
+	editor.advance(LineEditor.DWELL_REMOVE_TIME + 0.1)
+	h.eq(line.stops.size(), 2, "停留 1.5s 后移出该站")
+	h.check(not line.has_station(a), "被移出的是指针下的站")
+	h.check(line.stops[0] == b and line.stops[1] == c, "其余站序保持")
+	editor.end_gesture(a.pos)
 	editor.free()

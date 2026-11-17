@@ -38,6 +38,13 @@ extends Resource
 @export var start_carriages: int = 0
 @export var start_bridges: int = 2
 
+@export_group("资源上限与周循环")
+## 每周时长（秒）。周结算时暂停并让玩家从两张升级卡里选一张。
+@export var week_seconds: float = 60.0
+@export var max_lines: int = 7
+@export var max_trains: int = 6
+@export var max_carriages: int = 3
+
 @export_group("线路配色")
 @export var line_colors: Array[Color] = [
 	Color("#D64545"),

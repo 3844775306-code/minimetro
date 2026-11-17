@@ -49,11 +49,15 @@ func _process(delta: float) -> void:
 		hud.paused = Game.paused
 		hud.speed = Game.speed
 		hud.score = 0 if simulation == null else simulation.score
+		hud.week = 1 if simulation == null else simulation.week_index
 	if simulation != null and not Game.paused:
 		simulation.advance(delta, Game.speed)
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if hud != null and hud.week_modal:
+		_handle_week_input(event)
+		return
 	if not (event is InputEventKey):
 		return
 	if not event.pressed or event.echo:
@@ -69,6 +73,34 @@ func _unhandled_input(event: InputEvent) -> void:
 			Game.speed = 3.0
 		KEY_R:
 			get_tree().reload_current_scene()
+
+
+func _handle_week_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_1:
+			_choose_upgrade(0)
+		elif event.keycode == KEY_2:
+			_choose_upgrade(1)
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		var index := hud.card_at(get_global_mouse_position())
+		if index >= 0:
+			_choose_upgrade(index)
+
+
+func _on_week_completed(cards: Array, week_number: int) -> void:
+	if hud != null:
+		hud.show_week(cards, week_number)
+	if editor != null:
+		editor.set_process_unhandled_input(false)
+
+
+func _choose_upgrade(index: int) -> void:
+	if simulation == null or hud == null or not hud.week_modal:
+		return
+	simulation.choose_upgrade(index)
+	hud.hide_week()
+	if editor != null:
+		editor.set_process_unhandled_input(true)
 
 
 func _on_game_over(_station: Station) -> void:
@@ -151,8 +183,11 @@ func _build_ui() -> void:
 
 
 func _start_session() -> void:
+	if _pose == "week":
+		level.week_seconds = 7.0
 	simulation = Simulation.new(network, level, Game.rng)
 	simulation.game_over.connect(_on_game_over)
+	simulation.week_completed.connect(_on_week_completed)
 	if _demo:
 		DemoSetup.build(network, level, 2 if _pose == "draft" else 3)
 		DemoSetup.seed_passengers(network)
@@ -163,6 +198,35 @@ func _start_session() -> void:
 			editor.begin_gesture(st.pos)
 			editor.move_gesture(Vector2(1470, 720))
 			editor.move_gesture(Vector2(1080, 520))
+			editor.set_process_unhandled_input(false)
+		elif _pose == "insert":
+			# 摆出"拖动线段插入车站"的姿态
+			var line: MetroLine = network.lines[0]
+			var offs := line.geometry.stop_offsets
+			var mid := Vector2.ZERO
+			for i in range(offs.size() - 1):
+				var candidate := line.geometry.sample((offs[i] + offs[i + 1]) * 0.5).origin
+				if network.station_at(candidate, 48.0) == null:
+					mid = candidate
+					break
+			editor.begin_gesture(mid)
+			editor.move_gesture(network.stations[8].pos)
+			editor.set_process_unhandled_input(false)
+		elif _pose == "riders":
+			# 摆出"列车满载乘客行驶中"的姿态（直接给 1 号线列车装 6 名乘客）
+			var line: MetroLine = network.lines[0]
+			if not line.trains.is_empty() and line.stops.size() >= 4:
+				var train: Train = line.trains[0]
+				train.riders.clear()
+				for i in mini(train.capacity, 6):
+					train.riders.append(Passenger.new(Shape.Kind.TRIANGLE))
+				var seg := 2
+				train.stop_index = seg
+				train.target_index = seg + 1
+				train.target_dist = line.geometry.stop_offsets[seg + 1]
+				train.dist = (line.geometry.stop_offsets[seg] + line.geometry.stop_offsets[seg + 1]) * 0.5
+				train.state = Train.State.MOVING
+				train.line_version = line.version
 			editor.set_process_unhandled_input(false)
 		elif _pose == "overload":
 			# 一座没有线路的站 + 超容等待乘客，展示红色超载计时环
