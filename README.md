@@ -145,8 +145,8 @@
 
 - **7 张城市地图**：纸城 / 伦敦 / 巴黎 / 纽约 / 柏林 / 东京 / 上海，模式菜单里左右切换
 - **四种模式**：经典（会失败）、无尽（不判负，评价指标为平均每 30 秒客运量，升级按客运量里程碑触发）、每日挑战（每天随机一张地图，每人每天 1 次机会，成绩上传云端榜）、管理（40 站开局、7 线 5 隧道、固定 1x、不再生成新站）
-- **云端成绩**：每日挑战榜（最近 7 天）、其他模式分地图最高纪录榜、地图大厅（上传/下载玩家地图）
-- **存档** `user://profile.json`：各模式最高分、分地图最高纪录、每日成绩与每日机会、设置（音量/全屏/语言）、上次选择的城市
+- **云端成绩**：每日挑战榜（最近 7 天）、其他模式分地图最高纪录榜、地图大厅（上传/下载玩家地图）已接入 Supabase；无网络时自动回退本地示例数据
+- **存档** `user://profile.json`：各模式最高分、分地图最高纪录、每日成绩与每日机会、设置（音量/全屏/语言/玩家名）、上次选择的城市、匿名云端玩家 ID
 - **暂停/设置菜单**（`Esc` 或右下角齿轮按钮）：主音量、音乐音量、全屏、语言（中文 / English）、**玩家名**、重新开始、返回模式选择
 - **中英双语**：HUD、模式菜单、升级卡、提示全部走 `Loc` 双语表
 - **Windows 导出**：`export_presets.cfg` + 一条命令产出 exe/pck
@@ -181,7 +181,7 @@
 - **分地图纪录**：经典 / 无尽 / 管理分别按地图统计玩家最高纪录，并在结束/重开/返回菜单时上传云端；模式菜单「地图排行榜（L）」查看当前所选城市的云榜与个人纪录
 - **地图大厅**：模式菜单「地图大厅（H）」浏览云端地图，点击任意地图行下载到本地，随后会出现在城市列表；地图编辑器新增「上传大厅」
 
-> 当前环境没有可部署的公网后端，`CloudService` 使用**可持久化的本地云端模拟器**（`user://cloud_sim.json`，带示例玩家/地图），排行榜与地图大厅可直接体验；接真实服务器时只需把 `cloud/cloud_service.gd` 的方法替换为 HTTP API，UI 与存档层不需要改。Supabase 的建表 SQL 与接入步骤见 `cloud/SUPABASE.md`。
+> 云端后端已接入 Supabase 项目 `josalpkewgzritmwbocs`，publishable key 放在 `cloud/supabase_config.json`；网络失败时使用 `user://cloud_sim.json` 本地示例数据兜底。建表 SQL、RLS 与 RPC 见 `cloud/supabase_schema.sql`，接入说明见 `cloud/SUPABASE.md`。
 
 ## 地图编辑器
 
@@ -315,7 +315,7 @@ $godot = "D:\Downloads\06_游戏与Flash资源\Godot_v4.7.2-stable_win64.exe\God
 ```powershell
 $godot = "D:\Downloads\06_游戏与Flash资源\Godot_v4.7.2-stable_win64.exe\Godot_v4.7.2-stable_win64_console.exe"
 & $godot --headless --path . --script res://tests/run_tests.gd
-# 期望输出：TESTS PASSED (749 checks)
+# 期望输出：TESTS PASSED (768 checks)
 ```
 
 覆盖：八向几何与弯曲翻转、弧长采样、网络增删、画线/撤销/重排/翻转/插站/停留移除手势、换乘寻路、
@@ -432,7 +432,7 @@ view/                     表现层（Node2D，只读模型）
 input/line_editor.gd      画线手势状态机（IDLE / DRAFT / REORDER / SEGMENT）+ Esc 设置信号
 ui/hud.gd                 资源/分数、周抽卡、换乘点选、模式菜单、暂停设置、结束遮罩（双语）
 tools/demo_setup.gd       截图用确定性布局
-tests/                    headless 测试（749 checks）
+tests/                    headless 测试（768 checks）
 export_presets.cfg        Windows Desktop 导出预设
 art/shaders/paper_grain.gdshader  极轻纸纹
 docs/设计方案.md           完整实现方案（机制拆解 / 架构 / 里程碑）
@@ -459,7 +459,7 @@ docs/设计方案.md           完整实现方案（机制拆解 / 架构 / 里�
 
 - **Web 导出**：需把渲染器切到 Compatibility 并单独验证；当前只验证了 Windows 导出（exe + pck 可执行）。
 - 氛围音乐是单层循环，尚未按拥堵度动态加强。
-- 每日挑战只有一份本地云端模拟后端；没有部署公网服务器，跨设备/云端校验需接入真实后端。
+- 云端排行榜使用客户端匿名 UUID 作为玩家身份，仍可被伪造；正式运营需要 Supabase 匿名登录 + Edge Function 校验。地图大厅目前没有内容审核。
 - 列车只在"新开线路"时自动配 1 辆（且库存有车）；之后新增列车必须从图标拖到线路上。撤销画线会重建线路并丢掉该线上的列车，库存不返还。
 - 列车是否停站按"到站前预测"决定：如果车快到站时没有人上下车会直接驶过；若站台恰好在刹车窗口内才生成乘客，这班车不会停，乘客会等下一班。
 - 改线后的旧线收尾只对"差异段"生效（增删站、换序、改变弯曲方向都算差异）：列车在未变化段上会直接按新线继续行驶，不做浅色收尾；差异段上的列车只做送达，不接新客/换乘。

@@ -10,7 +10,28 @@ var profile: Profile = null
 func _ready() -> void:
 	profile = Profile.new()
 	load_profile()
+	ensure_player_id()
 	apply_settings()
+
+
+## 云端排行榜的匿名玩家 ID（一机一号，随档案保存）。
+func ensure_player_id() -> String:
+	var existing := String(profile.get_setting("player_id", ""))
+	if existing != "":
+		return existing
+	var bytes := Crypto.new().generate_random_bytes(16)
+	var hex := bytes.hex_encode()
+	var pid := "%s-%s-%s-%s-%s" % [
+		hex.substr(0, 8), hex.substr(8, 4), hex.substr(12, 4),
+		hex.substr(16, 4), hex.substr(20, 12),
+	]
+	profile.set_setting("player_id", pid)
+	save_profile()
+	return pid
+
+
+func player_id() -> String:
+	return ensure_player_id()
 
 
 func load_profile() -> void:

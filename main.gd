@@ -33,6 +33,7 @@ var camera: Camera2D = null
 var _night_filter: ColorRect = null
 
 var _shot_path := ""
+var _shot_delay := 0.45
 var _demo := false
 var _pose := ""
 var _seed := 0
@@ -43,6 +44,8 @@ var _lang_arg := ""
 var _city_arg := ""
 var _open_arg := ""
 var _name_edit_arg := false
+var _cloud_post_test := false
+var _leaderboard_kind := ""
 
 
 func _ready() -> void:
@@ -69,8 +72,10 @@ func _ready() -> void:
 		_start_session()
 	if _smoke_ticks > 0:
 		_run_smoke()
-	elif _shot_path != "":
+	if _shot_path != "":
 		_capture_and_quit()
+	elif _cloud_post_test:
+		_run_cloud_post_test()
 
 
 func _process(delta: float) -> void:
@@ -176,6 +181,7 @@ func _open_map_editor() -> void:
 func _open_daily_leaderboard() -> void:
 	if hud == null:
 		return
+	_leaderboard_kind = "daily"
 	hud.show_leaderboard(Loc.t("每日挑战排行榜", "Daily Challenge Leaderboard"),
 		Loc.t("最近 7 天 · 每名玩家每天只有 1 次机会", "Last 7 days · one attempt per player per day"),
 		Cloud.recent_daily_lines(7, 3))
@@ -184,6 +190,7 @@ func _open_daily_leaderboard() -> void:
 func _open_map_leaderboard() -> void:
 	if hud == null:
 		return
+	_leaderboard_kind = "rank"
 	var city: CityMap = null
 	if not hud.menu_cities.is_empty():
 		city = hud.menu_cities[clampi(hud.city_index, 0, hud.menu_cities.size() - 1)]
@@ -216,6 +223,19 @@ func _open_map_hall() -> void:
 	if hud == null:
 		return
 	hud.show_map_hall(Cloud.maps(20))
+
+
+func _on_cloud_updated() -> void:
+	if hud == null:
+		return
+	if hud.leaderboard_open:
+		match _leaderboard_kind:
+			"daily":
+				_open_daily_leaderboard()
+			"rank":
+				_open_map_leaderboard()
+	if hud.map_hall_open:
+		hud.show_map_hall(Cloud.maps(20))
 
 
 func _download_hall_map(index: int) -> void:
@@ -770,6 +790,8 @@ func _build_ui() -> void:
 	editor.settings_requested.connect(_open_settings)
 	editor.stock_drop_requested.connect(_on_stock_drop)
 	hud.name_submitted.connect(_on_player_name_submitted)
+	if Cloud != null:
+		Cloud.updated.connect(_on_cloud_updated)
 
 	var grain_layer := CanvasLayer.new()
 	grain_layer.name = "Grain"
@@ -1091,6 +1113,8 @@ func _parse_args() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--shot="):
 			_shot_path = arg.trim_prefix("--shot=")
+		elif arg.begins_with("--shot-delay="):
+			_shot_delay = maxf(0.1, float(arg.trim_prefix("--shot-delay=")))
 		elif arg.begins_with("--seed="):
 			_seed = int(arg.trim_prefix("--seed="))
 		elif arg.begins_with("--smoke="):
@@ -1107,6 +1131,8 @@ func _parse_args() -> void:
 			_open_arg = arg.trim_prefix("--open=")
 		elif arg == "--name-edit":
 			_name_edit_arg = true
+		elif arg == "--cloud-post-test":
+			_cloud_post_test = true
 		elif arg == "--demo":
 			_demo = true
 
@@ -1131,8 +1157,17 @@ func _run_smoke() -> void:
 	get_tree().quit(0)
 
 
+func _run_cloud_post_test() -> void:
+	await get_tree().create_timer(0.5).timeout
+	if Cloud != null:
+		Cloud.submit_best("classic", "cloud_smoke_city", 42)
+	await get_tree().create_timer(3.0).timeout
+	print("CLOUD_POST_TEST_DONE")
+	get_tree().quit(0)
+
+
 func _capture_and_quit() -> void:
-	await get_tree().create_timer(0.45).timeout
+	await get_tree().create_timer(_shot_delay).timeout
 	await RenderingServer.frame_post_draw
 	var image := get_viewport().get_texture().get_image()
 	var err := image.save_png(_shot_path)

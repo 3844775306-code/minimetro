@@ -2,11 +2,14 @@
 
 项目 ref：`josalpkewgzritmwbocs`  
 Project URL：`https://josalpkewgzritmwbocs.supabase.co`  
-（已验证域名可解析；未带 API key 请求 REST 返回 401「No API key found」）
+状态：**已接通**。三张表、RLS、RPC、Godot 客户端读写均已验证。
 
 ## 1. 需要的凭证
 
 只需要 **publishable / anon public** key（客户端公开使用），不要使用 `service_role` key。
+
+当前 publishable key 已写入 `cloud/supabase_config.json`，并在 `CloudService` 中保留一份打包兜底值。
+如需换项目，修改这个 JSON 即可。
 
 在 Supabase Dashboard：
 - 左下角 **Project Settings**
@@ -37,15 +40,14 @@ Project URL：`https://josalpkewgzritmwbocs.supabase.co`
 
 ```bash
 curl "https://josalpkewgzritmwbocs.supabase.co/rest/v1/metro_daily_scores?select=date,display_name,score&limit=1" \
-  -H "apikey: sb_publishable_xxx" \
-  -H "Authorization: Bearer sb_publishable_xxx"
+  -H "apikey: sb_publishable_xxx"
 ```
 
-预期返回 `[]`（表存在且 RLS 允许读），而不是 401/404。
+预期返回 `[]`（新版 publishable key 只需 apikey 头；Legacy anon JWT 才需要额外 Authorization）。
 
 ## 4. 客户端配置
 
-计划使用 `user://cloud_config.json`（桌面）或打包时内置（移动端）：
+已内置在 `cloud/supabase_config.json`（桌面可直接读取；移动端由 `CloudService` 的兜底常量保证可用）。
 
 ```json
 {
@@ -92,18 +94,36 @@ Authorization: Bearer <key>
 - 用 Edge Function 校验每日一次、分数上限、地图大小
 - 地图上传加人工审核/举报
 
-## 7. 现有代码的改造点
+## 7. 已验证内容
 
-`cloud/cloud_service.gd` 当前是可持久化的**本地模拟后端**，UI 已按以下同步接口调用：
+- REST 读取三张表正常
+- `submit_daily_score`：同一天同一 player_id 第二次提交不会覆盖第一次（7 → 99 仍为 7）
+- `submit_best_score`：同一地图同一玩家保留最高分
+- `upload_metro_map` + `increment_map_downloads`：上传、读取、下载计数正常
+- Godot 客户端启动日志：
+  ```text
+  CLOUD_CONFIG enabled=true live=true ...
+  CLOUD_REMOTE daily days=...
+  CLOUD_REMOTE best boards=...
+  CLOUD_REMOTE maps=...
+  ```
+
+联调测试写入了少量 `集成测试` 数据；需要清理时在 SQL Editor 执行：
+
+```sql
+delete from public.metro_daily_scores where display_name = '集成测试';
+delete from public.metro_best_scores where display_name = '集成测试';
+delete from public.metro_maps where author = '集成测试';
+```
+
+## 8. 现有代码的改造点
+
+`cloud/cloud_service.gd` 现在是**缓存 + 后台 Supabase 同步**模式：
 
 - `daily_leaderboard` / `recent_daily_lines`
 - `best_leaderboard`
 - `submit_daily` / `submit_best`
 - `maps` / `upload_map` / `download_map`
 
-接 Supabase 时保持这些方法签名，内部改成：
-1. 本地缓存立即返回（UI 不闪烁）
-2. `HTTPRequest` 后台拉取/提交
-3. 拉取完成发 `updated` 信号，主界面刷新已打开的排行榜/大厅
-
-这样 HUD、模式菜单、地图编辑器的调用都不需要改。
+UI 调用同步接口立即返回缓存；HTTPRequest 在后台拉取/提交，完成后发 `updated` 信号，
+主界面刷新已打开的排行榜/大厅。网络失败时保留本地示例数据继续可玩。
