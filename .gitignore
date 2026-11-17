@@ -1,0 +1,7 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# 本地截图与临时产物
+.shots/
+*.log

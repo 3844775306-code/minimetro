@@ -1,0 +1,33 @@
+; Engine configuration file.
+; MiniMetro —— M1 手势原型
+; 注意：这是 2D 游戏，刻意不用 3D 物理（Jolt）与 D3D12 专用后端。
+
+config_version=5
+
+[application]
+
+config/name="MiniMetro"
+config/description="极简地铁调度（Mini Metro 机制致敬之作）"
+config/version="0.1.0"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.7", "Forward Plus")
+config/icon="res://icon.svg"
+
+[autoload]
+
+Game="*res://autoload/game.gd"
+
+[display]
+
+window/size/viewport_width=1920
+window/size/viewport_height=1080
+window/size/window_width_override=1600
+window/size/window_height_override=900
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/dpi/allow_hidpi=true
+
+[rendering]
+
+anti_aliasing/quality/msaa_2d=2
+environment/defaults/default_clear_color=Color(0.812, 0.894, 0.918, 1)

@@ -1,0 +1,181 @@
+extends RefCounted
+## 画线手势：连续画线、撤销、回退、取消、端点延伸、站序重排、资源限制。
+## 直接调用 LineEditor 的公开手势 API，不需要真实输入事件。
+
+static func run(h: TestHarness) -> void:
+	_test_continuous_draw(h)
+	_test_undo(h)
+	_test_retract_and_rollback(h)
+	_test_cancel(h)
+	_test_extend_from_handle(h)
+	_test_reorder(h)
+	_test_no_line_resource(h)
+
+
+static func _make(level: LevelData) -> Array:
+	var network := MetroNetwork.new(level)
+	var editor := LineEditor.new()
+	editor.setup(network, level, null)
+	return [network, editor]
+
+
+static func _test_continuous_draw(h: TestHarness) -> void:
+	h.section("editor/continuous_draw")
+	var level := LevelData.new()
+	var made := _make(level)
+	var network: MetroNetwork = made[0]
+	var editor: LineEditor = made[1]
+	var a := network.add_station(Vector2(200, 200), Shape.Kind.CIRCLE)
+	var b := network.add_station(Vector2(500, 200), Shape.Kind.TRIANGLE)
+	var c := network.add_station(Vector2(500, 500), Shape.Kind.SQUARE)
+
+	h.eq(editor.begin_gesture(a.pos), true, "按住车站开始手势")
+	h.eq(editor.state, LineEditor.State.DRAFT, "进入 DRAFT")
+	h.eq(network.lines.size(), 1, "新建一条线路")
+	h.eq(network.available_lines(), 2, "消耗一个线路资源")
+
+	editor.move_gesture(b.pos)
+	h.eq(network.lines[0].stops.size(), 2, "经过第二站即时接线")
+	editor.move_gesture(c.pos)
+	h.eq(network.lines[0].stops.size(), 3, "经过第三站即时接线")
+	h.check(network.lines[0].stops[2] == c, "站序为 a-b-c")
+
+	editor.end_gesture(c.pos)
+	h.eq(editor.state, LineEditor.State.IDLE, "抬手回到 IDLE")
+	h.eq(network.lines[0].stops.size(), 3, "线路保留")
+	h.check(network.lines[0].geometry.is_drawable(), "线路几何可绘制")
+	editor.free()
+
+
+static func _test_undo(h: TestHarness) -> void:
+	h.section("editor/undo")
+	var level := LevelData.new()
+	var made := _make(level)
+	var network: MetroNetwork = made[0]
+	var editor: LineEditor = made[1]
+	var a := network.add_station(Vector2(200, 200), Shape.Kind.CIRCLE)
+	var b := network.add_station(Vector2(500, 200), Shape.Kind.TRIANGLE)
+	editor.begin_gesture(a.pos)
+	editor.move_gesture(b.pos)
+	editor.end_gesture(b.pos)
+	h.eq(network.lines.size(), 1, "先画出一条线")
+
+	editor.undo()
+	h.eq(network.lines.size(), 0, "撤销后线路消失")
+	h.eq(network.available_lines(), level.start_lines, "撤销后资源返还")
+	h.eq(a.line_ids.size(), 0, "撤销后站点缓存清理")
+	editor.free()
+
+
+static func _test_retract_and_rollback(h: TestHarness) -> void:
+	h.section("editor/retract")
+	var level := LevelData.new()
+	var made := _make(level)
+	var network: MetroNetwork = made[0]
+	var editor: LineEditor = made[1]
+	var a := network.add_station(Vector2(200, 200), Shape.Kind.CIRCLE)
+	var b := network.add_station(Vector2(500, 200), Shape.Kind.TRIANGLE)
+	editor.begin_gesture(a.pos)
+	editor.move_gesture(b.pos)
+	editor.move_gesture(a.pos)
+	h.eq(network.lines[0].stops.size(), 1, "拖回上一站回退一段")
+
+	editor.end_gesture(a.pos)
+	h.eq(network.lines.size(), 0, "不足两站的线在抬手时回滚")
+	h.eq(network.available_lines(), level.start_lines, "回滚后资源返还")
+	editor.free()
+
+
+static func _test_cancel(h: TestHarness) -> void:
+	h.section("editor/cancel")
+	var level := LevelData.new()
+	var made := _make(level)
+	var network: MetroNetwork = made[0]
+	var editor: LineEditor = made[1]
+	var a := network.add_station(Vector2(200, 200), Shape.Kind.CIRCLE)
+	var b := network.add_station(Vector2(500, 200), Shape.Kind.TRIANGLE)
+	editor.begin_gesture(a.pos)
+	editor.move_gesture(b.pos)
+	editor.cancel_gesture()
+	h.eq(network.lines.size(), 0, "取消手势后线路消失")
+	h.eq(editor.state, LineEditor.State.IDLE, "取消后回到 IDLE")
+	editor.free()
+
+
+static func _test_extend_from_handle(h: TestHarness) -> void:
+	h.section("editor/extend")
+	var level := LevelData.new()
+	var made := _make(level)
+	var network: MetroNetwork = made[0]
+	var editor: LineEditor = made[1]
+	var a := network.add_station(Vector2(200, 200), Shape.Kind.CIRCLE)
+	var b := network.add_station(Vector2(500, 200), Shape.Kind.TRIANGLE)
+	var c := network.add_station(Vector2(500, 500), Shape.Kind.SQUARE)
+	var d := network.add_station(Vector2(800, 500), Shape.Kind.CIRCLE)
+	var line := network.create_line()
+	line.add_stop(a)
+	line.add_stop(b)
+	line.add_stop(c)
+	network.touch()
+
+	var handle := line.geometry.handle_position(false)
+	h.eq(editor.begin_gesture(handle), true, "按住末端手柄开始手势")
+	h.eq(editor.state, LineEditor.State.DRAFT, "手柄手势进入 DRAFT")
+	editor.move_gesture(d.pos)
+	h.eq(line.stops.size(), 4, "延伸出一个站")
+	h.check(line.stops[3] == d, "新站追加在末端")
+	editor.end_gesture(d.pos)
+	h.eq(editor.state, LineEditor.State.IDLE, "延伸后回到 IDLE")
+	editor.free()
+
+
+static func _test_reorder(h: TestHarness) -> void:
+	h.section("editor/reorder")
+	var level := LevelData.new()
+	var made := _make(level)
+	var network: MetroNetwork = made[0]
+	var editor: LineEditor = made[1]
+	var a := network.add_station(Vector2(200, 200), Shape.Kind.CIRCLE)
+	var b := network.add_station(Vector2(500, 200), Shape.Kind.TRIANGLE)
+	var c := network.add_station(Vector2(500, 500), Shape.Kind.SQUARE)
+	var line := network.create_line()
+	line.add_stop(a)
+	line.add_stop(b)
+	line.add_stop(c)
+	network.touch()
+
+	h.eq(editor.begin_gesture(b.pos), true, "按住中间站开始重排")
+	h.eq(editor.state, LineEditor.State.REORDER, "进入 REORDER")
+	editor.move_gesture(c.pos)
+	h.check(line.stops[1] == c and line.stops[2] == b, "相邻站顺序交换")
+	editor.end_gesture(c.pos)
+	h.eq(editor.state, LineEditor.State.IDLE, "重排结束回到 IDLE")
+	editor.free()
+
+
+static func _test_no_line_resource(h: TestHarness) -> void:
+	h.section("editor/no_line_resource")
+	var level := LevelData.new()
+	level.start_lines = 3
+	var made := _make(level)
+	var network: MetroNetwork = made[0]
+	var editor: LineEditor = made[1]
+	var pts: Array[Vector2] = [
+		Vector2(200, 200), Vector2(500, 200), Vector2(200, 500),
+		Vector2(500, 500), Vector2(800, 200), Vector2(800, 500),
+		Vector2(1100, 350),
+	]
+	var stations: Array[Station] = []
+	for i in pts.size():
+		stations.append(network.add_station(pts[i], Shape.Kind.CIRCLE))
+	for i in 3:
+		var line := network.create_line()
+		line.add_stop(stations[i * 2])
+		line.add_stop(stations[i * 2 + 1])
+	network.touch()
+	h.eq(network.available_lines(), 0, "三条线用尽资源")
+
+	var fresh := network.add_station(Vector2(1400, 800), Shape.Kind.SQUARE)
+	h.eq(editor.begin_gesture(fresh.pos), false, "无资源时不能新建线路")
+	h.eq(network.lines.size(), 3, "线路数量不变")
+	editor.free()
