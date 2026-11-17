@@ -27,6 +27,8 @@ const SNAP_RADIUS := 32.0
 ## 端点手柄做大一点，更容易抓住
 const HANDLE_HIT_RADIUS := 30.0
 const HANDLE_DISTANCE := 34.0
+## 站台移出线路后，1 秒内不能再接回同一条线
+const RECONNECT_COOLDOWN := 1.0
 const REORDER_SNAP := 52.0
 const REORDER_DEADZONE := 9.0
 const SWAP_COOLDOWN := 0.15
@@ -78,6 +80,8 @@ var _hover_dwell := 0.0
 var _dwell_station: Station = null
 ## 拖回对侧端点时进入"可闭合环线"状态：松手成环
 var _loop_candidate := false
+## 站台被移出线路后的再接冷却（key = "线路id:站台id"，值 = 剩余秒数）
+var _removal_cooldowns := {}
 
 var _undo: Array[Dictionary] = []
 
@@ -128,8 +132,27 @@ func _process(delta: float) -> void:
 func advance(delta: float) -> void:
 	if _swap_cooldown > 0.0:
 		_swap_cooldown = maxf(0.0, _swap_cooldown - delta)
+	for key in _removal_cooldowns.keys():
+		var remaining := float(_removal_cooldowns[key]) - delta
+		if remaining <= 0.0:
+			_removal_cooldowns.erase(key)
+		else:
+			_removal_cooldowns[key] = remaining
 	_update_dwell(delta)
 	_request_redraw()
+
+
+## 站台刚被移出：1 秒内不允许再接到同一条线上。
+func _mark_removed(line: MetroLine, station: Station) -> void:
+	if line == null or station == null:
+		return
+	_removal_cooldowns["%d:%d" % [line.id, station.id]] = RECONNECT_COOLDOWN
+
+
+func _cooling(line: MetroLine, station: Station) -> bool:
+	if line == null or station == null:
+		return false
+	return float(_removal_cooldowns.get("%d:%d" % [line.id, station.id], 0.0)) > 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -333,6 +356,9 @@ func _draft_tip_index() -> int:
 
 
 func _extend_with(st: Station) -> void:
+	if _cooling(_draft_line, st):
+		toast_requested.emit("站台刚被移出线路，稍后再接")
+		return
 	var tip: Station = _draft_line.stops[_draft_tip_index()]
 	var from_pos: Vector2 = st.pos if _draft_at_start else tip.pos
 	var to_pos: Vector2 = tip.pos if _draft_at_start else st.pos
@@ -381,32 +407,47 @@ func _close_loop() -> void:
 # ---------------------------------------------------------------------------
 
 func _update_dwell(delta: float) -> void:
-	if state != State.DRAFT or _draft_line == null or hover_station == null:
-		_hover_dwell = 0.0
-		_dwell_station = null
+	var line: MetroLine = null
+	var drafting := false
+	if state == State.DRAFT:
+		line = _draft_line
+		drafting = true
+	elif state == State.SEGMENT and _segment_dragging:
+		line = _segment_line
+	else:
+		_reset_dwell()
 		return
-	# 对侧端点既是"闭合环线"的落点，也可以停留 1.5s 把它移出线路
-	if not _draft_line.has_station(hover_station):
-		_hover_dwell = 0.0
-		_dwell_station = null
+	if line == null or hover_station == null or line.stops.size() <= 1:
+		_reset_dwell()
 		return
-	# 任意已在线上的站都能移出（含首/末站与笔尖下的端点站），只剩 1 站时保底
-	if _draft_line.stops.size() <= 1:
-		_hover_dwell = 0.0
-		_dwell_station = null
+	if not line.has_station(hover_station):
+		_reset_dwell()
 		return
+	if not drafting:
+		# 拖线段时只认这一段的两个端点站
+		var index := line.stops.find(hover_station)
+		if index != _segment_index and index != _segment_index + 1:
+			_reset_dwell()
+			return
 	if hover_station != _dwell_station:
 		_dwell_station = hover_station
 		_hover_dwell = 0.0
 	_hover_dwell += delta
 	if _hover_dwell >= DWELL_REMOVE_TIME:
-		_remove_dwelled_station()
+		if drafting:
+			_remove_dwelled_station()
+		else:
+			_remove_segment_endpoint()
+
+
+func _reset_dwell() -> void:
+	_hover_dwell = 0.0
+	_dwell_station = null
 
 
 func _remove_dwelled_station() -> void:
 	var target := _dwell_station
-	_hover_dwell = 0.0
-	_dwell_station = null
+	_reset_dwell()
 	if target == null or _draft_line == null:
 		return
 	var idx := _draft_line.stops.find(target)
@@ -414,8 +455,29 @@ func _remove_dwelled_station() -> void:
 		return
 	_draft_line.remove_stop_at(idx)
 	network.touch()
+	_mark_removed(_draft_line, target)
 	_gesture_dirty = true
 	_loop_candidate = false
+
+
+## 拖线段时，在段两端的车站上停留 1.5s 也能把该站移出线路。
+func _remove_segment_endpoint() -> void:
+	var target := _dwell_station
+	_reset_dwell()
+	var line := _segment_line
+	if target == null or line == null:
+		return
+	var idx := line.stops.find(target)
+	if idx < 0 or line.stops.size() <= 1:
+		return
+	_push_undo()
+	line.remove_stop_at(idx)
+	network.touch()
+	_mark_removed(line, target)
+	_segment_line = null
+	_segment_index = -1
+	_segment_dragging = false
+	_gesture_dirty = true
 
 
 # ---------------------------------------------------------------------------
@@ -438,6 +500,9 @@ func _apply_segment_insert() -> void:
 		return
 	var st := hover_station
 	if st == null or line.has_station(st):
+		return
+	if _cooling(line, st):
+		toast_requested.emit("站台刚被移出线路，稍后再接")
 		return
 	var a: Station = line.stops[_segment_index]
 	var b: Station = line.stops[_segment_index + 1]
@@ -662,40 +727,46 @@ func _move_train(train: Train, from_line: MetroLine, to_line: MetroLine) -> void
 
 
 ## 让列车落在目标线上的任意弧长位置（不需要从起点站出发）。
+## 朝向按"距离最近的站台"决定：车头指向最近的站。
 func _place_train_on_line(train: Train, line: MetroLine, pos: Vector2) -> void:
 	var total := line.geometry.total_length
 	var d := clampf(line.geometry.nearest_distance(pos), 0.0, total)
 	train.dist = d
 	train.speed = 0.0
-	train.state = Train.State.MOVING
 	train.dwell_left = 0.0
-	var best := 0
+	var offsets := line.geometry.stop_offsets
+	var nearest := 0
 	var best_diff := INF
-	for i in line.geometry.stop_offsets.size():
-		var diff := absf(line.geometry.stop_offsets[i] - d)
+	for i in offsets.size():
+		var diff := absf(offsets[i] - d)
 		if diff < best_diff:
 			best_diff = diff
-			best = i
-	train.stop_index = best
+			nearest = i
 	if line.is_loop and line.stops.size() >= 3:
-		train.dir = 1
-		var next := (best + 1) % line.stops.size()
-		train.target_index = next
-		var target := line.geometry.stop_offsets[next]
+		var target := offsets[nearest]
 		if target <= d:
 			target += total
-		train.target_dist = target
-		return
-	var next := best + 1
-	if next < line.stops.size() and line.geometry.stop_offsets[next] >= d:
 		train.dir = 1
-		train.target_index = next
-		train.target_dist = line.geometry.stop_offsets[next]
+		train.target_index = nearest
+		train.target_dist = target
+		train.state = Train.State.MOVING
+		return
+	var station_offset := offsets[nearest]
+	if absf(station_offset - d) < 1.0:
+		# 正好落在站上：朝向下一站（末站则朝前一站）
+		if nearest < line.stops.size() - 1:
+			train.dir = 1
+			train.target_index = nearest + 1
+			train.target_dist = offsets[nearest + 1]
+		else:
+			train.dir = -1
+			train.target_index = nearest - 1
+			train.target_dist = offsets[nearest - 1]
 	else:
-		var prev := maxi(best - 1, 0)
-		train.dir = -1
-		train.target_index = prev
-		train.target_dist = line.geometry.stop_offsets[prev]
+		train.dir = 1 if station_offset > d else -1
+		train.target_index = nearest
+		train.target_dist = station_offset
+	train.state = Train.State.MOVING
 
 
 ## 把一节车厢从一列车挂到另一列车上（可跨线路）。
@@ -796,6 +867,11 @@ func _refresh_hover(pos: Vector2) -> void:
 # ---------------------------------------------------------------------------
 
 func _push_undo() -> void:
+	# 记录"本次编辑前"的线路几何：沿旧线路行驶的列车与浅色旧线都要用它
+	for line in network.lines:
+		line.edit_legacy_geometry = line.geometry
+		line.edit_legacy_stops = line.stops.duplicate()
+		line.edit_legacy_valid = line.stops.size() >= 2 and not line.geometry.points.is_empty()
 	_undo.append(_snapshot())
 	if _undo.size() > UNDO_LIMIT:
 		_undo.pop_front()

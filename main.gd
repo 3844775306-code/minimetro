@@ -18,6 +18,7 @@ var simulation: Simulation = null
 
 var map_view: MapView = null
 var line_layer: LineLayer = null
+var legacy_line_layer: LegacyLineLayer = null
 var bridge_layer: BridgeLayer = null
 var river_dash_layer: RiverDashLayer = null
 var near_line_layer: NearLineMarkerLayer = null
@@ -454,6 +455,11 @@ func _build_world() -> void:
 	line_layer.z_index = 100
 	world.add_child(line_layer)
 
+	legacy_line_layer = LegacyLineLayer.new()
+	legacy_line_layer.name = "LegacyLineLayer"
+	legacy_line_layer.z_index = 99
+	world.add_child(legacy_line_layer)
+
 	bridge_layer = BridgeLayer.new()
 	bridge_layer.name = "BridgeLayer"
 	bridge_layer.z_index = 110
@@ -499,6 +505,7 @@ func _build_world() -> void:
 	world.add_child(fx_layer)
 
 	line_layer.setup(network)
+	legacy_line_layer.setup(network)
 	bridge_layer.setup(network)
 	river_dash_layer.setup(network)
 	near_line_layer.setup(network)
@@ -672,6 +679,44 @@ func _apply_pose() -> void:
 				line.rebuild()
 				network.touch()
 				_advance_sim(90)
+		"legacy":
+			# 演示：编辑线路后，列车沿旧线跑完，旧线以浅色保留
+			if not network.lines.is_empty() and network.lines[0].stops.size() > 3:
+				var line: MetroLine = network.lines[0]
+				if not line.trains.is_empty():
+					var train: Train = line.trains[0]
+					# 先把车放到旧线中段，保证旧线收尾过程可见
+					train.dist = line.geometry.total_length * 0.5
+					train.speed = 0.0
+					var nearest := 0
+					var best := INF
+					for i in line.geometry.stop_offsets.size():
+						var diff := absf(line.geometry.stop_offsets[i] - train.dist)
+						if diff < best:
+							best = diff
+							nearest = i
+					train.stop_index = nearest
+					train.dir = 1
+					train.target_index = mini(nearest + 1, line.stops.size() - 1)
+					train.target_dist = line.geometry.stop_offsets[train.target_index]
+					train.state = Train.State.MOVING
+					train.line_version = line.version
+				editor._push_undo()
+				# 交换两个中途站，让旧线和新线明显不同
+				var swapped: Station = line.stops[1]
+				line.stops[1] = line.stops[2]
+				line.stops[2] = swapped
+				line.rebuild()
+				network.touch()
+				_advance_sim(4)
+		"near-line":
+			# 演示：在线路旁边放一个 12px 远的站，显示"未接入"标记
+			if not network.lines.is_empty():
+				var line: MetroLine = network.lines[0]
+				var xf := line.geometry.sample(line.geometry.total_length * 0.55)
+				var normal := xf.x.rotated(PI * 0.5)
+				network.add_station(xf.origin + normal * 12.0, Shape.Kind.STAR)
+				_advance_sim(2)
 		"train-drag":
 			if network.lines.size() >= 2 and not network.lines[0].trains.is_empty():
 				var source_line: MetroLine = network.lines[0]

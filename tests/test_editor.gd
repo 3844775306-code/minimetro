@@ -14,6 +14,8 @@ static func run(h: TestHarness) -> void:
 	_test_drag_insert(h)
 	_test_dwell_remove(h)
 	_test_dwell_remove_endpoint(h)
+	_test_segment_dwell_remove(h)
+	_test_reconnect_cooldown(h)
 	_test_loop(h)
 
 
@@ -265,6 +267,68 @@ static func _test_dwell_remove(h: TestHarness) -> void:
 	h.check(not line.has_station(a), "被移出的是指针下的站")
 	h.check(line.stops[0] == b and line.stops[1] == c, "其余站序保持")
 	editor.end_gesture(a.pos)
+	editor.free()
+
+
+## 拖线段的两个端点站上停留 1.5s 也能把站移出线路。
+static func _test_segment_dwell_remove(h: TestHarness) -> void:
+	h.section("editor/segment_dwell")
+	var level := LevelData.new()
+	var made := _make(level)
+	var network: MetroNetwork = made[0]
+	var editor: LineEditor = made[1]
+	var a := network.add_station(Vector2(200, 200), Shape.Kind.CIRCLE)
+	var b := network.add_station(Vector2(600, 200), Shape.Kind.SQUARE)
+	var c := network.add_station(Vector2(1000, 200), Shape.Kind.TRIANGLE)
+	var line := network.create_line()
+	line.add_stop(a)
+	line.add_stop(b)
+	line.add_stop(c)
+	network.touch()
+
+	h.eq(editor.begin_gesture(Vector2(400, 200)), true, "按住 A-B 段")
+	h.eq(editor.state, LineEditor.State.SEGMENT, "进入拖线段状态")
+	editor.move_gesture(a.pos)
+	editor.advance(LineEditor.DWELL_REMOVE_TIME + 0.1)
+	h.eq(line.stops.size(), 2, "端点站被移出线路")
+	h.check(not line.has_station(a), "移出的是段端点 A")
+	editor.end_gesture(a.pos)
+	editor.free()
+
+
+## 站台刚被移出线路后，1 秒内不能再接回同一条线。
+static func _test_reconnect_cooldown(h: TestHarness) -> void:
+	h.section("editor/reconnect_cooldown")
+	var level := LevelData.new()
+	var made := _make(level)
+	var network: MetroNetwork = made[0]
+	var editor: LineEditor = made[1]
+	var a := network.add_station(Vector2(200, 200), Shape.Kind.CIRCLE)
+	var b := network.add_station(Vector2(600, 200), Shape.Kind.SQUARE)
+	var c := network.add_station(Vector2(1000, 200), Shape.Kind.TRIANGLE)
+	var line := network.create_line()
+	line.add_stop(a)
+	line.add_stop(b)
+	line.add_stop(c)
+	network.touch()
+
+	# 从末端手柄延长时把 B 停留移出
+	var handle := line.geometry.handle_position(false)
+	editor.begin_gesture(handle)
+	editor.move_gesture(b.pos)
+	editor.advance(LineEditor.DWELL_REMOVE_TIME + 0.1)
+	h.check(not line.has_station(b), "B 已被移出线路")
+	h.check(editor._cooling(line, b), "刚移出的站进入 1 秒冷却")
+
+	# 冷却期内尝试把 B 接回（先移开再回到 B）
+	editor.move_gesture(Vector2(600, 400))
+	editor.move_gesture(b.pos)
+	h.check(not line.has_station(b), "冷却期内不能接回")
+	editor.advance(LineEditor.RECONNECT_COOLDOWN + 0.1)
+	editor.move_gesture(Vector2(600, 400))
+	editor.move_gesture(b.pos)
+	h.check(line.has_station(b), "冷却结束后可以重新接上")
+	editor.end_gesture(b.pos)
 	editor.free()
 
 

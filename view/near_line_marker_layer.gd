@@ -4,11 +4,13 @@ extends Node2D
 ## 对每条线、每个不在该线上的站点，若它离线路很近，就在线路上最近的投影点画一个
 ## 空心中继标记，并用虚线连到该站，避免玩家误以为这个站已经接上了。
 
-const NEAR_DISTANCE := 92.0
-const MARKER_RADIUS := 8.0
-const STATION_CLEARANCE := 16.0
-const MUTED := Color("#7C7568")
-const PAPER := Color("#F3EFE6")
+const NEAR_DISTANCE := 20.0
+const LINE_HALF_LENGTH := 15.0
+const LINE_OFFSET := 8.0
+const DOT_RADIUS := 2.8
+const STATION_CLEARANCE := 14.0
+const WHITE := Color("#FFFFFF")
+const WHITE_SHADOW := Color(0.32, 0.32, 0.32, 0.35)
 
 var network: MetroNetwork = null
 var _version := -1
@@ -46,12 +48,12 @@ static func collect_markers(p_network: MetroNetwork) -> Array:
 			var offset := line.geometry.nearest_distance(station.pos)
 			var on_line := line.geometry.sample(offset).origin
 			var distance := on_line.distance_to(station.pos)
-			if distance < 3.0 or distance > NEAR_DISTANCE:
+			if distance < 2.0 or distance > NEAR_DISTANCE:
 				continue
+			var tangent := line.geometry.sample(offset).x
 			var marker_point := on_line
-			# 站点图标会盖住线路上的标记：把标记沿线挪到站台图标之外
+			# 站台图标会盖住白线：把标记沿线挪到站台图标之外
 			if distance < Shape.STATION_RADIUS + STATION_CLEARANCE:
-				var tangent := line.geometry.sample(offset).x
 				var step := Shape.STATION_RADIUS + STATION_CLEARANCE
 				var forward := on_line + tangent.normalized() * step
 				var backward := on_line - tangent.normalized() * step
@@ -59,6 +61,7 @@ static func collect_markers(p_network: MetroNetwork) -> Array:
 			markers.append({
 				"line": line,
 				"on_line": marker_point,
+				"tangent": tangent,
 				"station": station,
 				"distance": distance,
 			})
@@ -67,19 +70,20 @@ static func collect_markers(p_network: MetroNetwork) -> Array:
 
 func _draw() -> void:
 	for marker in _markers:
-		var line: MetroLine = marker["line"]
 		var point: Vector2 = marker["on_line"]
-		var station: Station = marker["station"]
-		# 从线路上的标记虚线指向站台（停在站台图标边缘，避免盖住站名/形状）
-		var direction := (station.pos - point).normalized()
-		var edge := station.pos - direction * (Shape.STATION_RADIUS + 2.0)
-		draw_dashed_line(point, edge, Color(MUTED, 0.7), 1.8, 5.0, true)
-		# 白底 + 断续圆环 + 叉号：明确表示"这里有站，但没接上这条线"
-		draw_circle(point, MARKER_RADIUS + 1.0, Color(PAPER, 0.96), true, -1.0, true)
-		var arc_color := Color(line.color, 0.92)
-		for i in 8:
-			var start := TAU * float(i) / 8.0
-			draw_arc(point, MARKER_RADIUS, start, start + TAU / 8.0 * 0.62, 8, arc_color, 2.4, true)
-		var slash_a := point + Vector2(-4.2, 4.2)
-		var slash_b := point + Vector2(4.2, -4.2)
-		draw_line(slash_a, slash_b, Color(MUTED, 0.95), 2.4, true)
+		var tangent: Vector2 = (marker["tangent"] as Vector2).normalized()
+		var normal := Vector2(-tangent.y, tangent.x)
+		# 沿着线路方向、在线路两侧各画一条细白线，末端小白圆：
+		# 像"这两段还没接上"的夹子标记
+		for side in [-1.0, 1.0]:
+			var side_value := float(side)
+			var center: Vector2 = point + normal * LINE_OFFSET * side_value
+			var a: Vector2 = center - tangent * LINE_HALF_LENGTH
+			var b: Vector2 = center + tangent * LINE_HALF_LENGTH
+			# 先画一层浅灰阴影，白线在纸色背景上也看得清
+			draw_line(a, b, WHITE_SHADOW, 3.4, true)
+			draw_line(a, b, WHITE, 2.0, true)
+			draw_circle(a, DOT_RADIUS + 1.2, WHITE_SHADOW, true, -1.0, true)
+			draw_circle(a, DOT_RADIUS, WHITE, true, -1.0, true)
+			draw_circle(b, DOT_RADIUS + 1.2, WHITE_SHADOW, true, -1.0, true)
+			draw_circle(b, DOT_RADIUS, WHITE, true, -1.0, true)

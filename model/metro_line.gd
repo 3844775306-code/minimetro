@@ -13,6 +13,11 @@ var bend_flips := {}
 ## 环线：末站与首站相连，列车沿着环单向循环。
 var is_loop := false
 
+## 手动编辑前的旧几何/旧站序：供"正在被修改的线路"上的列车沿原线行驶完。
+var edit_legacy_geometry: LineGeometry = null
+var edit_legacy_stops: Array[Station] = []
+var edit_legacy_valid := false
+
 ## 这条线上的列车（由 Simulation 负责投放 / 回收，也可被玩家拖动换线）。
 var trains: Array[Train] = []
 

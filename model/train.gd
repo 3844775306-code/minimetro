@@ -40,6 +40,13 @@ var riders: Array[Passenger] = []
 ## 用于线路被编辑后重映射（几何版本号）。
 var line_version: int = -1
 
+## 编辑线路后"沿原线路行驶完"的旧几何与旧站序；完成后为 null。
+var legacy_geometry: LineGeometry = null
+var legacy_stops: Array[Station] = []
+var legacy_active := false
+var legacy_finishing := false
+var legacy_lap_remaining := 0
+
 
 func refresh_capacity() -> void:
 	capacity = BASE_CAPACITY + CARRIAGE_CAPACITY * carriages

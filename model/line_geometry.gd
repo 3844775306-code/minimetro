@@ -66,10 +66,10 @@ func _build_curve_entries(raw: PackedVector2Array, loop: bool) -> void:
 				curve_entries.append(Vector2(0.0, _angle_to_factor(angle)))
 
 
-## 转角越大限速越低（与角度近似成正比）：45° 约 0.69，90° 约 0.38。
+## 按要求：转角越小，减速幅度越大（45° 角比 90° 角更慢）。
+## 系数从 0.35 起随转角线性升到 1.0；八向线路只有 45°/90° 两种主要转角。
 static func _angle_to_factor(angle: float) -> float:
-	return clampf(1.0 - angle / (PI * 0.85), 0.30, 1.0)
-
+	return clampf(0.35 + 0.65 * angle / PI, 0.35, 1.0)
 
 ## 沿行进方向前方 distance 内的弯道限速点，返回 Vector2(距离, 限速系数)。
 func curve_entries_ahead(offset: float, dir: int, distance: float) -> Array[Vector2]:

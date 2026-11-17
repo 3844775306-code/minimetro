@@ -118,21 +118,30 @@ static func _test_curve_limit(h: TestHarness) -> void:
 	var a := net.add_station(Vector2(200, 500), Shape.Kind.CIRCLE)
 	var b := net.add_station(Vector2(800, 500), Shape.Kind.SQUARE)
 	var c := net.add_station(Vector2(800, 1000), Shape.Kind.TRIANGLE)
-	var line := net.create_line()
-	line.add_stop(a)
-	line.add_stop(b)
-	line.add_stop(c)
+	var line90 := net.create_line()
+	line90.add_stop(a)
+	line90.add_stop(b)
+	line90.add_stop(c)
+	# 45° 弯：水平段后接一条 45° 斜线
+	var d := net.add_station(Vector2(300, 250), Shape.Kind.DIAMOND)
+	var e := net.add_station(Vector2(700, 250), Shape.Kind.STAR)
+	var f := net.add_station(Vector2(1100, 650), Shape.Kind.CIRCLE)
+	var line45 := net.create_line()
+	line45.add_stop(d)
+	line45.add_stop(e)
+	line45.add_stop(f)
 	net.touch()
-	var factors: Array[float] = []
-	for entry in line.geometry.curve_entries:
-		factors.append(float(entry.y))
-	h.check(not factors.is_empty(), "90° 折角产生弯道限速点")
-	var tightest := 1.0
-	for factor in factors:
-		tightest = minf(tightest, factor)
-	h.check(tightest < 0.5, "90° 弯道限速低于最高速一半（%.2f）" % tightest)
-	h.check(tightest >= 0.3, "限速不会低到 0")
-	var ahead := line.geometry.curve_entries_ahead(0.0, 1, 2000.0)
+
+	var factor90 := 1.0
+	for entry in line90.geometry.curve_entries:
+		factor90 = minf(factor90, float(entry.y))
+	var factor45 := 1.0
+	for entry in line45.geometry.curve_entries:
+		factor45 = minf(factor45, float(entry.y))
+	h.check(factor90 < 1.0, "90° 弯道有限速（%.2f）" % factor90)
+	h.check(factor45 < 1.0, "45° 弯道有限速（%.2f）" % factor45)
+	h.check(factor45 < factor90, "角度越小减速越大：45° 限速低于 90°")
+	var ahead := line90.geometry.curve_entries_ahead(0.0, 1, 2000.0)
 	h.check(not ahead.is_empty(), "弯道限速点能被前方查询找到")
 
 
@@ -145,24 +154,28 @@ static func _test_near_line_marker(h: TestHarness) -> void:
 	var line := net.create_line()
 	line.add_stop(a)
 	line.add_stop(b)
-	# 靠近线路但不在线上
-	var near := net.add_station(Vector2(700, 550), Shape.Kind.TRIANGLE)
+	# 太远：不再算"近线未接入"
+	var far := net.add_station(Vector2(700, 570), Shape.Kind.TRIANGLE)
+	# 很近但不在线上
+	var near := net.add_station(Vector2(700, 512), Shape.Kind.STAR)
 	# 已经接上的站
 	var on := net.add_station(Vector2(950, 500), Shape.Kind.DIAMOND)
 	line.add_stop(on)
 	net.touch()
 
 	var markers := NearLineMarkerLayer.collect_markers(net)
-	h.check(not markers.is_empty(), "存在靠线未接入的站台标记")
-	var found := false
+	var found_near := false
+	var found_far := false
+	var found_on := false
 	for marker in markers:
 		if marker["station"] == near:
-			found = true
+			found_near = true
 			h.check(float(marker["distance"]) <= NearLineMarkerLayer.NEAR_DISTANCE,
-				"标记距离在阈值内")
-	h.check(found, "近线站台有待接入标记")
-	var false_positive := false
-	for marker in markers:
+				"标记距离在 20px 阈值内")
+		if marker["station"] == far:
+			found_far = true
 		if marker["station"] == on:
-			false_positive = true
-	h.check(not false_positive, "已在线上的站台不会被标记为未接入")
+			found_on = true
+	h.check(found_near, "20px 内的近线站台有标记")
+	h.check(not found_far, "超过 20px 的站台不再标记")
+	h.check(not found_on, "已在线上的站台不会被标记为未接入")

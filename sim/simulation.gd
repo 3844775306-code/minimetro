@@ -287,7 +287,7 @@ func nearest_line(pos: Vector2, max_dist: float = 24.0) -> MetroLine:
 	return best
 
 
-## 把列车放到线路上的任意弧长位置：朝最近的前方站行驶（环线自动回绕）。
+## 把列车放到线路上的任意弧长位置；车头朝向距离最近的站台。
 func _place_train_at(train: Train, line: MetroLine, pos: Vector2) -> void:
 	var total := line.geometry.total_length
 	var d := clampf(line.geometry.nearest_distance(pos), 0.0, total)
@@ -295,33 +295,37 @@ func _place_train_at(train: Train, line: MetroLine, pos: Vector2) -> void:
 	train.speed = 0.0
 	train.state = Train.State.MOVING
 	train.dwell_left = 0.0
-	var best := 0
+	var offsets := line.geometry.stop_offsets
+	var nearest := 0
 	var best_diff := INF
-	for i in line.geometry.stop_offsets.size():
-		var diff := absf(line.geometry.stop_offsets[i] - d)
+	for i in offsets.size():
+		var diff := absf(offsets[i] - d)
 		if diff < best_diff:
 			best_diff = diff
-			best = i
-	train.stop_index = best
+			nearest = i
 	if line.is_loop and line.stops.size() >= 3:
-		train.dir = 1
-		var next := (best + 1) % line.stops.size()
-		train.target_index = next
-		var target := line.geometry.stop_offsets[next]
+		var target := offsets[nearest]
 		if target <= d:
 			target += total
+		train.dir = 1
+		train.target_index = nearest
 		train.target_dist = target
 		return
-	var next := best + 1
-	if next < line.stops.size() and line.geometry.stop_offsets[next] >= d:
-		train.dir = 1
-		train.target_index = next
-		train.target_dist = line.geometry.stop_offsets[next]
+	var station_offset := offsets[nearest]
+	if absf(station_offset - d) < 1.0:
+		# 正好落在站上：朝向下一站（末站则朝前一站）
+		if nearest < line.stops.size() - 1:
+			train.dir = 1
+			train.target_index = nearest + 1
+			train.target_dist = offsets[nearest + 1]
+		else:
+			train.dir = -1
+			train.target_index = nearest - 1
+			train.target_dist = offsets[nearest - 1]
 	else:
-		var prev := maxi(best - 1, 0)
-		train.dir = -1
-		train.target_index = prev
-		train.target_dist = line.geometry.stop_offsets[prev]
+		train.dir = 1 if station_offset > d else -1
+		train.target_index = nearest
+		train.target_dist = station_offset
 
 
 func _roll_cards() -> Array[Dictionary]:
@@ -515,8 +519,16 @@ func _update_trains(dt: float) -> void:
 
 
 func _update_train(train: Train, line: MetroLine, dt: float) -> void:
+	if train.legacy_active:
+		_update_legacy_train(train, line, dt)
+		return
 	if train.line_version != line.version or train.stop_index >= line.stops.size():
-		_remap_train(train, line)
+		if train.line_version >= 0 and train.line_version != line.version \
+				and line.edit_legacy_valid and line.edit_legacy_geometry != null:
+			_start_legacy(train, line)
+		else:
+			_remap_train(train, line)
+		return
 
 	if train.state == Train.State.DWELL:
 		train.dwell_left -= dt
@@ -528,7 +540,6 @@ func _update_train(train: Train, line: MetroLine, dt: float) -> void:
 	if delta <= 0.001:
 		_arrive(train, line)
 		return
-
 	# 目标速度：最高速 / 前方弯道限速 / 需要停站时的刹车曲线，取最小
 	var desired := Train.MAX_SPEED
 	var lookahead := train.speed * train.speed / (2.0 * Train.DECEL) + 40.0
@@ -727,6 +738,197 @@ func _remap_train(train: Train, line: MetroLine) -> void:
 	train.stop_index = best
 	train.target_index = clampi(train.target_index, 0, line.stops.size() - 1)
 	train.target_dist = line.geometry.stop_offsets[train.target_index]
+
+
+# ---------------------------------------------------------------------------
+# 手动编辑线路后的"旧线收尾"：列车沿编辑前的线路行驶完，旧线画淡
+# ---------------------------------------------------------------------------
+
+## 编辑发生时：把列车切到"旧几何"上，直到开到旧线路终点 / 环线跑完一圈。
+func _start_legacy(train: Train, line: MetroLine) -> void:
+	var geometry := line.edit_legacy_geometry
+	var stops := line.edit_legacy_stops
+	if geometry == null or stops.size() < 2 or not geometry.is_drawable():
+		_remap_train(train, line)
+		return
+	train.legacy_geometry = geometry
+	train.legacy_stops = stops.duplicate()
+	train.legacy_active = true
+	train.legacy_finishing = false
+	train.line_version = line.version
+	train.dist = clampf(train.dist, 0.0, geometry.total_length)
+	train.speed = 0.0
+	train.dwell_left = 0.0
+	train.state = Train.State.MOVING
+	var offsets := geometry.stop_offsets
+	var next := -1
+	if train.dir >= 0:
+		for i in offsets.size():
+			if offsets[i] >= train.dist - 1.0:
+				next = i
+				break
+	else:
+		for i in range(offsets.size() - 1, -1, -1):
+			if offsets[i] <= train.dist + 1.0:
+				next = i
+				break
+	if next < 0:
+		_finish_legacy(train, line)
+		return
+	train.stop_index = next
+	train.target_index = next
+	train.target_dist = offsets[next]
+	if geometry.is_loop_geometry and train.target_dist < train.dist:
+		train.target_dist += geometry.total_length
+	train.legacy_lap_remaining = stops.size() if geometry.is_loop_geometry else 0
+
+
+func _update_legacy_train(train: Train, line: MetroLine, dt: float) -> void:
+	var geometry := train.legacy_geometry
+	if geometry == null:
+		_finish_legacy(train, line)
+		return
+	if train.state == Train.State.DWELL:
+		train.dwell_left -= dt
+		if train.dwell_left <= 0.0:
+			if train.legacy_finishing:
+				_finish_legacy(train, line)
+			else:
+				_legacy_depart(train, line)
+		return
+
+	var delta := _target_gap(train)
+	if delta <= 0.001:
+		_legacy_arrive(train, line)
+		return
+	var desired := Train.MAX_SPEED
+	var lookahead := train.speed * train.speed / (2.0 * Train.DECEL) + 40.0
+	for entry in geometry.curve_entries_ahead(train.dist, train.dir, lookahead):
+		var limit := entry.y * Train.MAX_SPEED
+		var allowed := sqrt(limit * limit + 2.0 * Train.DECEL * maxf(entry.x, 0.0))
+		desired = minf(desired, allowed)
+	if _legacy_need_stop(train) or _legacy_terminal(train, geometry):
+		desired = minf(desired, sqrt(maxf(2.0 * Train.DECEL * delta, 0.0)))
+	if desired < train.speed:
+		train.speed = maxf(desired, train.speed - Train.DECEL * dt)
+	else:
+		train.speed = minf(desired, train.speed + Train.ACCEL * dt)
+	train.speed = maxf(train.speed, 0.0)
+	var step := train.speed * dt
+	if step >= delta:
+		train.dist = train.target_dist
+		_legacy_arrive(train, line)
+	else:
+		train.dist += float(train.dir) * step
+
+
+func _legacy_terminal(train: Train, geometry: LineGeometry) -> bool:
+	if geometry.is_loop_geometry:
+		return false
+	return train.target_index == 0 or train.target_index == train.legacy_stops.size() - 1
+
+
+func _legacy_need_stop(train: Train) -> bool:
+	if train.legacy_stops.is_empty():
+		return true
+	var station: Station = train.legacy_stops[train.target_index]
+	for passenger in train.riders:
+		if passenger.target_shape == station.shape:
+			return true
+	return false
+
+
+func _legacy_arrive(train: Train, line: MetroLine) -> void:
+	var geometry := train.legacy_geometry
+	if geometry == null:
+		_finish_legacy(train, line)
+		return
+	train.stop_index = train.target_index
+	var station: Station = train.legacy_stops[train.stop_index]
+	if geometry.is_loop_geometry and geometry.total_length > 0.001:
+		train.dist = fmod(train.dist, geometry.total_length)
+	var terminal := _legacy_terminal(train, geometry)
+	var delivered_count := _legacy_deliver(train, station)
+	if geometry.is_loop_geometry:
+		train.legacy_lap_remaining = maxi(train.legacy_lap_remaining - 1, 0)
+		if train.legacy_lap_remaining <= 0:
+			train.legacy_finishing = true
+	if terminal:
+		train.legacy_finishing = true
+	if delivered_count > 0 or terminal or train.legacy_finishing:
+		train.speed = 0.0
+		train.state = Train.State.DWELL
+		train.dwell_left = float(delivered_count) * Train.DWELL_PER_PASSENGER
+		if train.legacy_finishing and delivered_count == 0:
+			train.dwell_left = 0.0
+	else:
+		_legacy_depart(train, line)
+
+
+## 旧线行驶期间只做"到站送达"：不再接新客/换乘（线路已经改过，路由表也变了）。
+func _legacy_deliver(train: Train, station: Station) -> int:
+	var staying: Array[Passenger] = []
+	var delivered_count := 0
+	for passenger in train.riders:
+		if passenger.target_shape == station.shape:
+			score += 1
+			delivered += 1
+			delivered_count += 1
+		else:
+			staying.append(passenger)
+	train.riders = staying
+	if delivered_count > 0:
+		passengers_delivered.emit(station, delivered_count)
+	return delivered_count
+
+
+func _legacy_depart(train: Train, line: MetroLine) -> void:
+	var geometry := train.legacy_geometry
+	if geometry == null:
+		_finish_legacy(train, line)
+		return
+	if geometry.is_loop_geometry:
+		train.dir = 1
+		var next := (train.stop_index + 1) % train.legacy_stops.size()
+		train.target_index = next
+		var target := geometry.stop_offsets[next]
+		if target <= train.dist:
+			target += geometry.total_length
+		train.target_dist = target
+		train.state = Train.State.MOVING
+		return
+	var next := train.stop_index + train.dir
+	if next < 0 or next >= train.legacy_stops.size():
+		_finish_legacy(train, line)
+		return
+	train.target_index = next
+	train.target_dist = geometry.stop_offsets[next]
+	train.state = Train.State.MOVING
+
+
+func _finish_legacy(train: Train, line: MetroLine) -> void:
+	train.legacy_active = false
+	train.legacy_finishing = false
+	train.legacy_geometry = null
+	train.legacy_stops = []
+	train.legacy_lap_remaining = 0
+	train.line_version = line.version
+	train.speed = 0.0
+	train.state = Train.State.DWELL
+	train.dwell_left = 0.0
+	var offsets := line.geometry.stop_offsets
+	var nearest := 0
+	var best := INF
+	for i in offsets.size():
+		var diff := absf(offsets[i] - clampf(train.dist, 0.0, line.geometry.total_length))
+		if diff < best:
+			best = diff
+			nearest = i
+	if offsets.size() > 0:
+		train.stop_index = nearest
+		train.target_index = nearest
+		train.dist = offsets[nearest]
+		train.target_dist = train.dist
 
 
 # ---------------------------------------------------------------------------
