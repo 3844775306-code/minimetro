@@ -26,6 +26,13 @@ static func _test_starting_trio(h: TestHarness) -> void:
 	h.check(shapes.has(Shape.Kind.CIRCLE), "开局有圆形（居民区）")
 	h.check(shapes.has(Shape.Kind.TRIANGLE), "开局有三角形（商务区）")
 	h.check(shapes.has(Shape.Kind.SQUARE), "开局有方形（车站）")
+	var max_distance := 0.0
+	for i in net.stations.size():
+		for j in range(i + 1, net.stations.size()):
+			max_distance = maxf(max_distance,
+				net.stations[i].pos.distance_to(net.stations[j].pos))
+	h.check(max_distance <= StationSpawner.INITIAL_MAX_DISTANCE * 2.0 + 0.5,
+		"开局三站彼此相距不远（最远 %.0f）" % max_distance)
 
 
 static func _make_level(hour: float = 7.0) -> LevelData:

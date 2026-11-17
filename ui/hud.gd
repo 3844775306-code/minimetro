@@ -36,6 +36,7 @@ var hover_screen := Vector2.ZERO
 ## 库存（可拖到地图上的资源）
 var stock_counts := {"train": 0, "carriage": 0, "interchange": 0}
 var _speed_rects: Array[Rect2] = []
+var _pause_rect := Rect2()
 var _stock_rects := {}
 
 var game_over := false
@@ -219,6 +220,8 @@ func _draw_game_hud(vp: Vector2) -> void:
 	if paused and not game_over and not settings_menu and not week_modal \
 			and not mode_menu:
 		_text_centered(Loc.t("已暂停", "Paused"), vp.x * 0.5, vp.y * 0.5, 44, Color(INK, 0.75))
+		_text_centered(Loc.t("可继续修改线路、调动车厢", "You can still edit lines and move carriages"),
+			vp.x * 0.5, vp.y * 0.5 + 36.0, 18, Color(MUTED, 0.75))
 	_draw_speed_buttons(vp)
 	if toast_left > 0.0:
 		var alpha: float = clampf(toast_left / 0.5, 0.0, 1.0)
@@ -282,8 +285,26 @@ func _draw_speed_buttons(vp: Vector2) -> void:
 	var gap := 8.0
 	var total := size.x * 3.0 + gap * 2.0
 	var start := Vector2(vp.x - 72.0 - total, vp.y - 118.0)
-	_speed_rects = []
+	# 暂停按钮放在倍速按钮左边；暂停期间仍可编辑线路/调动车厢
+	_pause_rect = Rect2(start - Vector2(50.0, 0.0), Vector2(42.0, 34.0))
 	var mouse := get_global_mouse_position()
+	var pause_hovered := _pause_rect.has_point(mouse)
+	var pause_poly := DrawUtil.rounded_rect(_pause_rect, 8.0, 6)
+	draw_colored_polygon(pause_poly,
+		Color(INK, 0.85) if paused else Color(1.0, 1.0, 1.0, 0.55 if pause_hovered else 0.35))
+	draw_polyline(DrawUtil.closed(pause_poly), Color(INK, 0.4), 1.5, true)
+	var pc := _pause_rect.get_center()
+	if paused:
+		# 恢复播放：三角形
+		var play := PackedVector2Array([
+			pc + Vector2(-5.0, -8.0), pc + Vector2(9.0, 0.0), pc + Vector2(-5.0, 8.0),
+		])
+		draw_colored_polygon(play, Color(1.0, 1.0, 1.0, 0.95))
+	else:
+		# 暂停：两条竖线
+		draw_rect(Rect2(pc + Vector2(-7.0, -8.0), Vector2(5.0, 16.0)), INK)
+		draw_rect(Rect2(pc + Vector2(2.0, -8.0), Vector2(5.0, 16.0)), INK)
+	_speed_rects = []
 	for i in 3:
 		var rect := Rect2(start + Vector2(float(i) * (size.x + gap), 0.0), size)
 		_speed_rects.append(rect)
@@ -297,6 +318,11 @@ func _draw_speed_buttons(vp: Vector2) -> void:
 		draw_polyline(DrawUtil.closed(poly), Color(INK, 0.4), 1.5, true)
 		_text_centered(String(labels[i]), rect.position.x + rect.size.x * 0.5,
 			rect.position.y + 23.0, 17, Color(1.0, 1.0, 1.0, 0.95) if active else INK)
+
+
+## 暂停按钮命中。
+func pause_button_at(pos: Vector2) -> bool:
+	return _pause_rect.has_point(pos)
 
 
 ## 点击倍速按钮：返回 1/2/3，0 = 没点中。

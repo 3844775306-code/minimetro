@@ -210,6 +210,12 @@ func _input(event: InputEvent) -> void:
 			Game.speed = float(speed)
 			Audio.play("click")
 			get_viewport().set_input_as_handled()
+			return
+		if hud.pause_button_at(pos):
+			Game.paused = not Game.paused
+			hud.paused = Game.paused
+			Audio.play("click")
+			get_viewport().set_input_as_handled()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -853,6 +859,10 @@ func _apply_pose() -> void:
 				train.state = Train.State.DWELL
 				_advance_sim(20)
 				editor.set_process_unhandled_input(false)
+		"paused":
+			Game.paused = true
+			hud.paused = true
+			editor.set_process_unhandled_input(false)
 		"night":
 			_advance_sim(60)
 		_:

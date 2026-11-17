@@ -9,6 +9,10 @@ var rng: RandomNumberGenerator
 var spawn_rect := Rect2()
 
 
+## 开局三站的最大彼此距离：围绕第一座站生成，避免一开局就散得太远
+const INITIAL_MAX_DISTANCE := 280.0
+
+
 func _init(p_level: LevelData, p_rng: RandomNumberGenerator) -> void:
 	level = p_level
 	rng = p_rng
@@ -20,9 +24,16 @@ func spawn_initial(network: MetroNetwork, count: int, weights: Dictionary = {}) 
 
 
 ## 开局固定三座基础地标：圆形居民区、三角形商务区、方形车站。
+## 后两座围绕第一座生成，三站尽量靠近。
 func spawn_starting_trio(network: MetroNetwork) -> void:
-	for kind in [Shape.Kind.CIRCLE, Shape.Kind.TRIANGLE, Shape.Kind.SQUARE]:
-		var pos := _random_land_point(network)
+	var first := _random_land_point(network)
+	if first == Vector2.INF:
+		return
+	network.add_station(first, Shape.Kind.CIRCLE)
+	for kind in [Shape.Kind.TRIANGLE, Shape.Kind.SQUARE]:
+		var pos := _random_land_point(network, first, INITIAL_MAX_DISTANCE)
+		if pos == Vector2.INF:
+			pos = _random_land_point(network)
 		if pos == Vector2.INF:
 			continue
 		network.add_station(pos, int(kind))
@@ -38,7 +49,9 @@ func try_spawn(network: MetroNetwork, weights: Dictionary = {}) -> Station:
 
 
 ## 拒绝采样：随机落点，不满足约束就重试。
-func _random_land_point(network: MetroNetwork) -> Vector2:
+## anchor != INF 时只在 anchor 周围 max_radius 范围内取样（开局三站使用）。
+func _random_land_point(network: MetroNetwork, anchor: Vector2 = Vector2.INF,
+		max_radius: float = 0.0) -> Vector2:
 	var margin: float = level.station_margin
 	var min_x: float = margin
 	var max_x: float = level.world_size.x - margin
@@ -49,10 +62,17 @@ func _random_land_point(network: MetroNetwork) -> Vector2:
 		max_x = minf(max_x, spawn_rect.end.x)
 		min_y = maxf(min_y, spawn_rect.position.y)
 		max_y = minf(max_y, spawn_rect.end.y)
+	if anchor != Vector2.INF and max_radius > 0.0:
+		min_x = maxf(min_x, anchor.x - max_radius)
+		max_x = minf(max_x, anchor.x + max_radius)
+		min_y = maxf(min_y, anchor.y - max_radius)
+		max_y = minf(max_y, anchor.y + max_radius)
 	if max_x < min_x or max_y < min_y:
 		return Vector2.INF
 	for attempt in 140:
 		var p := Vector2(rng.randf_range(min_x, max_x), rng.randf_range(min_y, max_y))
+		if anchor != Vector2.INF and max_radius > 0.0 and p.distance_to(anchor) > max_radius:
+			continue
 		if network.is_point_in_water(p):
 			continue
 		if network.water_distance(p) < level.station_water_clearance:
