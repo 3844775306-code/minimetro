@@ -6,6 +6,7 @@ static func run(h: TestHarness) -> void:
 	_test_routing(h)
 	_test_trains(h)
 	_test_handles(h)
+	_test_placement_direction(h)
 
 
 static func _level() -> LevelData:
@@ -141,3 +142,33 @@ static func _test_handles(h: TestHarness) -> void:
 	h.check(line2.stops[0] == front, "新站插到起点")
 	editor2.end_gesture(front.pos)
 	editor2.free()
+
+
+## 把车放到环线上时，按最近站台决定顺时针/逆时针，而不是固定单向。
+static func _test_placement_direction(h: TestHarness) -> void:
+	h.section("loop/placement_direction")
+	var level := _level()
+	level.start_trains = 0
+	var made := _make_loop(level)
+	var net: MetroNetwork = made[0]
+	var line: MetroLine = made[1]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var sim := Simulation.new(net, level, rng)
+	sim.auto_spawn = false
+	var c_offset := line.geometry.stop_offsets[2]
+	# 放在闭合段上、刚过 C 站的位置：最近站台在车后，方向应为 -1
+	var pos := line.geometry.sample(c_offset + 40.0).origin
+	var train := Train.new()
+	train.id = 99
+	train.line_id = line.id
+	train.line_version = line.version
+	line.trains.append(train)
+	sim._place_train_at(train, line, pos)
+	h.eq(train.dir, -1, "环线上按最近站台选择逆时针方向")
+	h.eq(train.target_index, 2, "先驶向最近的 C 站")
+	for i in 240:
+		sim.tick(Simulation.STEP)
+	h.eq(train.dir, -1, "到站后仍保持逆时针，不会强制掉头成单向")
+	h.check(train.dist >= 0.0 and train.dist < line.geometry.total_length + 0.01,
+		"逆时针回绕后位置仍在环线范围内")

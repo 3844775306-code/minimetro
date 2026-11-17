@@ -627,17 +627,31 @@ func _place_train_at(train: Train, line: MetroLine, pos: Vector2) -> void:
 	var offsets := line.geometry.stop_offsets
 	var nearest := 0
 	var best_diff := INF
+	var loop_dir := 1
 	for i in offsets.size():
-		var diff := absf(offsets[i] - d)
+		var diff := 0.0
+		if line.is_loop:
+			var forward := fposmod(offsets[i] - d, total) if total > 0.001 else 0.0
+			var backward := fposmod(d - offsets[i], total) if total > 0.001 else 0.0
+			diff = minf(forward, backward)
+			loop_dir = 1 if forward <= backward else -1
+		else:
+			diff = absf(offsets[i] - d)
 		if diff < best_diff:
 			best_diff = diff
 			nearest = i
 	if line.is_loop and line.stops.size() >= 3:
-		var target := offsets[nearest]
-		if target <= d:
-			target += total
-		train.dir = 1
+		# 环线也允许双向：按最近站台决定先往哪边开，后续保持该方向
+		if best_diff <= 1.0:
+			loop_dir = 1
+			nearest = (nearest + 1) % line.stops.size()
+		train.dir = loop_dir
 		train.target_index = nearest
+		var target := offsets[nearest]
+		if train.dir > 0 and target <= d:
+			target += total
+		elif train.dir < 0 and target >= d:
+			target -= total
 		train.target_dist = target
 		return
 	var station_offset := offsets[nearest]
@@ -970,7 +984,7 @@ func _arrive(train: Train, line: MetroLine) -> void:
 	var terminal := _is_terminal(train, line)
 	var needed := _need_stop(train, line)
 	if line.is_loop and line.geometry.total_length > 0.001:
-		train.dist = fmod(train.dist, line.geometry.total_length)
+		train.dist = fposmod(train.dist, line.geometry.total_length)
 	if needed or terminal:
 		train.speed = 0.0
 		_begin_stop(train, line, station)
@@ -990,7 +1004,8 @@ func _is_terminal(train: Train, line: MetroLine) -> bool:
 ## 从"当前站 + 方向"取下一个停靠站的站序；到端点时自动反向（对应掉头）。
 func _next_station_index(line: MetroLine, station_index: int, dir: int) -> int:
 	if line.is_loop and line.stops.size() >= 3:
-		return (station_index + 1) % line.stops.size()
+		var step := 1 if dir >= 0 else -1
+		return posmod(station_index + step, line.stops.size())
 	var next := station_index + dir
 	if next < 0 or next >= line.stops.size():
 		next = station_index - dir
@@ -1041,13 +1056,15 @@ func _depart(train: Train, line: MetroLine) -> void:
 		line.stops[train.stop_index].boarding = false
 	train.stop_actions.clear()
 	if line.is_loop and line.stops.size() >= 3:
-		# 环线：单向循环，末站下一站是首站（弧长回绕到全长）
-		train.dir = 1
-		var next := (train.stop_index + 1) % line.stops.size()
+		# 环线保持列车的当前方向（可顺时针/逆时针），到末站后回绕
+		var step := 1 if train.dir >= 0 else -1
+		var next := posmod(train.stop_index + step, line.stops.size())
 		train.target_index = next
 		var target := line.geometry.stop_offsets[next]
-		if target <= train.dist:
+		if step > 0 and target <= train.dist:
 			target += line.geometry.total_length
+		elif step < 0 and target >= train.dist:
+			target -= line.geometry.total_length
 		train.target_dist = target
 		train.state = Train.State.MOVING
 		return
@@ -1154,7 +1171,8 @@ func _passenger_claimed_elsewhere(passenger: Passenger, except_train: Train) -> 
 
 func _next_departure_station_id(train: Train, line: MetroLine) -> int:
 	if line.is_loop and line.stops.size() >= 3:
-		return line.stops[(train.stop_index + 1) % line.stops.size()].id
+		var step := 1 if train.dir >= 0 else -1
+		return line.stops[posmod(train.stop_index + step, line.stops.size())].id
 	var next := train.stop_index + train.dir
 	if next < 0 or next >= line.stops.size():
 		next = train.stop_index - train.dir

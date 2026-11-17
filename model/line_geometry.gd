@@ -207,7 +207,11 @@ func sample(distance: float) -> Transform2D:
 		return Transform2D(0.0, Vector2.ZERO)
 	if points.size() < 2:
 		return Transform2D(0.0, points[0])
-	var d: float = clampf(distance, 0.0, total_length)
+	var d: float = distance
+	if is_loop_geometry and total_length > 0.001:
+		d = fposmod(distance, total_length)
+	else:
+		d = clampf(distance, 0.0, total_length)
 	var i: int = cumulative.bsearch(d) - 1
 	i = clampi(i, 0, points.size() - 2)
 	var seg_len: float = cumulative[i + 1] - cumulative[i]

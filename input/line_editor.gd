@@ -838,17 +838,30 @@ func _place_train_on_line(train: Train, line: MetroLine, pos: Vector2) -> void:
 	var offsets := line.geometry.stop_offsets
 	var nearest := 0
 	var best_diff := INF
+	var loop_dir := 1
 	for i in offsets.size():
-		var diff := absf(offsets[i] - d)
+		var diff := 0.0
+		if line.is_loop:
+			var forward := fposmod(offsets[i] - d, total) if total > 0.001 else 0.0
+			var backward := fposmod(d - offsets[i], total) if total > 0.001 else 0.0
+			diff = minf(forward, backward)
+			loop_dir = 1 if forward <= backward else -1
+		else:
+			diff = absf(offsets[i] - d)
 		if diff < best_diff:
 			best_diff = diff
 			nearest = i
 	if line.is_loop and line.stops.size() >= 3:
-		var target := offsets[nearest]
-		if target <= d:
-			target += total
-		train.dir = 1
+		if best_diff <= 1.0:
+			loop_dir = 1
+			nearest = (nearest + 1) % line.stops.size()
+		train.dir = loop_dir
 		train.target_index = nearest
+		var target := offsets[nearest]
+		if train.dir > 0 and target <= d:
+			target += total
+		elif train.dir < 0 and target >= d:
+			target -= total
 		train.target_dist = target
 		train.state = Train.State.MOVING
 		return
