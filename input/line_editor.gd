@@ -519,6 +519,19 @@ func _cancel_short_line(line: MetroLine) -> void:
 		network.remove_line(line)
 
 
+## 当前正在编辑/选中的线路（用于给该线所有车站画颜色描边）。
+func selected_line() -> MetroLine:
+	match state:
+		State.DRAFT:
+			return _draft_line
+		State.REORDER:
+			return _reorder_line
+		State.SEGMENT:
+			return _segment_line
+		_:
+			return null
+
+
 ## 是否正在画线/拖线（供 Simulation 避免剪掉草稿线）。
 func is_busy() -> bool:
 	return _dragging or state != State.IDLE
@@ -1088,6 +1101,7 @@ func _hover_after_change() -> void:
 func _draw() -> void:
 	if network == null:
 		return
+	_draw_the_selected_line_stations()
 	_draw_endpoint_handles()
 	if hover_station != null and state == State.IDLE:
 		draw_arc(hover_station.pos, Shape.STATION_RADIUS + 14.0, 0.0, TAU, 48,
@@ -1176,6 +1190,18 @@ func _draw_carriage_drag_preview() -> void:
 				var point := line.geometry.sample(_fleet_target_train.dist).origin
 				draw_arc(point, 24.0, 0.0, TAU, 40, Color(line.color, 0.7), 3.0, true)
 				break
+
+
+## 正在编辑的线路：所有站点用该线路颜色描边。
+func _draw_the_selected_line_stations() -> void:
+	var line := selected_line()
+	if line == null:
+		return
+	for st in line.stops:
+		draw_arc(st.pos, Shape.STATION_RADIUS + 7.0, 0.0, TAU, 48,
+			Color(line.color, 0.22), 10.0, true)
+		draw_arc(st.pos, Shape.STATION_RADIUS + 7.0, 0.0, TAU, 48,
+			Color(line.color, 0.95), 3.0, true)
 
 
 func _draw_endpoint_handles() -> void:

@@ -474,28 +474,27 @@ func speed_button_at(pos: Vector2) -> int:
 func _draw_resource_slots(vp: Vector2) -> void:
 	var used := 0 if network == null else network.lines.size()
 	var mouse := get_global_mouse_position()
-	_text("资源 · 拖动图标到地图", Vector2(64.0, 72.0), 20, Color(INK, 0.65))
-	var y := 92.0
+	_text("资源 · 拖动图标到地图", Vector2(40.0, 60.0), 20, Color(INK, 0.65))
+	# 线路颜色按钮：统一 62×34 的按钮盒，颜色胶囊居中，右侧小 × 对齐
+	var chip_y := 66.0
+	var chip_w := 62.0
+	var chip_h := 34.0
+	var chip_gap := 8.0
+	var chip_start_x := 40.0
 	_line_chips = []
-	for i in level.start_lines:
-		var x := 64.0 + float(i) * (CHIP_W + CHIP_GAP)
-		var chip_button := Rect2(x - 6.0, y - 12.0, 58.0, 34.0)
-		if i < used:
-			var line: MetroLine = network.lines[i]
-			var hovered := chip_button.has_point(mouse)
-			var chip_poly := DrawUtil.rounded_rect(chip_button, 9.0, 6)
-			draw_colored_polygon(chip_poly, Color(1.0, 1.0, 1.0, 0.45 if hovered else 0.20))
-			draw_polyline(DrawUtil.closed(chip_poly), Color(INK, 0.28), 1.2, true)
-			_draw_capsule(Vector2(x, y), line.color, CHIP_W, CHIP_H)
-			_text_centered("×", x + 47.0, y + 6.0, 14, Color(INK, 0.62))
-			# 放大的点击区：点颜色条弹出取消线路的叉按钮
-			_line_chips.append({
-				"id": line.id,
-				"rect": Rect2(x - 6.0, y - 30.0, 58.0, 40.0),
-			})
-		else:
-			_draw_capsule_outline(Vector2(x, y),
-				Color(level.line_colors[i % level.line_colors.size()], 0.32), CHIP_W, CHIP_H)
+	for i in used:
+		var line: MetroLine = network.lines[i]
+		var button := Rect2(Vector2(chip_start_x + float(i) * (chip_w + chip_gap), chip_y),
+			Vector2(chip_w, chip_h))
+		var hovered := button.has_point(mouse)
+		var chip_poly := DrawUtil.rounded_rect(button, 9.0, 6)
+		draw_colored_polygon(chip_poly, Color(1.0, 1.0, 1.0, 0.62 if hovered else 0.38))
+		draw_polyline(DrawUtil.closed(chip_poly), Color(INK, 0.30), 1.2, true)
+		_draw_capsule(Vector2(button.position.x + chip_w * 0.5 - 4.0, chip_y + chip_h * 0.5),
+			line.color, 40.0, 13.0)
+		_text_centered("×", button.end.x - 12.0, chip_y + 24.0, 17, Color(INK, 0.62))
+		# 放大后的点击区就是整只按钮
+		_line_chips.append({"id": line.id, "rect": button})
 
 	# 第二行：可拖拽的资源卡片（列车 / 车厢 / 换乘中心 / 新干线）+ 桥梁余量
 	var row_y := 140.0

@@ -117,8 +117,13 @@ static func _test_stages(h: TestHarness) -> void:
 		"开局可见范围约为半张地图宽")
 	h.near(start_visible.size.y, level.world_size.y * 0.5, 0.1,
 		"开局可见范围约为半张地图高")
-	h.near(sim.spawn_world_rect().position.y, 410.0, 0.5,
+	h.check(sim.spawn_world_rect().position.y >= 410.0,
 		"开局生成区域避开顶部 HUD（y=220 屏幕以下）")
+	var spawn_rect := sim.spawn_world_rect()
+	h.check(spawn_rect.position.x > start_visible.position.x + 40.0,
+		"新站生成区域离屏幕左边缘有余量")
+	h.check(spawn_rect.end.x < start_visible.end.x - 40.0,
+		"新站生成区域离屏幕右边缘有余量")
 
 	_add_stations(net, 6)
 	h.eq(sim.development_stage(), 1, "9 站时是小镇")

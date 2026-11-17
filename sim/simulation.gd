@@ -258,6 +258,12 @@ func spawn_world_rect() -> Rect2:
 	var rect := visible_world_rect()
 	var zoom := maxf(current_camera_zoom if current_camera_zoom > 0.0
 		else camera_zoom_target(), 0.01)
+	# 离屏幕左右/底部边缘再留一段，避免新站贴在地图/屏幕边上
+	var inset_x := minf(rect.size.x * 0.35, 140.0 / zoom)
+	var inset_y := minf(rect.size.y * 0.30, 90.0 / zoom)
+	rect.position += Vector2(inset_x, inset_y)
+	rect.size -= Vector2(inset_x * 2.0, inset_y * 2.0)
+	rect.size = Vector2(maxf(rect.size.x, 0.0), maxf(rect.size.y, 0.0))
 	# 屏幕 y=220 以上是顶部 HUD；换到世界坐标后作为生成下界
 	var safe_top := level.world_size.y * 0.5 + (220.0 - screen_size.y * 0.5) / zoom
 	var bottom := rect.end.y
