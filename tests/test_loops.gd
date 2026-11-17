@@ -5,6 +5,7 @@ static func run(h: TestHarness) -> void:
 	_test_geometry(h)
 	_test_routing(h)
 	_test_trains(h)
+	_test_handles(h)
 
 
 static func _level() -> LevelData:
@@ -99,3 +100,44 @@ static func _test_trains(h: TestHarness) -> void:
 	h.check(train.dist >= 0.0 and train.dist <= line.geometry.total_length + 0.01,
 		"列车位置始终在环线范围内")
 	h.check(not sim.is_over, "环线运行不会触发失败")
+
+
+## 接环处有两只分开的手柄：抓任一端都能把环打开并继续延伸。
+static func _test_handles(h: TestHarness) -> void:
+	h.section("loop/handles")
+	var level := _level()
+	var made := _make_loop(level)
+	var net: MetroNetwork = made[0]
+	var line: MetroLine = made[1]
+	var start_handle := line.geometry.handle_position(true)
+	var end_handle := line.geometry.handle_position(false)
+	h.check(start_handle.distance_to(end_handle) > 12.0,
+		"首端/末端手柄位置分开（相距 %.1f px）" % start_handle.distance_to(end_handle))
+
+	var editor := LineEditor.new()
+	editor.setup(net, level, null)
+	h.eq(editor.begin_gesture(end_handle), true, "环线末端手柄可抓取")
+	h.eq(editor.state, LineEditor.State.DRAFT, "抓住末端手柄进入延长状态")
+	var extra := net.add_station(Vector2(950, 650), Shape.Kind.CIRCLE)
+	editor.move_gesture(extra.pos)
+	h.check(not line.is_loop, "从末端延长后环线自动打开")
+	h.eq(line.stops.size(), 4, "打开环线后新增一站")
+	editor.end_gesture(extra.pos)
+	editor.free()
+
+	# 首端手柄：向起点方向延伸，同样打开环线
+	var level2 := _level()
+	var made2 := _make_loop(level2)
+	var net2: MetroNetwork = made2[0]
+	var line2: MetroLine = made2[1]
+	var front := net2.add_station(Vector2(150, 150), Shape.Kind.SQUARE)
+	var editor2 := LineEditor.new()
+	editor2.setup(net2, level2, null)
+	var start_handle2 := line2.geometry.handle_position(true)
+	h.eq(editor2.begin_gesture(start_handle2), true, "环线首端手柄可抓取")
+	editor2.move_gesture(front.pos)
+	h.check(not line2.is_loop, "从首端延长同样打开环线")
+	h.eq(line2.stops.size(), 4, "首端方向新增一站")
+	h.check(line2.stops[0] == front, "新站插到起点")
+	editor2.end_gesture(front.pos)
+	editor2.free()

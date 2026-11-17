@@ -327,6 +327,10 @@ func _extend_with(st: Station) -> void:
 	if network.segment_crosses_water(from_pos, to_pos, false) and network.available_bridges() <= 0:
 		toast_requested.emit("没有可用的桥 / 隧道了")
 		return
+	# 从环线的端点手柄继续延伸时，先把环打开（快照里保留着环线状态，可撤销）
+	if _draft_line.is_loop:
+		_draft_line.is_loop = false
+		_draft_line.rebuild()
 	if _draft_at_start:
 		_draft_line.prepend_stop(st)
 	else:
@@ -657,7 +661,7 @@ func _handle_at(pos: Vector2) -> MetroLine:
 	if network == null:
 		return null
 	for line in network.lines:
-		if line.stops.size() < 2 or line.is_loop:
+		if line.stops.size() < 2:
 			continue
 		for at_start in [true, false]:
 			var hp := line.geometry.handle_position(at_start, HANDLE_DISTANCE)
@@ -864,12 +868,15 @@ func _draw_carriage_drag_preview() -> void:
 
 func _draw_endpoint_handles() -> void:
 	for line in network.lines:
-		if line.stops.size() < 2 or line.is_loop:
+		if line.stops.size() < 2:
 			continue
 		for at_start in [true, false]:
 			var hp := line.geometry.handle_position(at_start, HANDLE_DISTANCE)
 			draw_circle(hp, 9.5, Color.WHITE, true, -1.0, true)
 			draw_arc(hp, 9.5, 0.0, TAU, 32, Color(line.color, 0.95), 3.5, true)
+			if line.is_loop:
+				# 环线的首末手柄落在接环处：中心小点区分"起点/终点"
+				draw_circle(hp, 2.6, Color(line.color, 0.9), true, -1.0, true)
 
 
 ## 不在场景树里时（单元测试直接 new 出来）跳过重绘请求。
