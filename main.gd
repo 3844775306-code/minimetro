@@ -183,7 +183,8 @@ func _open_daily_leaderboard() -> void:
 		return
 	_leaderboard_kind = "daily"
 	hud.show_leaderboard(Loc.t("每日挑战排行榜", "Daily Challenge Leaderboard"),
-		Loc.t("最近 7 天 · 每名玩家每天只有 1 次机会", "Last 7 days · one attempt per player per day"),
+		Loc.t("最近 7 天 · 每名玩家每天只有 1 次机会 · %s",
+			"Last 7 days · one attempt per player per day · %s") % Cloud.remote_status(),
 		Cloud.recent_daily_lines(7, 3))
 
 
@@ -215,7 +216,8 @@ func _open_map_leaderboard() -> void:
 		lines.append("  你的最高：%d" % personal)
 		lines.append("")
 	hud.show_leaderboard(Loc.t("地图排行榜 · %s", "Map Leaderboard · %s") % city_name,
-		Loc.t("分地图最高纪录与云端排行榜", "Best records and cloud board per map"),
+		Loc.t("分地图最高纪录与云端排行榜 · %s",
+			"Best records and cloud board per map · %s") % Cloud.remote_status(),
 		lines)
 
 

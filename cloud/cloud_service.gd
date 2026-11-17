@@ -27,6 +27,8 @@ var _remote_enabled := false
 ## 是否实际发请求：headless 测试默认只走本地缓存，避免测试写真实云端。
 var _remote_live := false
 var _remote_pending := 0
+var _remote_loaded := false
+var _remote_failed := false
 
 
 func _ready() -> void:
@@ -61,6 +63,17 @@ func _load_config() -> void:
 
 func is_remote() -> bool:
 	return _remote_live
+
+
+## 给 UI 显示的云端状态，避免把本地示例数据误认为真实排行。
+func remote_status() -> String:
+	if not _remote_live:
+		return "本地数据"
+	if _remote_pending > 0:
+		return "云端连接中…"
+	if _remote_failed:
+		return "本地数据 · 云端连接失败"
+	return "云端已连接" if _remote_loaded else "本地数据"
 
 
 func load_data() -> void:
@@ -294,6 +307,8 @@ func refresh_remote() -> void:
 	if not _remote_live:
 		return
 	_remote_pending = 3
+	_remote_failed = false
+	_remote_loaded = false
 	var oldest := recent_dates(7)[6]
 	_request(REMOTE_DAILY_PATH
 		+ "?select=date,player_id,display_name,score&date=gte." + oldest
@@ -310,6 +325,8 @@ func refresh_remote() -> void:
 func _remote_done() -> void:
 	_remote_pending = maxi(0, _remote_pending - 1)
 	if _remote_pending == 0:
+		if not _remote_failed:
+			_remote_loaded = true
 		emit_signal("updated")
 
 
@@ -374,6 +391,7 @@ func _on_daily_loaded(code: int, response: PackedByteArray) -> void:
 		save_data()
 		print("CLOUD_REMOTE daily days=", grouped.size())
 	else:
+		_remote_failed = true
 		push_warning("Supabase 每日榜读取失败 (%d)" % code)
 	_remote_done()
 
@@ -400,6 +418,7 @@ func _on_best_loaded(code: int, response: PackedByteArray) -> void:
 		save_data()
 		print("CLOUD_REMOTE best boards=", grouped.size())
 	else:
+		_remote_failed = true
 		push_warning("Supabase 地图榜读取失败 (%d)" % code)
 	_remote_done()
 
@@ -415,6 +434,7 @@ func _on_maps_loaded(code: int, response: PackedByteArray) -> void:
 		save_data()
 		print("CLOUD_REMOTE maps=", clean.size())
 	else:
+		_remote_failed = true
 		push_warning("Supabase 地图大厅读取失败 (%d)" % code)
 	_remote_done()
 

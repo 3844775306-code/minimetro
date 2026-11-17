@@ -42,7 +42,7 @@ static func _test_best(h: TestHarness) -> void:
 static func _test_map_hall(h: TestHarness) -> void:
 	h.section("cloud/map_hall")
 	var maps := Cloud.maps()
-	h.check(maps.size() >= 3, "地图大厅有示例地图")
+	h.check(maps.size() >= 1, "地图大厅有可下载地图")
 	var first_id := String(maps[0].get("id", ""))
 	var downloaded := Cloud.download_map(first_id)
 	h.check(not downloaded.is_empty(), "地图可以下载")

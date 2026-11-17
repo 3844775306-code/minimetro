@@ -197,6 +197,7 @@
 ## 手机版（Android）
 
 - 项目已配置 Android 导出预设 `Android`（`export_presets.cfg`），横屏、`gl_compatibility` 移动渲染、ETC2/ASTC 纹理、触摸模拟鼠标
+- Android 预设已加入 `INTERNET` 与 `ACCESS_NETWORK_STATE` 权限（云端排行榜/地图大厅必需；旧 APK 缺少权限时会显示本地随机示例数据）
 - 已生成调试签名 APK：`build/MiniMetro.apk`（可直接安装测试；应用 id `com.minimetro.paper`）
 - 安装：`adb install -r build/MiniMetro.apk`，或把 APK 传到手机点击安装
 - 正式上架需要自己的 release keystore：在 `export_presets.cfg` 的 Android 预设里填 `keystore/release` 与密码，再用 `godot --export-release "Android" build/MiniMetro-release.apk`
