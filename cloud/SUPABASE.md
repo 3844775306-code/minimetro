@@ -1,26 +1,22 @@
 # Supabase 接入说明
 
-项目 ref：`oewvixujojsbqwxfnkfk`  
-预计 Project URL：`https://oewvixujojsbqwxfnkfk.supabase.co`
-
-> 注意：从本机 DNS 查询该域名返回 **NXDOMAIN**（`supabase.co` 本身正常），
-> 说明项目可能已暂停/删除，或 dashboard 里的 ref 与真实项目不一致。
-> 请先在 Supabase 确认项目状态，并从 **Settings → API** 复制 Project URL。
+项目 ref：`josalpkewgzritmwbocs`  
+Project URL：`https://josalpkewgzritmwbocs.supabase.co`  
+（已验证域名可解析；未带 API key 请求 REST 返回 401「No API key found」）
 
 ## 1. 需要的凭证
 
-只需要 **anon / publishable** key（客户端公开使用），不要使用 `service_role` key。
+只需要 **publishable / anon public** key（客户端公开使用），不要使用 `service_role` key。
 
 在 Supabase Dashboard：
-- Settings → API → Project URL
-- Settings → API Keys → anon public / publishable key
-
-当前链接 `.../settings/api-keys?method=github` 只是 dashboard 页面，URL 本身不包含 key，
-而且 dashboard 需要登录，自动化工具无法替你读取。
+- 左下角 **Project Settings**
+- **API** 页面复制 **Project URL**
+- **API Keys** 页面复制 **Publishable key**（`sb_publishable_...`）  
+  如果只有 Legacy keys，也可以使用 **anon public**（`eyJ...`）
 
 ## 2. 建表
 
-在 SQL Editor 执行：
+在左侧 **SQL Editor** → New query，整段执行：
 
 `cloud/supabase_schema.sql`
 
@@ -30,13 +26,30 @@
 - `metro_maps`（地图大厅）
 - 只读 RLS + 4 个 security definer RPC：提交每日、提交最高分、上传地图、下载计数
 
-## 3. 客户端配置
+执行成功后到 **Table Editor** 应能看到：
+- `metro_daily_scores`
+- `metro_best_scores`
+- `metro_maps`
+
+## 3. 最小连通性测试
+
+用 publishable key 请求：
+
+```bash
+curl "https://josalpkewgzritmwbocs.supabase.co/rest/v1/metro_daily_scores?select=date,display_name,score&limit=1" \
+  -H "apikey: sb_publishable_xxx" \
+  -H "Authorization: Bearer sb_publishable_xxx"
+```
+
+预期返回 `[]`（表存在且 RLS 允许读），而不是 401/404。
+
+## 4. 客户端配置
 
 计划使用 `user://cloud_config.json`（桌面）或打包时内置（移动端）：
 
 ```json
 {
-  "url": "https://oewvixujojsbqwxfnkfk.supabase.co",
+  "url": "https://josalpkewgzritmwbocs.supabase.co",
   "key": "sb_publishable_xxx 或 eyJ...anon..."
 }
 ```
@@ -45,11 +58,18 @@ Godot 侧请求头：
 
 ```
 apikey: <key>
-Authorization: Bearer <key>
 Content-Type: application/json
 ```
 
-## 4. 接口映射
+如果用的是 **Legacy anon public JWT**（`eyJ...`），再额外加：
+
+```
+Authorization: Bearer <key>
+```
+
+新版 `sb_publishable_...` 只需要 `apikey` 头；不要把它硬塞进 `Authorization`。
+
+## 5. 接口映射
 
 | 游戏功能 | Supabase |
 |---|---|
@@ -61,7 +81,7 @@ Content-Type: application/json
 | 上传地图 | `POST /rest/v1/rpc/upload_metro_map` |
 | 下载地图 | `GET /rest/v1/metro_maps?id=eq.<id>`，再 `POST /rest/v1/rpc/increment_map_downloads` |
 
-## 5. 客户端身份
+## 6. 客户端身份
 
 本机生成一个 UUID 存进玩家档案，作为 `player_id`：
 - 每日榜用 `(date, player_id)` 唯一键避免同一天重复提交
@@ -72,7 +92,7 @@ Content-Type: application/json
 - 用 Edge Function 校验每日一次、分数上限、地图大小
 - 地图上传加人工审核/举报
 
-## 6. 现有代码的改造点
+## 7. 现有代码的改造点
 
 `cloud/cloud_service.gd` 当前是可持久化的**本地模拟后端**，UI 已按以下同步接口调用：
 

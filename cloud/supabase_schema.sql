@@ -131,7 +131,7 @@ begin
   values
     (p_mode, p_city_id, p_player_id, btrim(p_display_name), p_score, now())
   on conflict (mode, city_id, player_id) do update
-    set score = greatest(public.metro_best_scores.score, excluded.score),
+    set score = greatest(metro_best_scores.score, excluded.score),
         display_name = excluded.display_name,
         updated_at = now();
 end;
