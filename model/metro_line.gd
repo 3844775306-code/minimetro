@@ -55,7 +55,13 @@ func flip_segment(a: Station, b: Station) -> void:
 func is_segment_flipped(segment: int) -> bool:
 	if segment < 0 or segment + 1 >= stops.size():
 		return false
-	return bend_flips.has(LineGeometry.segment_key(stops[segment].id, stops[segment + 1].id))
+	return is_segment_flipped_pair(stops[segment], stops[segment + 1])
+
+
+func is_segment_flipped_pair(a: Station, b: Station) -> bool:
+	if a == null or b == null:
+		return false
+	return bend_flips.has(LineGeometry.segment_key(a.id, b.id))
 
 
 func add_stop(st: Station) -> void:

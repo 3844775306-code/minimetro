@@ -425,27 +425,40 @@ func _update_dwell(delta: float) -> void:
 	else:
 		_reset_dwell()
 		return
-	if line == null or hover_station == null or line.stops.size() <= 1:
+	if line == null or line.stops.size() <= 1:
 		_reset_dwell()
 		return
-	if not line.has_station(hover_station):
-		_reset_dwell()
-		return
-	if not drafting:
-		# 拖线段时只认这一段的两个端点站
-		var index := line.stops.find(hover_station)
-		if index != _segment_index and index != _segment_index + 1:
+	if drafting:
+		if hover_station == null or not line.has_station(hover_station):
 			_reset_dwell()
 			return
-	if hover_station != _dwell_station:
-		_dwell_station = hover_station
+		if hover_station != _dwell_station:
+			_dwell_station = hover_station
+			_hover_dwell = 0.0
+		_hover_dwell += delta
+		if _hover_dwell >= DWELL_REMOVE_TIME:
+			_remove_dwelled_station()
+		return
+	# 拖线段时只认这一段的两个端点站；按光标距离判断，避免 hover 状态抖动导致计时被重置
+	var endpoints := _segment_endpoint_stations(line, _segment_index)
+	if endpoints.is_empty():
+		_reset_dwell()
+		return
+	var target: Station = null
+	for endpoint in endpoints:
+		if cursor.distance_to(endpoint.pos) <= SNAP_RADIUS + 8.0:
+			target = endpoint
+			break
+	if target == null:
+		_reset_dwell()
+		return
+	hover_station = target
+	if target != _dwell_station:
+		_dwell_station = target
 		_hover_dwell = 0.0
 	_hover_dwell += delta
 	if _hover_dwell >= DWELL_REMOVE_TIME:
-		if drafting:
-			_remove_dwelled_station()
-		else:
-			_remove_segment_endpoint()
+		_remove_segment_endpoint()
 
 
 func _reset_dwell() -> void:
@@ -495,17 +508,23 @@ func _remove_segment_endpoint() -> void:
 
 func _apply_segment_tap() -> void:
 	var line := _segment_line
-	if line == null or _segment_index < 0 or _segment_index + 1 >= line.stops.size():
+	if line == null or _segment_index < 0:
+		return
+	var endpoints := _segment_endpoint_stations(line, _segment_index)
+	if endpoints.size() != 2:
 		return
 	_push_undo()
-	line.flip_segment_by_index(_segment_index)
+	line.flip_segment(endpoints[0], endpoints[1])
 	network.touch()
 	_gesture_dirty = true
 
 
 func _apply_segment_insert() -> void:
 	var line := _segment_line
-	if line == null or _segment_index < 0 or _segment_index + 1 >= line.stops.size():
+	if line == null or _segment_index < 0:
+		return
+	var endpoints := _segment_endpoint_stations(line, _segment_index)
+	if endpoints.size() != 2:
 		return
 	var st := hover_station
 	if st == null or line.has_station(st):
@@ -513,14 +532,14 @@ func _apply_segment_insert() -> void:
 	if _cooling(line, st):
 		toast_requested.emit("站台刚被移出线路，稍后再接")
 		return
-	var a: Station = line.stops[_segment_index]
-	var b: Station = line.stops[_segment_index + 1]
+	var a: Station = endpoints[0]
+	var b: Station = endpoints[1]
 	var delta := 0
 	if network.segment_crosses_water(a.pos, st.pos, false):
 		delta += 1
 	if network.segment_crosses_water(st.pos, b.pos, false):
 		delta += 1
-	if network.segment_crosses_water(a.pos, b.pos, line.is_segment_flipped(_segment_index)):
+	if network.segment_crosses_water(a.pos, b.pos, line.is_segment_flipped_pair(a, b)):
 		delta -= 1
 	if delta > network.available_bridges():
 		toast_requested.emit("没有可用的桥 / 隧道了")
@@ -559,10 +578,30 @@ func _segment_at_offset(line: MetroLine, offset: float) -> int:
 	var offsets := line.geometry.stop_offsets
 	if offsets.size() < 2:
 		return -1
+	if line.is_loop and line.stops.size() >= 3:
+		# 环线的闭合段（末站 -> 首站）也要能拖
+		if offset >= offsets[offsets.size() - 1] - 1.0 or offset <= offsets[0] + 1.0:
+			return offsets.size() - 1
 	for i in range(offsets.size() - 1):
 		if offset >= offsets[i] - 1.0 and offset <= offsets[i + 1] + 1.0:
 			return i
 	return -1
+
+
+## 取某个段索引的两端站；环线的闭合段（index = 末站下标）另一端是首站。
+func _segment_endpoint_stations(line: MetroLine, segment: int) -> Array[Station]:
+	var result: Array[Station] = []
+	if line == null or segment < 0 or segment >= line.stops.size():
+		return result
+	if segment == line.stops.size() - 1:
+		if not line.is_loop or line.stops.size() < 3:
+			return result
+		result.append(line.stops[segment])
+		result.append(line.stops[0])
+		return result
+	result.append(line.stops[segment])
+	result.append(line.stops[segment + 1])
+	return result
 
 
 # ---------------------------------------------------------------------------
@@ -1050,10 +1089,13 @@ func _draw_draft_preview() -> void:
 
 func _draw_segment_preview() -> void:
 	var line := _segment_line
-	if line == null or _segment_index < 0 or _segment_index + 1 >= line.stops.size():
+	if line == null or _segment_index < 0:
 		return
-	var a := line.stops[_segment_index].pos
-	var b := line.stops[_segment_index + 1].pos
+	var endpoints := _segment_endpoint_stations(line, _segment_index)
+	if endpoints.size() != 2:
+		return
+	var a := endpoints[0].pos
+	var b := endpoints[1].pos
 	var to := hover_station.pos if hover_station != null else cursor
 	var col := Color(line.color, 0.55)
 	var first := LineGeometry.octilinear_segment(a, to)

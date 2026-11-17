@@ -40,6 +40,7 @@ var hover_screen := Vector2.ZERO
 var stock_counts := {"train": 0, "carriage": 0, "interchange": 0}
 var _speed_rects: Array[Rect2] = []
 var _pause_rect := Rect2()
+var _settings_rect := Rect2()
 var _stock_rects := {}
 
 var game_over := false
@@ -80,6 +81,10 @@ var settings_values := {}
 
 var toast_text := ""
 var toast_left := 0.0
+## 玩家名输入框（设置菜单中的"玩家名"）
+var name_edit: LineEdit = null
+var name_edit_open := false
+signal name_submitted(player_name: String)
 
 
 func _ready() -> void:
@@ -92,6 +97,13 @@ func _ready() -> void:
 	])
 	font.antialiasing = TextServer.FONT_ANTIALIASING_GRAY
 	font.subpixel_positioning = TextServer.SUBPIXEL_POSITIONING_AUTO
+	name_edit = LineEdit.new()
+	name_edit.visible = false
+	name_edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_edit.max_length = 16
+	name_edit.add_theme_font_size_override("font_size", 26)
+	name_edit.text_submitted.connect(_on_name_edit_submitted)
+	add_child(name_edit)
 	set_process(true)
 
 
@@ -188,7 +200,37 @@ func hide_settings() -> void:
 
 
 func settings_row_count() -> int:
-	return 7
+	return 8
+
+
+func show_name_editor(current_name: String) -> void:
+	if name_edit == null:
+		return
+	name_edit_open = true
+	var vp := get_viewport_rect().size
+	name_edit.position = Vector2(vp.x * 0.5 - 280.0, vp.y * 0.5 - 24.0)
+	name_edit.size = Vector2(560.0, 54.0)
+	name_edit.text = current_name
+	name_edit.visible = true
+	name_edit.grab_focus()
+	name_edit.select_all()
+	queue_redraw()
+
+
+func hide_name_editor() -> void:
+	name_edit_open = false
+	if name_edit != null:
+		name_edit.visible = false
+		name_edit.release_focus()
+	queue_redraw()
+
+
+func _on_name_edit_submitted(text: String) -> void:
+	var cleaned := text.strip_edges()
+	if cleaned.is_empty():
+		cleaned = "玩家"
+	hide_name_editor()
+	name_submitted.emit(cleaned)
 
 
 func _process(delta: float) -> void:
@@ -217,6 +259,8 @@ func _draw() -> void:
 		_draw_leaderboard(vp)
 	if map_hall_open:
 		_draw_map_hall(vp)
+	if name_edit_open:
+		_draw_name_modal(vp)
 
 
 # ---------------------------------------------------------------------------
@@ -319,6 +363,18 @@ func _draw_speed_buttons(vp: Vector2) -> void:
 	var start := Vector2(vp.x - 72.0 - total, vp.y - 118.0)
 	# 暂停按钮放在倍速按钮左边；暂停期间仍可编辑线路/调动车厢
 	_pause_rect = Rect2(start - Vector2(50.0, 0.0), Vector2(42.0, 34.0))
+	# 设置按钮放在倍速按钮右边
+	_settings_rect = Rect2(Vector2(vp.x - 62.0, vp.y - 118.0), Vector2(42.0, 34.0))
+	var settings_center := _settings_rect.get_center()
+	var settings_poly := DrawUtil.rounded_rect(_settings_rect, 8.0, 6)
+	draw_colored_polygon(settings_poly, Color(1.0, 1.0, 1.0, 0.35))
+	draw_polyline(DrawUtil.closed(settings_poly), Color(INK, 0.4), 1.5, true)
+	draw_circle(settings_center, 8.0, Color(INK, 0.8), true, -1.0, true)
+	draw_circle(settings_center, 3.2, Color(PAPER, 0.95), true, -1.0, true)
+	for i in 8:
+		var a := TAU * float(i) / 8.0
+		draw_line(settings_center + Vector2(cos(a), sin(a)) * 9.5,
+			settings_center + Vector2(cos(a), sin(a)) * 12.5, Color(INK, 0.8), 2.2, true)
 	var mouse := get_global_mouse_position()
 	var pause_hovered := _pause_rect.has_point(mouse)
 	var pause_poly := DrawUtil.rounded_rect(_pause_rect, 8.0, 6)
@@ -355,6 +411,11 @@ func _draw_speed_buttons(vp: Vector2) -> void:
 ## 暂停按钮命中。
 func pause_button_at(pos: Vector2) -> bool:
 	return _pause_rect.has_point(pos)
+
+
+## 设置按钮命中。
+func settings_button_at(pos: Vector2) -> bool:
+	return _settings_rect.has_point(pos)
 
 
 ## 点击倍速按钮：返回 1/2/3，0 = 没点中。
@@ -625,6 +686,18 @@ func _draw_leaderboard(vp: Vector2) -> void:
 		18, INK)
 
 
+func _draw_name_modal(vp: Vector2) -> void:
+	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.08, 0.09, 0.10, 0.62))
+	var panel := Rect2(vp.x * 0.5 - 350.0, vp.y * 0.5 - 140.0, 700.0, 250.0)
+	var poly := DrawUtil.rounded_rect(panel, 20.0, 10)
+	draw_colored_polygon(poly, Color(0.12, 0.12, 0.13, 0.96))
+	draw_polyline(DrawUtil.closed(poly), Color(1.0, 1.0, 1.0, 0.18), 2.0, true)
+	_text_centered(Loc.t("玩家名", "Player name"), vp.x * 0.5,
+		vp.y * 0.5 - 98.0, 30, Color(1.0, 1.0, 1.0, 0.96))
+	_text_centered(Loc.t("输入后按 Enter 保存 · Esc 取消", "Enter to save · Esc to cancel"),
+		vp.x * 0.5, vp.y * 0.5 + 70.0, 16, Color(1.0, 1.0, 1.0, 0.58))
+
+
 func _draw_map_hall(vp: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.08, 0.09, 0.10, 0.78))
 	var panel_size := Vector2(minf(1760.0, vp.x - 120.0), 220.0 + float(map_hall_entries.size()) * 72.0)
@@ -759,18 +832,19 @@ func _mode_kind_at(index: int) -> int:
 
 func _draw_settings(vp: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.10, 0.10, 0.11, 0.55))
-	var panel := Rect2(vp.x * 0.5 - 330.0, vp.y * 0.5 - 214.0, 660.0, 452.0)
+	var panel := Rect2(vp.x * 0.5 - 330.0, vp.y * 0.5 - 270.0, 660.0, 540.0)
 	var panel_poly := DrawUtil.rounded_rect(panel, 22.0, 10)
 	draw_colored_polygon(panel_poly, Color(0.12, 0.12, 0.13, 0.72))
 	draw_polyline(DrawUtil.closed(panel_poly), Color(1.0, 1.0, 1.0, 0.12), 2.0, true)
 	_text_centered(Loc.t("暂停 · 设置", "Paused · Settings"), vp.x * 0.5,
-		vp.y * 0.5 - 232.0 + 18.0 + 22.0, 34, Color(1.0, 1.0, 1.0, 0.96))
+		vp.y * 0.5 - 238.0, 34, Color(1.0, 1.0, 1.0, 0.96))
 	var labels := [
 		Loc.t("继续", "Resume"),
 		Loc.t("主音量", "Master volume"),
 		Loc.t("音乐音量", "Music volume"),
 		Loc.t("全屏", "Fullscreen"),
 		Loc.t("语言", "Language"),
+		Loc.t("玩家名", "Player name"),
 		Loc.t("重新开始", "Restart"),
 		Loc.t("返回模式选择", "Mode menu"),
 	]
@@ -779,13 +853,14 @@ func _draw_settings(vp: Vector2) -> void:
 		_percent(float(settings_values.get("music_volume", 0.7))),
 		Loc.t("开", "On") if bool(settings_values.get("fullscreen", false)) else Loc.t("关", "Off"),
 		"中文" if String(settings_values.get("language", "zh")) == "zh" else "English",
+		String(settings_values.get("player_name", "玩家")),
 		"", "",
 	]
 	var row_width := 560.0
 	var row_height := 46.0
 	var step := 54.0
 	var start_x := (vp.x - row_width) * 0.5
-	var start_y := vp.y * 0.5 - 160.0
+	var start_y := vp.y * 0.5 - 185.0
 	for i in labels.size():
 		var row := Rect2(start_x, start_y + float(i) * step, row_width, row_height)
 		if i == settings_index:
@@ -800,7 +875,7 @@ func _draw_settings(vp: Vector2) -> void:
 				20, Color(1.0, 1.0, 1.0, 0.85))
 	_text_centered(Loc.t("↑↓ 选择 · ←→ 调整 · Enter 确认 · Esc 返回",
 		"Up/Down select · Left/Right adjust · Enter confirm · Esc back"),
-		vp.x * 0.5, vp.y * 0.5 + 268.0, 16, Color(1.0, 1.0, 1.0, 0.6))
+		vp.x * 0.5, vp.y * 0.5 + 300.0, 16, Color(1.0, 1.0, 1.0, 0.6))
 
 
 func _draw_game_over(vp: Vector2) -> void:

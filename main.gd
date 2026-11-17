@@ -42,6 +42,7 @@ var _menu_mode := false
 var _lang_arg := ""
 var _city_arg := ""
 var _open_arg := ""
+var _name_edit_arg := false
 
 
 func _ready() -> void:
@@ -324,6 +325,11 @@ func _input(event: InputEvent) -> void:
 			Audio.play("click")
 			get_viewport().set_input_as_handled()
 			return
+		if hud.settings_button_at(pos):
+			_open_settings()
+			Audio.play("click")
+			get_viewport().set_input_as_handled()
+			return
 		if hud.pause_button_at(pos):
 			Game.paused = not Game.paused
 			hud.paused = Game.paused
@@ -435,6 +441,8 @@ func _handle_mode_menu_input(event: InputEvent) -> void:
 func _open_settings() -> void:
 	if hud == null:
 		return
+	if hud.name_edit_open:
+		hud.hide_name_editor()
 	Game.paused = true
 	hud.show_settings()
 	_sync_settings_values()
@@ -445,6 +453,7 @@ func _open_settings() -> void:
 func _close_settings() -> void:
 	if hud == null:
 		return
+	hud.hide_name_editor()
 	hud.hide_settings()
 	Game.paused = hud.game_over
 	if editor != null:
@@ -459,23 +468,35 @@ func _sync_settings_values() -> void:
 		"music_volume": float(Save.get_setting("music_volume", 0.7)),
 		"fullscreen": bool(Save.get_setting("fullscreen", false)),
 		"language": String(Save.get_setting("language", "zh")),
+		"player_name": String(Save.get_setting("player_name", "玩家")),
 	}
 
 
+func _on_player_name_submitted(player_name: String) -> void:
+	if Save != null:
+		Save.set_setting("player_name", player_name)
+	_sync_settings_values()
+
+
 func _handle_settings_input(event: InputEvent) -> void:
+	if hud != null and hud.name_edit_open:
+		if event is InputEventKey and event.pressed and not event.echo \
+				and event.keycode == KEY_ESCAPE:
+			hud.hide_name_editor()
+		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		var pos: Vector2 = (event as InputEventMouseButton).position
 		var vp := get_viewport_rect().size
 		var row_width := 560.0
 		var step := 54.0
 		var start_x := (vp.x - row_width) * 0.5
-		var start_y := vp.y * 0.5 - 160.0
+		var start_y := vp.y * 0.5 - 185.0
 		var index := int(floor((pos.y - start_y) / step))
 		if index >= 0 and index < hud.settings_row_count():
 			var row := Rect2(start_x, start_y + float(index) * step, row_width, 46.0)
 			if row.has_point(pos):
 				hud.settings_index = index
-				if index in [0, 3, 4, 5, 6]:
+				if index in [0, 3, 4, 5, 6, 7]:
 					_activate_setting(index)
 				else:
 					_adjust_setting(index, 1)
@@ -524,9 +545,11 @@ func _activate_setting(index: int) -> void:
 		4:
 			_toggle_language()
 		5:
+			hud.show_name_editor(String(Save.get_setting("player_name", "玩家")))
+		6:
 			_close_settings()
 			_restart()
-		6:
+		7:
 			_close_settings()
 			_back_to_menu()
 	if index in [3, 4]:
@@ -746,6 +769,7 @@ func _build_ui() -> void:
 	editor.toast_requested.connect(hud.show_toast)
 	editor.settings_requested.connect(_open_settings)
 	editor.stock_drop_requested.connect(_on_stock_drop)
+	hud.name_submitted.connect(_on_player_name_submitted)
 
 	var grain_layer := CanvasLayer.new()
 	grain_layer.name = "Grain"
@@ -888,6 +912,8 @@ func _apply_pose() -> void:
 			Game.paused = true
 			hud.show_settings()
 			_sync_settings_values()
+			if _name_edit_arg and Save != null:
+				hud.show_name_editor(String(Save.get_setting("player_name", "玩家")))
 			editor.set_process_unhandled_input(false)
 		"carriages":
 			simulation.apply_upgrade("carriage")
@@ -1079,6 +1105,8 @@ func _parse_args() -> void:
 			_city_arg = arg.trim_prefix("--city=")
 		elif arg.begins_with("--open="):
 			_open_arg = arg.trim_prefix("--open=")
+		elif arg == "--name-edit":
+			_name_edit_arg = true
 		elif arg == "--demo":
 			_demo = true
 

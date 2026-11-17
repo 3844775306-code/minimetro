@@ -17,6 +17,7 @@ static func run(h: TestHarness) -> void:
 	_test_segment_dwell_remove(h)
 	_test_reconnect_cooldown(h)
 	_test_loop(h)
+	_test_loop_closing_segment(h)
 
 
 static func _make(level: LevelData) -> Array:
@@ -385,4 +386,50 @@ static func _test_loop(h: TestHarness) -> void:
 	h.check(perimeter > 0.0, "环线总长大于 0")
 	h.check(line.geometry.sample(perimeter).origin.distance_to(a.pos) < 1.0,
 		"环线终点回到起点所在位置")
+	editor.free()
+
+
+## 环线的闭合段（末站 -> 首站）也可以轻点翻转、拖动/停留移站。
+static func _test_loop_closing_segment(h: TestHarness) -> void:
+	h.section("editor/loop_closing_segment")
+	var level := LevelData.new()
+	var made := _make(level)
+	var network: MetroNetwork = made[0]
+	var editor: LineEditor = made[1]
+	var a := network.add_station(Vector2(300, 300), Shape.Kind.CIRCLE)
+	var b := network.add_station(Vector2(700, 300), Shape.Kind.SQUARE)
+	var c := network.add_station(Vector2(700, 700), Shape.Kind.TRIANGLE)
+	var d := network.add_station(Vector2(300, 700), Shape.Kind.DIAMOND)
+	var line := network.create_line()
+	line.add_stop(a)
+	line.add_stop(b)
+	line.add_stop(c)
+	line.add_stop(d)
+	line.is_loop = true
+	line.rebuild()
+	network.touch()
+
+	var last_offset: float = line.geometry.stop_offsets[line.geometry.stop_offsets.size() - 1]
+	var closing_mid := line.geometry.sample(
+		(last_offset + line.geometry.total_length) * 0.5).origin
+	h.eq(editor.begin_gesture(closing_mid), true, "按在环线闭合段上")
+	h.eq(editor.state, LineEditor.State.SEGMENT, "闭合段进入 SEGMENT")
+	h.eq(editor._segment_index, 3, "闭合段索引 = 末站下标")
+
+	# 轻点翻转闭合段
+	editor.end_gesture(closing_mid)
+	h.check(line.is_segment_flipped_pair(d, a), "环线闭合段可以轻点翻转")
+	editor.undo()
+	line = network.lines[0]
+
+	# 拖动闭合段并在端点 D 上停留 1.5s
+	last_offset = line.geometry.stop_offsets[line.geometry.stop_offsets.size() - 1]
+	closing_mid = line.geometry.sample(
+		(last_offset + line.geometry.total_length) * 0.5).origin
+	editor.begin_gesture(closing_mid)
+	editor.move_gesture(d.pos)
+	editor.advance(LineEditor.DWELL_REMOVE_TIME + 0.1)
+	h.check(not line.has_station(d), "环线闭合段端点也能停留移出")
+	h.check(editor._segment_removed, "抬手时不会重新插回")
+	editor.end_gesture(d.pos)
 	editor.free()
