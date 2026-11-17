@@ -8,6 +8,7 @@ const DEFAULT_SETTINGS := {
 	"music_volume": 0.7,
 	"fullscreen": false,
 	"language": "zh",
+	"city": "paper",
 }
 
 var settings := {}

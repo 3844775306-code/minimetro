@@ -1,10 +1,42 @@
 # MiniMetro（Godot 4.7）
 
 极简地铁调度游戏 —— *Mini Metro* 机制的致敬实现，**非官方、非 1:1 复刻**。
-当前进度：**M0 → M6 全部完成**（画线手势、八向折线、列车/乘客/换乘/送达/溢出、周抽卡、河道与桥隧、换乘站手动点选、程序化音效与反馈、三种模式、存档/设置/中英双语、Windows 导出）。
+当前进度：**M0 → M6 全部完成 + 7 张城市地图**（画线手势、八向折线、列车/乘客/换乘/送达/溢出、周抽卡、河道与桥隧、换乘站手动点选、程序化音效与反馈、三种模式、城市选择、存档/设置/中英双语、Windows 导出）。
 完整方案见 [设计方案](docs/设计方案.md)。
 
 ![运营中的网络](docs/images/m1.png)
+
+## 城市地图
+
+模式菜单里用 `←` `→`（或点箭头）切换城市，选择会被存档记住；每张图的河道走向与初始资源不同：
+
+| 城市 | 河道特征 | 初始资源 |
+|---|---|---|
+| 纸城 Paper City | 一条纵贯全城的河道（默认） | 3 线 / 3 车 / 2 桥 |
+| 伦敦 London | 泰晤士河横贯下半城 | 3 / 3 / 2 |
+| 巴黎 Paris | 塞纳河横穿中部 | 3 / 3 / 2 |
+| 纽约 New York | 哈德逊河 + 东河，切成三块陆地 | 4 / 4 / 3 |
+| 柏林 Berlin | 施普雷河 + 一条运河 | 3 / 3 / 3 |
+| 东京 Tokyo | 隅田川 + 东南海湾 | 3 / 3 / 2 |
+| 上海 Shanghai | 黄浦江斜贯 + 苏州河 | 4 / 4 / 3 |
+
+> 河道走向参考真实城市，但为玩法与可读性做了风格化简化，不是精确地理数据；也没有地名/地标。
+
+### 伦敦
+
+![伦敦](docs/images/city-london.png)
+
+### 纽约（两块河 → 三块陆地）
+
+![纽约](docs/images/city-newyork.png)
+
+### 东京
+
+![东京](docs/images/city-tokyo.png)
+
+### 上海
+
+![上海](docs/images/city-shanghai.png)
 
 ## 现在能玩到什么
 
@@ -25,17 +57,18 @@
 - **每周抽卡**：新线路 / 列车 / 车厢 / 桥梁隧道 / 换乘站，二选一；换乘站卡进入**手动点选**模式
 - **河道与桥隧**：跨河消耗额度，不足时拒绝接线；河道两岸都能生成站点，稀有菱形/星形站按权重出现
 
-**模式 / 存档 / 设置（M6）**
+**模式 / 城市 / 存档 / 设置（M6）**
 
+- **7 张城市地图**：纸城 / 伦敦 / 巴黎 / 纽约 / 柏林 / 东京 / 上海，模式菜单里左右切换
 - **三种模式**：经典（会失败）、无尽（不判负）、每日挑战（同一天固定种子 + 本地当日最高分）
-- **存档** `user://profile.json`：各模式最高分、每日成绩、设置（音量/全屏/语言）
+- **存档** `user://profile.json`：各模式最高分、每日成绩、设置（音量/全屏/语言）、上次选择的城市
 - **暂停/设置菜单**（`Esc`）：主音量、音乐音量、全屏、语言（中文 / English）、重新开始、返回模式选择
 - **中英双语**：HUD、模式菜单、升级卡、提示全部走 `Loc` 双语表
 - **Windows 导出**：`export_presets.cfg` + 一条命令产出 exe/pck
 
 ## 截图
 
-### 模式选择
+### 模式选择（可切换城市）
 
 ![模式选择](docs/images/m6-menu.png)
 
@@ -117,13 +150,13 @@ $godot = "D:\Downloads\06_游戏与Flash资源\Godot_v4.7.2-stable_win64.exe\God
 ```powershell
 $godot = "D:\Downloads\06_游戏与Flash资源\Godot_v4.7.2-stable_win64.exe\Godot_v4.7.2-stable_win64_console.exe"
 & $godot --headless --path . --script res://tests/run_tests.gd
-# 期望输出：TESTS PASSED (251 checks)
+# 期望输出：TESTS PASSED (398 checks)
 ```
 
 覆盖：八向几何与弯曲翻转、弧长采样、网络增删、画线/撤销/重排/翻转/插站/停留移除手势、换乘寻路、
 自动配车、送达计分、换乘、溢出失败、周循环抽卡与资源/车厢/桥梁/换乘站生效、换乘站点选流程（含取消兜底）、
 河道检测与桥隧预算、站点避水、形状权重、程序化音频格式/长度/循环点、玩家档案与 JSON 持久化、
-模式键/每日种子稳定性、无尽模式不判负。
+模式键/每日种子稳定性、无尽模式不判负、城市地图注册表/河道几何/每张图可生成站点。
 
 沙箱里若子进程 stdout 被管道捕获失败，用文件重定向启动：
 
@@ -143,8 +176,11 @@ Start-Process -FilePath $godot -ArgumentList '--path',$PWD.Path,'--',
 - `--demo`：确定性布局 11 站 + 3 条线路（含两处跨河）+ 预置乘客，并先跑 8 秒模拟
 - `--pose=menu|draft|insert|riders|interchange|pick|overload|gameover|week|settings`：摆出对应姿态
 - `--mode=classic|endless|daily`：跳过模式菜单直接以指定模式开局
+- `--city=paper|london|paris|newyork|berlin|tokyo|shanghai`：直接指定城市
 - `--lang=en`：临时切英文界面（不写存档）
 - `--seed=12345` / `--smoke=900`：固定种子 / 无渲染跑 tick 后打印状态
+
+非默认城市 + `--demo` 时会用"固定种子生成站点 + 最近邻串线"的通用演示布局，适配任意河道。
 
 注意：用户参数必须放在 `--` 之后；PowerShell 里不要给数组参数命名 `$args`（会与自动变量冲突导致参数丢失）。
 
@@ -152,6 +188,8 @@ Start-Process -FilePath $godot -ArgumentList '--path',$PWD.Path,'--',
 
 | 操作 | 作用 |
 |---|---|
+| 模式菜单：`←` / `→` 或点箭头 | 切换城市 |
+| 模式菜单：`1` `2` `3` 或点卡片 | 选择模式并开始 |
 | 按住车站拖拽 | 新建线路 / 继续接线 |
 | 拖回上一站 | 回退一段（不足两站松手自动回滚） |
 | 拖端点小圆手柄 | 从该端延伸线路 |
@@ -178,7 +216,9 @@ autoload/save.gd          存档/设置：user://profile.json 读写与设置应
 audio/wave_gen.gd         波形合成（blip / chime / chord_loop → AudioStreamWAV）
 data/loc.gd               极简双语（中/英字面量配对）
 data/game_mode.gd         模式枚举/key/描述/每日种子
-data/profile.gd           玩家档案（设置/最高分/每日成绩/JSON 序列化）
+data/city_map.gd          单张城市地图（名称/河道/初始资源）
+data/city_maps.gd         7 张城市地图注册表 + 河道中心线转多边形
+data/profile.gd           玩家档案（设置/最高分/每日成绩/城市/JSON 序列化）
 data/level_data.gd        地图/河道/资源/节奏/周时长/形状权重/无尽开关
 data/upgrade_cards.gd     周奖励卡池（双语标题描述 + 权重）
 model/                    纯数据（RefCounted，不依赖 Node）
@@ -207,7 +247,7 @@ view/                     表现层（Node2D，只读模型）
 input/line_editor.gd      画线手势状态机（IDLE / DRAFT / REORDER / SEGMENT）+ Esc 设置信号
 ui/hud.gd                 资源/分数、周抽卡、换乘点选、模式菜单、暂停设置、结束遮罩（双语）
 tools/demo_setup.gd       截图用确定性布局
-tests/                    headless 测试（251 checks）
+tests/                    headless 测试（398 checks）
 export_presets.cfg        Windows Desktop 导出预设
 art/shaders/paper_grain.gdshader  极轻纸纹
 docs/设计方案.md           完整实现方案（机制拆解 / 架构 / 里程碑）

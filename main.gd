@@ -34,6 +34,7 @@ var _smoke_ticks := -1
 var _mode_arg := -1
 var _menu_mode := false
 var _lang_arg := ""
+var _city_arg := ""
 
 
 func _ready() -> void:
@@ -44,6 +45,8 @@ func _ready() -> void:
 	_build_world()
 	_build_ui()
 	if _menu_mode:
+		hud.menu_cities = CityMaps.all()
+		hud.city_index = CityMaps.index_of(Game.city_id)
 		editor.set_process_unhandled_input(false)
 		_refresh_mode_bests()
 		hud.show_mode_menu()
@@ -78,6 +81,10 @@ func _resolve_run() -> void:
 		or (_pose != "" and _pose != "menu") or _mode_arg >= 0
 	if _pose == "menu":
 		direct = false
+	if _city_arg != "":
+		Game.pending_city = _city_arg
+	elif Game.pending_city == "" and not direct and Save != null:
+		Game.pending_city = String(Save.get_setting("city", CityMaps.default_city_id()))
 	if Game.pending_mode >= 0:
 		Game.start_run(_seed)
 	elif direct:
@@ -91,10 +98,12 @@ func _resolve_run() -> void:
 
 
 func _mode_label() -> String:
-	var title := GameMode.title(Game.mode)
+	var label := GameMode.title(Game.mode)
+	if Game.city != null:
+		label += " · " + Game.city.display_name()
 	if Game.is_daily():
-		return "%s · %s" % [title, Game.daily_date]
-	return title
+		label += " · " + Game.daily_date
+	return label
 
 
 func _best_for_mode() -> int:
@@ -116,8 +125,20 @@ func _refresh_mode_bests() -> void:
 
 
 func _choose_mode(kind: int) -> void:
+	if hud != null and not hud.menu_cities.is_empty():
+		var city: CityMap = hud.menu_cities[hud.city_index]
+		Game.pending_city = city.id
+		if Save != null:
+			Save.set_setting("city", city.id)
 	Game.pending_mode = kind
 	get_tree().reload_current_scene()
+
+
+func _cycle_city(direction: int) -> void:
+	if hud == null or hud.menu_cities.is_empty():
+		return
+	hud.city_index = (hud.city_index + direction + hud.menu_cities.size()) % hud.menu_cities.size()
+	Audio.play("click")
 
 
 func _restart() -> void:
@@ -175,11 +196,20 @@ func _handle_mode_menu_input(event: InputEvent) -> void:
 				_choose_mode(GameMode.Kind.ENDLESS)
 			KEY_3:
 				_choose_mode(GameMode.Kind.DAILY)
+			KEY_LEFT:
+				_cycle_city(-1)
+			KEY_RIGHT:
+				_cycle_city(1)
 		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		var index := hud.mode_card_at(get_global_mouse_position())
+		var pos := get_global_mouse_position()
+		var index := hud.mode_card_at(pos)
 		if index >= 0:
 			_choose_mode(hud._mode_kind_at(index))
+			return
+		var direction := hud.city_arrow_at(pos)
+		if direction != 0:
+			_cycle_city(direction)
 
 
 func _open_settings() -> void:
@@ -475,7 +505,11 @@ func _start_session() -> void:
 	network.station_added.connect(_on_station_added)
 
 	if _demo:
-		DemoSetup.build(network, level, 2 if _pose == "draft" else 3)
+		if Game.city_id == CityMaps.default_city_id():
+			DemoSetup.build(network, level, 2 if _pose == "draft" else 3)
+		else:
+			# 非默认城市：用固定种子生成站点 + 最近邻串线，适配任意河道
+			DemoSetup.build_adaptive(network, level, hash("citydemo-" + Game.city_id))
 		DemoSetup.seed_passengers(network)
 		_advance_sim(480)
 		_apply_pose()
@@ -484,6 +518,9 @@ func _start_session() -> void:
 
 
 func _apply_pose() -> void:
+	if _pose in ["insert", "riders", "pick", "interchange"] \
+			and (network.lines.is_empty() or network.stations.size() < 7):
+		return
 	match _pose:
 		"draft":
 			var st := network.add_station(Vector2(1300, 880), Shape.Kind.TRIANGLE)
@@ -576,6 +613,8 @@ func _parse_args() -> void:
 			_mode_arg = GameMode.from_key(arg.trim_prefix("--mode="))
 		elif arg.begins_with("--lang="):
 			_lang_arg = arg.trim_prefix("--lang=")
+		elif arg.begins_with("--city="):
+			_city_arg = arg.trim_prefix("--city=")
 		elif arg == "--demo":
 			_demo = true
 

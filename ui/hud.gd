@@ -6,6 +6,7 @@ extends Control
 const INK := Color("#2B2B2B")
 const MUTED := Color("#7C7568")
 const PAPER := Color("#FBF8F1")
+const WATER := Color("#CFE4EA")
 const CHIP_W := 38.0
 const CHIP_H := 11.0
 const CHIP_GAP := 12.0
@@ -33,6 +34,10 @@ var station_pick := false
 var mode_menu := false
 var mode_bests := {}
 var _mode_rects: Array[Rect2] = []
+## 模式菜单里的城市选择
+var menu_cities: Array = []
+var city_index := 0
+var _city_arrow_rects: Array[Rect2] = []
 
 var settings_menu := false
 var settings_index := 0
@@ -116,6 +121,17 @@ func mode_card_at(pos: Vector2) -> int:
 		if _mode_rects[i].has_point(pos):
 			return i
 	return -1
+
+
+## 城市切换箭头：-1 = 上一个，1 = 下一个，0 = 没点中。
+func city_arrow_at(pos: Vector2) -> int:
+	if _city_arrow_rects.size() < 2:
+		return 0
+	if _city_arrow_rects[0].has_point(pos):
+		return -1
+	if _city_arrow_rects[1].has_point(pos):
+		return 1
+	return 0
 
 
 ## 周抽卡弹窗的点击命中（-1 = 没点中）。
@@ -283,31 +299,91 @@ func _draw_station_pick(vp: Vector2) -> void:
 
 func _draw_mode_menu(vp: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.09, 0.10, 0.11, 0.62))
-	_text_centered("MINI METRO", vp.x * 0.5, vp.y * 0.5 - 210.0, 54, Color(1.0, 1.0, 1.0, 0.97))
-	_text_centered(Loc.t("极简地铁调度 · 选择模式", "Minimal metro puzzle · select a mode"),
-		vp.x * 0.5, vp.y * 0.5 - 168.0, 20, Color(1.0, 1.0, 1.0, 0.72))
-	_mode_rects = _compute_card_rects(vp, 3, 360.0, 230.0, 32.0)
+	var cx := vp.x * 0.5
+	var cy := vp.y * 0.5
+	_text_centered("MINI METRO", cx, cy - 290.0, 54, Color(1.0, 1.0, 1.0, 0.97))
+	_text_centered(Loc.t("极简地铁调度 · 选择模式与城市", "Minimal metro puzzle · pick a mode and a city"),
+		cx, cy - 254.0, 20, Color(1.0, 1.0, 1.0, 0.72))
+	_draw_city_selector(vp)
+	_draw_mode_cards(vp)
+	_text_centered(Loc.t("← → 切换城市 · 点击卡片或按 1 / 2 / 3 开始",
+		"Left / Right city · click a card or press 1 / 2 / 3"),
+		cx, cy + 246.0, 18, Color(1.0, 1.0, 1.0, 0.7))
+
+
+## 城市切换：左右箭头 + 城市名 + 迷你河道预览。
+func _draw_city_selector(vp: Vector2) -> void:
+	var cx := vp.x * 0.5
+	var cy := vp.y * 0.5
+	var city: CityMap = null
+	if not menu_cities.is_empty():
+		city_index = clampi(city_index, 0, menu_cities.size() - 1)
+		city = menu_cities[city_index]
+	if city != null:
+		_text_centered(city.display_name(), cx, cy - 216.0, 30, Color(1.0, 1.0, 1.0, 0.95))
+	_draw_city_preview(Rect2(cx - 180.0, cy - 204.0, 360.0, 176.0), city)
+	_city_arrow_rects = [
+		Rect2(cx - 232.0, cy - 140.0, 48.0, 48.0),
+		Rect2(cx + 184.0, cy - 140.0, 48.0, 48.0),
+	]
 	var mouse := get_global_mouse_position()
-	for i in _mode_rects.size():
-		var rect: Rect2 = _mode_rects[i]
+	for i in 2:
+		var arrow_rect: Rect2 = _city_arrow_rects[i]
+		var hovered := arrow_rect.has_point(mouse)
+		var color := Color(1.0, 1.0, 1.0, 0.95 if hovered else 0.55)
+		_text_centered("‹" if i == 0 else "›", arrow_rect.position.x + 24.0,
+			arrow_rect.position.y + 36.0, 40, color)
+
+
+func _draw_city_preview(rect: Rect2, city: CityMap) -> void:
+	var border := DrawUtil.rounded_rect(rect, 14.0, 8)
+	draw_colored_polygon(border, WATER)
+	var inner := rect.grow(-8.0)
+	var land := DrawUtil.rounded_rect(inner, 8.0, 8)
+	draw_colored_polygon(land, Color("#F3EFE6"))
+	if city != null:
+		# 世界坐标（含河道越界的一点余量）→ 预览矩形
+		var world_min := Vector2(-60, -60)
+		var world_span := Vector2(CityMaps.WORLD_SIZE.x + 120.0, CityMaps.WORLD_SIZE.y + 120.0)
+		for river in city.rivers:
+			var points := PackedVector2Array()
+			for point in river:
+				var uv := (point - world_min) / world_span
+				points.append(rect.position + uv * rect.size)
+			draw_colored_polygon(points, WATER)
+	draw_polyline(DrawUtil.closed(border), Color(0.72, 0.69, 0.62), 2.0, true)
+
+
+func _draw_mode_cards(vp: Vector2) -> void:
+	var cx := vp.x * 0.5
+	var cy := vp.y * 0.5
+	var width := 360.0
+	var height := 190.0
+	var gap := 30.0
+	var total := width * 3.0 + gap * 2.0
+	var start_x := cx - total * 0.5
+	var top := cy + 8.0
+	_mode_rects = []
+	var mouse := get_global_mouse_position()
+	for i in 3:
+		var rect := Rect2(start_x + float(i) * (width + gap), top, width, height)
+		_mode_rects.append(rect)
 		var kind := _mode_kind_at(i)
 		var hovered := rect.has_point(mouse)
-		var poly := DrawUtil.rounded_rect(rect, 22.0, 10)
+		var poly := DrawUtil.rounded_rect(rect, 20.0, 10)
 		draw_colored_polygon(poly, Color("#FFFFFF") if hovered else PAPER)
 		draw_polyline(DrawUtil.closed(poly), Color(0.72, 0.69, 0.62), 2.5, true)
 		_text_centered(GameMode.title(kind), rect.position.x + rect.size.x * 0.5,
-			rect.position.y + 76.0, 34, INK)
+			rect.position.y + 60.0, 32, INK)
 		_text_wrapped(GameMode.description(kind), rect.position.x + rect.size.x * 0.5,
-			rect.position.y + 124.0, 17, rect.size.x - 44.0, MUTED)
+			rect.position.y + 102.0, 16, rect.size.x - 44.0, MUTED)
 		var mode_key := GameMode.key(kind)
 		var best := int(mode_bests.get(mode_key, 0))
 		_text_centered(Loc.t("最高 %d", "Best %d") % best,
-			rect.position.x + rect.size.x * 0.5, rect.position.y + 168.0, 18, Color(MUTED, 0.85))
+			rect.position.x + rect.size.x * 0.5, rect.position.y + 142.0, 17, Color(MUTED, 0.85))
 		_text_centered(Loc.t("按 %d", "Press %d") % (i + 1),
-			rect.position.x + rect.size.x * 0.5, rect.position.y + rect.size.y - 24.0, 15,
+			rect.position.x + rect.size.x * 0.5, rect.position.y + rect.size.y - 20.0, 15,
 			Color(MUTED, 0.7))
-	_text_centered(Loc.t("点击卡片，或按 1 / 2 / 3", "Click a card, or press 1 / 2 / 3"),
-		vp.x * 0.5, vp.y * 0.5 + 168.0, 18, Color(1.0, 1.0, 1.0, 0.7))
 
 
 func _mode_kind_at(index: int) -> int:

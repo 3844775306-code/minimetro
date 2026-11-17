@@ -35,6 +35,57 @@ static func build(network: MetroNetwork, level: LevelData, line_count: int = 3) 
 	level.start_station_count = stations.size()
 
 
+static func build_adaptive(network: MetroNetwork, level: LevelData, seed_value: int) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value
+	var spawner := StationSpawner.new(level, rng)
+	spawner.spawn_initial(network, 11)
+	var stations := network.stations.duplicate()
+	if stations.size() < 4:
+		return
+	var lengths := [mini(5, stations.size()), mini(4, stations.size()), mini(4, stations.size())]
+	# 起点尽量分散（左 / 中 / 右），让三条线覆盖整张地图
+	var sorted := stations.duplicate()
+	sorted.sort_custom(func(a: Station, b: Station) -> bool: return a.pos.x < b.pos.x)
+	var start_indexes := [0, sorted.size() / 2, sorted.size() - 1]
+	for li in 3:
+		var start: Station = sorted[start_indexes[li]]
+		var chain := _nearest_chain(stations, start, lengths[li])
+		if chain.size() < 2:
+			continue
+		var line := network.create_line()
+		for st in chain:
+			line.add_stop(st)
+	network.touch()
+	level.start_bridges = maxi(level.start_bridges, network.used_bridges())
+	level.start_lines = maxi(level.start_lines, 3)
+	level.start_trains = maxi(level.start_trains, 3)
+	level.start_station_count = network.stations.size()
+
+
+## 从 start 出发，每次接最近且本线未用过的站。
+static func _nearest_chain(stations: Array, start: Station, length: int) -> Array[Station]:
+	var chain: Array[Station] = [start]
+	var used := {start.id: true}
+	var current := start
+	while chain.size() < length:
+		var best_station: Station = null
+		var best_distance := INF
+		for st in stations:
+			if used.has(st.id):
+				continue
+			var d := current.pos.distance_squared_to(st.pos)
+			if d < best_distance:
+				best_distance = d
+				best_station = st
+		if best_station == null:
+			break
+		chain.append(best_station)
+		used[best_station.id] = true
+		current = best_station
+	return chain
+
+
 ## 给每座站预置若干"去别的形状"的乘客，让截图里能看到等待图标与车内乘客。
 static func seed_passengers(network: MetroNetwork, per_station: int = 1) -> void:
 	var shapes: Array[int] = []

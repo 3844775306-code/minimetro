@@ -1,5 +1,5 @@
 extends Node
-## 全局运行态：一局的模型、种子、模式、倍速。
+## 全局运行态：一局的模型、种子、模式、城市地图、倍速。
 ## 刻意保持很薄：模型逻辑都在 model/ 与 sim/ 里，测试可以完全绕开单例。
 
 var network: MetroNetwork = null
@@ -9,12 +9,16 @@ var rng := RandomNumberGenerator.new()
 var speed: float = 1.0
 var paused: bool = false
 
-## 当前模式（GameMode.Kind）与每日挑战日期。
+## 当前模式（GameMode.Kind）、每日挑战日期、城市地图。
 var mode: int = GameMode.Kind.CLASSIC
 var mode_key: String = "classic"
 var daily_date: String = ""
-## 模式菜单选择后、reload 前暂存的目标模式（-1 = 直接开局）。
+var city: CityMap = null
+var city_id: String = "paper"
+
+## 模式/城市菜单选择后、reload 前暂存的目标（-1 / "" = 直接开局）。
 var pending_mode: int = -1
+var pending_city: String = ""
 
 
 func start_run(p_seed: int = 0, p_mode: int = -1) -> void:
@@ -23,6 +27,11 @@ func start_run(p_seed: int = 0, p_mode: int = -1) -> void:
 		mode = GameMode.Kind.CLASSIC
 	mode_key = GameMode.key(mode)
 	daily_date = GameMode.today() if mode == GameMode.Kind.DAILY else ""
+
+	city_id = pending_city if pending_city != "" else CityMaps.default_city_id()
+	pending_city = ""
+	city = CityMaps.get_city(city_id)
+
 	if p_seed != 0:
 		run_seed = p_seed
 	elif mode == GameMode.Kind.DAILY:
@@ -33,9 +42,12 @@ func start_run(p_seed: int = 0, p_mode: int = -1) -> void:
 
 	level = LevelData.new()
 	level.endless = mode == GameMode.Kind.ENDLESS
-	# M4：默认地图带一条河道，把城市切成左右两半，跨河必须造桥/隧道
-	if level.rivers.is_empty():
-		level.rivers.append(LevelData.default_river(level.world_size))
+	level.start_lines = city.start_lines
+	level.start_trains = city.start_trains
+	level.start_bridges = city.start_bridges
+	level.rivers.clear()
+	for river in city.rivers:
+		level.rivers.append(river)
 	network = MetroNetwork.new(level)
 	speed = 1.0
 	paused = false
