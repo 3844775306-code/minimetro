@@ -6,6 +6,10 @@ extends RefCounted
 signal game_over(station: Station)
 ## 每周结算：cards 为 1~2 张升级卡（Dictionary），week 为第几周。
 signal week_completed(cards: Array, week: int)
+## 到站送达：一次停靠送走若干乘客（用于飘字与音效）。
+signal passengers_delivered(station: Station, count: int)
+## 站点第一次超过容量（红色计时环出现）。
+signal overload_started(station: Station)
 
 const STEP := 1.0 / 60.0
 
@@ -30,6 +34,8 @@ var delivered: int = 0
 var week_index: int = 1
 var week_pending: bool = false
 var pending_cards: Array[Dictionary] = []
+## 换乘站卡选中后、等待玩家点选目标车站的状态（期间模拟保持暂停）。
+var interchange_pending: bool = false
 
 var _accum: float = 0.0
 var _station_spawn_timer: float = 0.0
@@ -98,12 +104,46 @@ func _update_week(dt: float) -> void:
 
 
 ## 选择本周末的升级卡（暂停状态下由 UI 调用）。
+## 换乘站卡不立即生效，而是进入"等待点选车站"状态（interchange_pending）。
 func choose_upgrade(index: int) -> void:
-	if not week_pending:
+	if not week_pending or interchange_pending:
 		return
 	if index < 0 or index >= pending_cards.size():
 		return
-	apply_upgrade(String(pending_cards[index]["id"]))
+	var card_id := String(pending_cards[index]["id"])
+	pending_cards = []
+	if card_id == "interchange":
+		interchange_pending = true
+		return
+	apply_upgrade(card_id)
+	_finish_week()
+
+
+## 玩家点选了要升级的车站：容量 6 → 12，然后进入下一周。
+func upgrade_station(station_id: int) -> bool:
+	if not interchange_pending:
+		return false
+	var st := network.station_by_id(station_id)
+	if st == null or st.capacity > 6:
+		return false
+	st.capacity = 12
+	_finish_week()
+	return true
+
+
+## 取消点选：兜底自动升级"最拥挤的容量 6 站点"，保证不会卡在暂停里。
+func cancel_interchange() -> Station:
+	if not interchange_pending:
+		return null
+	var st := _interchange_station()
+	if st != null:
+		st.capacity = 12
+	_finish_week()
+	return st
+
+
+func _finish_week() -> void:
+	interchange_pending = false
 	week_pending = false
 	pending_cards = []
 	week_index += 1
@@ -390,10 +430,12 @@ func _on_station(train: Train, line: MetroLine, station: Station) -> void:
 	var next_departure := _next_departure_station_id(train, line)
 
 	var staying: Array[Passenger] = []
+	var delivered_here := 0
 	for passenger in train.riders:
 		if passenger.target_shape == station.shape:
 			score += 1
 			delivered += 1
+			delivered_here += 1
 			continue
 		# 继续坐 vs 下车换乘：取剩余代价更小的那条路
 		var stay := routing.stay_cost(train.line_id, station.id, next_departure, passenger.target_shape)
@@ -403,6 +445,8 @@ func _on_station(train: Train, line: MetroLine, station: Station) -> void:
 		else:
 			station.waiting.append(passenger)
 	train.riders = staying
+	if delivered_here > 0:
+		passengers_delivered.emit(station, delivered_here)
 
 	var capacity_left := train.capacity - train.riders.size()
 	if capacity_left <= 0 or station.waiting.is_empty():
@@ -463,7 +507,10 @@ func _update_stations(dt: float) -> void:
 			st.waiting = keep
 
 		if st.waiting.size() > st.capacity:
+			var was_overloading := st.overload_timer > 0.0
 			st.overload_timer += dt
+			if not was_overloading:
+				overload_started.emit(st)
 			if st.overload_timer >= level.overload_grace and not is_over:
 				is_over = true
 				game_over.emit(st)

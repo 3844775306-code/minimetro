@@ -9,6 +9,7 @@ static func run(h: TestHarness) -> void:
 	_test_apply_carriage(h)
 	_test_apply_bridge(h)
 	_test_apply_interchange(h)
+	_test_interchange_pick(h)
 
 
 static func _make_level(week_seconds: float = 999.0) -> LevelData:
@@ -180,3 +181,42 @@ static func _test_apply_interchange(h: TestHarness) -> void:
 		if st.capacity > 6:
 			upgraded += 1
 	h.eq(upgraded, 2, "第二座换乘站落在下一个拥挤站")
+
+
+## 换乘站卡：手动点选车站的完整流程（含无效点、重复升级、取消兜底）。
+static func _test_interchange_pick(h: TestHarness) -> void:
+	h.section("upgrades/interchange_pick")
+	var level := _make_level()
+	var net := _make_network(level)
+	var sim := _make_sim(net, level)
+	var stations := net.stations
+	stations[0].waiting.append(Passenger.new(Shape.Kind.SQUARE))
+
+	sim.week_pending = true
+	sim.pending_cards.clear()
+	sim.pending_cards.append(UpgradeCards.get_card("interchange"))
+	sim.choose_upgrade(0)
+	h.check(sim.interchange_pending, "选中换乘站卡后进入点选状态")
+	h.check(sim.week_pending, "点选期间保持暂停")
+	h.check(not sim.upgrade_station(9999), "不存在的站点不接受")
+	h.check(sim.interchange_pending, "无效点选后仍等待")
+	h.check(sim.upgrade_station(stations[2].id), "可以升级指定站点")
+	h.eq(stations[2].capacity, 12, "指定站点容量变 12")
+	h.check(not sim.interchange_pending, "完成点选后退出点选状态")
+	h.check(not sim.week_pending, "完成点选后进入下一周")
+	h.eq(sim.week_index, 2, "周数递增")
+
+	# 已升级的站不能重复升级
+	sim.pending_cards.append(UpgradeCards.get_card("interchange"))
+	sim.week_pending = true
+	sim.choose_upgrade(0)
+	h.check(sim.interchange_pending, "第二次换乘站卡进入点选")
+	h.check(not sim.upgrade_station(stations[2].id), "换乘站不能重复升级")
+
+	# 取消点选：兜底升级最拥挤的容量 6 站点
+	stations[1].waiting.append(Passenger.new(Shape.Kind.CIRCLE))
+	stations[1].waiting.append(Passenger.new(Shape.Kind.CIRCLE))
+	sim.cancel_interchange()
+	h.eq(stations[1].capacity, 12, "取消时兜底升级最拥挤站")
+	h.check(not sim.interchange_pending, "取消后退出点选")
+	h.check(not sim.week_pending, "取消后恢复运行")

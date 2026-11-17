@@ -25,6 +25,8 @@ var final_score := 0
 var week_modal := false
 var week_cards: Array = []
 var _card_rects: Array[Rect2] = []
+## 换乘站卡：等待玩家点选目标车站。
+var station_pick := false
 
 var toast_text := ""
 var toast_left := 0.0
@@ -75,6 +77,16 @@ func hide_week() -> void:
 	queue_redraw()
 
 
+func show_station_pick() -> void:
+	station_pick = true
+	queue_redraw()
+
+
+func hide_station_pick() -> void:
+	station_pick = false
+	queue_redraw()
+
+
 ## 返回点击命中的卡片下标（-1 = 没点中）。
 func card_at(pos: Vector2) -> int:
 	for i in _card_rects.size():
@@ -114,6 +126,8 @@ func _draw() -> void:
 		_text_centered(toast_text, vp.x * 0.5, vp.y - 120.0, 22, Color(INK, alpha))
 	if week_modal:
 		_draw_week(vp)
+	if station_pick:
+		_draw_station_pick(vp)
 	if game_over:
 		_draw_game_over(vp)
 
@@ -166,6 +180,28 @@ func _draw_week(vp: Vector2) -> void:
 			Color(MUTED, 0.8))
 	_text_centered("点击卡片，或按 1 / 2", vp.x * 0.5, vp.y * 0.5 + 178.0, 18,
 		Color(1.0, 1.0, 1.0, 0.7))
+
+
+## 换乘站点选：高亮所有容量 6 的车站，鼠标悬停加重，右键取消走兜底。
+func _draw_station_pick(vp: Vector2) -> void:
+	if network == null:
+		return
+	_text_centered("选择一座车站升级为换乘站", vp.x * 0.5, 126.0, 30, Color(INK, 0.92))
+	_text_centered("容量 6 → 12 · 右键 / Esc 取消（自动选最拥挤站）", vp.x * 0.5, 160.0, 18,
+		Color(MUTED, 0.9))
+	var mouse := get_global_mouse_position()
+	for st in network.stations:
+		if st.capacity > 6:
+			continue
+		var hovered := mouse.distance_to(st.pos) <= 46.0
+		if hovered:
+			draw_arc(st.pos, Shape.STATION_RADIUS + 24.0, 0.0, TAU, 48,
+				Color(0.84, 0.27, 0.27, 0.85), 2.5, true)
+			draw_arc(st.pos, Shape.STATION_RADIUS + 15.0, 0.0, TAU, 48,
+				Color(0.16, 0.17, 0.19, 0.9), 3.0, true)
+		else:
+			draw_arc(st.pos, Shape.STATION_RADIUS + 15.0, 0.0, TAU, 48,
+				Color(0.16, 0.17, 0.19, 0.32), 2.5, true)
 
 
 func _compute_card_rects(vp: Vector2) -> Array[Rect2]:

@@ -21,6 +21,7 @@ var bridge_layer: BridgeLayer = null
 var train_layer: TrainLayer = null
 var station_layer: StationLayer = null
 var passenger_layer: PassengerLayer = null
+var fx_layer: FxLayer = null
 var editor: LineEditor = null
 var hud: Hud = null
 
@@ -59,6 +60,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if hud != null and hud.week_modal:
 		_handle_week_input(event)
 		return
+	if hud != null and hud.station_pick:
+		_handle_station_pick(event)
+		return
 	if not (event is InputEventKey):
 		return
 	if not event.pressed or event.echo:
@@ -76,6 +80,41 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_tree().reload_current_scene()
 
 
+## 换乘站点选：左键点容量 6 的车站，右键 / Esc 取消（自动升级最拥挤站）。
+func _handle_station_pick(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_ESCAPE:
+			_cancel_station_pick()
+		return
+	if not (event is InputEventMouseButton) or not event.pressed:
+		return
+	if event.button_index == MOUSE_BUTTON_RIGHT:
+		_cancel_station_pick()
+		return
+	if event.button_index != MOUSE_BUTTON_LEFT:
+		return
+	var pos := get_global_mouse_position()
+	var st := network.station_at(pos, Shape.STATION_RADIUS + 8.0)
+	if st != null and st.capacity <= 6 and simulation.upgrade_station(st.id):
+		Audio.play("upgrade")
+		hud.hide_station_pick()
+		if editor != null:
+			editor.set_process_unhandled_input(true)
+	else:
+		hud.show_toast("请点击一座容量为 6 的车站")
+
+
+func _cancel_station_pick() -> void:
+	if simulation == null:
+		return
+	var st := simulation.cancel_interchange()
+	hud.hide_station_pick()
+	if editor != null:
+		editor.set_process_unhandled_input(true)
+	if st != null:
+		hud.show_toast("已自动升级最拥挤的车站")
+
+
 func _handle_week_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_1:
@@ -91,6 +130,7 @@ func _handle_week_input(event: InputEvent) -> void:
 func _on_week_completed(cards: Array, week_number: int) -> void:
 	if hud != null:
 		hud.show_week(cards, week_number)
+	Audio.play("upgrade")
 	if editor != null:
 		editor.set_process_unhandled_input(false)
 
@@ -98,16 +138,43 @@ func _on_week_completed(cards: Array, week_number: int) -> void:
 func _choose_upgrade(index: int) -> void:
 	if simulation == null or hud == null or not hud.week_modal:
 		return
+	Audio.play("click")
 	simulation.choose_upgrade(index)
 	hud.hide_week()
+	if simulation.interchange_pending:
+		# 换乘站卡：先收起弹窗，让玩家在地图上点选目标车站
+		hud.show_station_pick()
+		if editor != null:
+			editor.set_process_unhandled_input(false)
+		return
 	if editor != null:
 		editor.set_process_unhandled_input(true)
 
 
 func _on_game_over(_station: Station) -> void:
 	Game.paused = true
+	Audio.play("gameover")
 	if hud != null:
 		hud.show_game_over(0 if simulation == null else simulation.score)
+
+
+func _on_passengers_delivered(station: Station, count: int) -> void:
+	if fx_layer != null:
+		fx_layer.spawn_delivery(station.pos, count)
+	Audio.play("deliver")
+
+
+func _on_overload_started(station: Station) -> void:
+	if fx_layer != null:
+		fx_layer.spawn_overload(station.pos)
+	Audio.play("warn")
+
+
+func _on_station_added(_station: Station) -> void:
+	# 演示布局是一次性批量生成的，不逐个播放出现音
+	if _demo:
+		return
+	Audio.play("station")
 
 
 func _build_world() -> void:
@@ -155,6 +222,11 @@ func _build_world() -> void:
 	editor.name = "LineEditor"
 	overlay.add_child(editor)
 
+	fx_layer = FxLayer.new()
+	fx_layer.name = "FxLayer"
+	fx_layer.z_index = 350
+	world.add_child(fx_layer)
+
 	line_layer.setup(network)
 	bridge_layer.setup(network)
 	train_layer.setup(network)
@@ -195,6 +267,9 @@ func _start_session() -> void:
 	simulation = Simulation.new(network, level, Game.rng)
 	simulation.game_over.connect(_on_game_over)
 	simulation.week_completed.connect(_on_week_completed)
+	simulation.passengers_delivered.connect(_on_passengers_delivered)
+	simulation.overload_started.connect(_on_overload_started)
+	network.station_added.connect(_on_station_added)
 	if _demo:
 		DemoSetup.build(network, level, 2 if _pose == "draft" else 3)
 		DemoSetup.seed_passengers(network)
@@ -242,6 +317,15 @@ func _start_session() -> void:
 			for i in 5:
 				st.waiting.append(Passenger.new(Shape.Kind.SQUARE))
 			_advance_sim(90)
+		elif _pose == "pick":
+			# 摆出"换乘站选点"状态：模拟暂停 + 高亮所有容量 6 的车站
+			simulation.week_pending = true
+			simulation.pending_cards.clear()
+			simulation.pending_cards.append(UpgradeCards.get_card("interchange"))
+			simulation.choose_upgrade(0)
+			hud.hide_week()
+			hud.show_station_pick()
+			editor.set_process_unhandled_input(false)
 		elif _pose == "overload":
 			# 一座没有线路的站 + 超容等待乘客，展示红色超载计时环
 			var st := network.add_station(Vector2(1450, 900), Shape.Kind.DIAMOND)

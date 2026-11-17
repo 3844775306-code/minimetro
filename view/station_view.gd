@@ -68,6 +68,9 @@ func _draw() -> void:
 		draw_polyline(DrawUtil.closed(pts), stroke, 3.0, true)
 	if hovered:
 		draw_arc(Vector2.ZERO, r + 13.0, 0.0, TAU, 48, HOVER_RING, 2.5, true)
+	if station.capacity > 6:
+		# 换乘站再加一圈细描边，和普通站的"更大"一起构成视觉区别
+		draw_arc(Vector2.ZERO, r + 7.0, 0.0, TAU, 48, Color(STROKE, 0.22), 1.5, true)
 	if overloading:
 		draw_arc(Vector2.ZERO, r + 11.0, -PI * 0.5, -PI * 0.5 + TAU * progress, 64,
 			OVERLOAD_RING, 5.0, true)
