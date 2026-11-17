@@ -34,13 +34,19 @@ func _sync() -> void:
 		if view == null:
 			view = _make_view(line)
 			_views[line.id] = view
+		var index := network.lines.find(line)
+		var offset := LineGeometry.render_offset(index, network.lines.size())
+		line.render_offset = offset
+		var offset_key := "%d:%d" % [index, network.lines.size()]
 		var cached: Variant = view.get_meta("line_ref") if view.has_meta("line_ref") else null
 		var cached_version: int = int(view.get_meta("geometry_version")) if view.has_meta("geometry_version") else -1
-		if cached != line or cached_version != line.version:
+		var cached_offset: String = String(view.get_meta("offset_key")) if view.has_meta("offset_key") else ""
+		if cached != line or cached_version != line.version or cached_offset != offset_key:
 			view.set_meta("line_ref", line)
 			view.set_meta("geometry_version", line.version)
+			view.set_meta("offset_key", offset_key)
 			view.default_color = line.color
-			view.points = line.geometry.points
+			view.points = LineGeometry.offset_points(line.geometry.points, offset)
 
 
 func _make_view(line: MetroLine) -> Line2D:

@@ -24,6 +24,8 @@ var trains: Array[Train] = []
 
 var geometry := LineGeometry.new()
 var version: int = 0
+## 仅用于渲染：重叠线路的横向错开量（不参与模拟/存档）。
+var render_offset := 0.0
 
 
 func _init(p_id: int = 0, p_color: Color = Color.WHITE) -> void:

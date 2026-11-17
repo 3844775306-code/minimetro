@@ -725,7 +725,8 @@ func _train_world_position(line: MetroLine, train: Train) -> Vector2:
 	var geometry := line.geometry
 	if train.legacy_active and train.legacy_geometry != null:
 		geometry = train.legacy_geometry
-	return geometry.sample(train.dist).origin
+	var xf := geometry.sample(train.dist)
+	return xf.origin + LineGeometry.canonical_normal(xf.x) * line.render_offset
 
 
 ## 光标下的车厢（车厢画在列车尾部，与 TrainView 使用同一套偏移）。
@@ -745,7 +746,7 @@ func _carriage_position(line: MetroLine, train: Train, index: int) -> Vector2:
 	if train.legacy_active and train.legacy_geometry != null:
 		geometry = train.legacy_geometry
 	var xf := geometry.sample(train.dist)
-	return xf.origin + xf.x.normalized() * -(
+	return xf.origin + LineGeometry.canonical_normal(xf.x) * line.render_offset + xf.x.normalized() * -(
 		TrainView.CARRIAGE_FIRST_OFFSET + TrainView.CARRIAGE_SPACING * float(index)
 	)
 
@@ -951,11 +952,18 @@ func _handle_at(pos: Vector2) -> MetroLine:
 		if line.stops.size() < 2:
 			continue
 		for at_start in [true, false]:
-			var hp := line.geometry.handle_position(at_start, HANDLE_DISTANCE)
+			var hp := _handle_world_position(line, at_start)
 			if pos.distance_to(hp) <= HANDLE_HIT_RADIUS:
 				_handle_at_start = at_start
 				return line
 	return null
+
+
+func _handle_world_position(line: MetroLine, at_start: bool) -> Vector2:
+	var hp := line.geometry.handle_position(at_start, HANDLE_DISTANCE)
+	var xf := line.geometry.sample(0.0 if at_start else line.geometry.total_length)
+	# 端点手柄比线身错开更多，避免多条线收尾时几个圆头叠在一起
+	return hp + LineGeometry.canonical_normal(xf.x) * line.render_offset * 3.0
 
 
 ## 若不是端点、且在某条线的中间，则返回那条线（用于重排）。
@@ -1175,7 +1183,7 @@ func _draw_endpoint_handles() -> void:
 		if line.stops.size() < 2:
 			continue
 		for at_start in [true, false]:
-			var hp := line.geometry.handle_position(at_start, HANDLE_DISTANCE)
+			var hp := _handle_world_position(line, at_start)
 			draw_circle(hp, 9.5, Color.WHITE, true, -1.0, true)
 			draw_arc(hp, 9.5, 0.0, TAU, 32, Color(line.color, 0.95), 3.5, true)
 			if line.is_loop:

@@ -6,6 +6,7 @@ static func run(h: TestHarness) -> void:
 	_test_two_stops(h)
 	_test_corner_clamp(h)
 	_test_octilinear(h)
+	_test_line_render_offset(h)
 
 
 static func _test_three_stops(h: TestHarness) -> void:
@@ -106,3 +107,19 @@ static func _test_octilinear(h: TestHarness) -> void:
 	h.check(LineGeometry.is_octilinear(flipped_route), "带翻转的线路仍八向合法")
 	h.check(flipped_route.size() == 3
 		and flipped_route[1].distance_to(Vector2(200, 0)) < 0.01, "带翻转线路的折点正确")
+
+
+## 多条线路重叠时，渲染点按线号向两侧错开，且反向路径用同一规范法线。
+static func _test_line_render_offset(h: TestHarness) -> void:
+	h.section("geometry/line_offset")
+	var points := PackedVector2Array([Vector2(0, 0), Vector2(300, 0), Vector2(300, 300)])
+	var left := LineGeometry.offset_points(points, LineGeometry.render_offset(0, 3))
+	var middle := LineGeometry.offset_points(points, LineGeometry.render_offset(1, 3))
+	var right := LineGeometry.offset_points(points, LineGeometry.render_offset(2, 3))
+	h.check(left[1].distance_to(right[1]) > 6.0, "多条重叠线路横向错开")
+	h.check(middle[1].distance_to(Vector2(300, 0)) < 0.01, "中间线路保持中心")
+	h.check(LineGeometry.offset_points(points, 0.0) == points, "单线不偏移")
+	var reversed := PackedVector2Array([Vector2(300, 300), Vector2(300, 0), Vector2(0, 0)])
+	var reversed_offset := LineGeometry.offset_points(reversed, LineGeometry.render_offset(0, 3))
+	# 反向路径的对应拐点也应与正向偏移在同一侧
+	h.check(reversed_offset[1].distance_to(left[1]) < 0.01, "反向绘制也使用同一侧偏移")

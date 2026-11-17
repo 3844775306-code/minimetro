@@ -198,6 +198,54 @@ static func is_octilinear(points_in: PackedVector2Array) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# 重叠线路的视觉错开
+# ---------------------------------------------------------------------------
+
+## 每条线在渲染时沿法线偏移一点，避免完全重叠；返回世界像素偏移。
+static func render_offset(index: int, count: int) -> float:
+	if count <= 1:
+		return 0.0
+	return (float(index) - float(count - 1) * 0.5) * 6.0
+
+
+## 与线段方向无关的“规范法线”：反向绘制同一段时法线同向，
+## 这样不同线号取不同偏移时，反向线路也会分到两侧。
+static func canonical_normal(direction: Vector2) -> Vector2:
+	if direction.length_squared() < 0.000001:
+		return Vector2.ZERO
+	var n := Vector2(-direction.y, direction.x).normalized()
+	if direction.x < -0.0001 or (absf(direction.x) <= 0.0001 and direction.y < 0.0):
+		n = -n
+	return n
+
+
+## 按平均法线偏移整条折线；闭合折线保持首尾重合。
+static func offset_points(points: PackedVector2Array, amount: float) -> PackedVector2Array:
+	if points.size() < 2 or absf(amount) < 0.05:
+		return points
+	var closed := points[0].distance_to(points[points.size() - 1]) < 0.01
+	var count := points.size() - 1 if closed else points.size()
+	var out := PackedVector2Array()
+	for i in count:
+		var previous := points[(i - 1 + count) % count] if closed \
+			else points[maxi(i - 1, 0)]
+		var following := points[(i + 1) % count] if closed \
+			else points[mini(i + 1, points.size() - 1)]
+		var n_previous := canonical_normal(points[i] - previous)
+		var n_following := canonical_normal(following - points[i])
+		var normal := n_previous + n_following
+		if normal.length_squared() < 0.000001:
+			normal = n_following if n_following.length_squared() > 0.0 else n_previous
+		if normal.length_squared() < 0.000001:
+			out.append(points[i])
+		else:
+			out.append(points[i] + normal.normalized() * amount)
+	if closed:
+		out.append(out[0])
+	return out
+
+
+# ---------------------------------------------------------------------------
 # 弧长采样（列车 / 拾取 / 手柄都用这一套）
 # ---------------------------------------------------------------------------
 

@@ -1013,6 +1013,18 @@ func _apply_pose() -> void:
 				hud.show_line_cancel(network.lines[0].id)
 				Game.paused = true
 				editor.set_process_unhandled_input(false)
+		"overlap":
+			# 调试姿态：让前两条线完全重叠，检查渲染偏移与端点手柄错开
+			if network.lines.size() >= 2:
+				var src: MetroLine = network.lines[0]
+				var dst: MetroLine = network.lines[1]
+				dst.stops.clear()
+				for st in src.stops:
+					dst.stops.append(st)
+				dst.is_loop = src.is_loop
+				dst.bend_flips = src.bend_flips.duplicate()
+				dst.rebuild()
+				network.touch()
 		"carriages":
 			simulation.apply_upgrade("carriage")
 			simulation.apply_upgrade("carriage")

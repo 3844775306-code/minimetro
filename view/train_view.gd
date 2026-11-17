@@ -32,6 +32,9 @@ func update_from(train: Train, line: MetroLine) -> void:
 		geometry = train.legacy_geometry
 	var xf := geometry.sample(train.dist)
 	position = xf.origin
+	# 与 LineLayer 的视觉错开保持一致：列车也骑在偏移后的线路上
+	if not is_zero_approx(line.render_offset):
+		position += LineGeometry.canonical_normal(xf.x) * line.render_offset
 	# 车头朝向行进方向：反向行驶时整体转 180°，车厢才始终在车尾
 	var angle := xf.x.angle()
 	if train.dir < 0:

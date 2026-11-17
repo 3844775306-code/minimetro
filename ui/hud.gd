@@ -307,18 +307,21 @@ func _draw_game_hud(vp: Vector2) -> void:
 	# 减负版 HUD：左上只留线色/库存，右上不再画面板（避免挡地图）
 	_draw_panel(Rect2(34.0, 46.0, 720.0, 156.0))
 	if map_name != "":
-		_text_centered(map_name, vp.x * 0.5, 60.0, 32, Color(MUTED, 0.85))
+		_text_centered(map_name, vp.x * 0.5, 60.0, 32,
+			Color(1.0, 1.0, 1.0, 0.88) if is_night else Color(MUTED, 0.85))
 	_draw_clock(vp)
 	if endless_mode:
 		# 无尽模式的评价主指标：最近 30 秒送达量（人 / 30 秒）
 		_text_right(Loc.t("平均每30秒 %.0f 人", "%.0f per 30s") % throughput,
-			vp.x - 40.0, 160.0, 28, INK)
+			vp.x - 40.0, 160.0, 28, Color.WHITE if is_night else INK)
 		_text_right(Loc.t("已送达 %d", "Delivered %d") % score,
-			vp.x - 40.0, 196.0, 20, Color(MUTED, 0.9))
+			vp.x - 40.0, 196.0, 20, Color(1.0, 1.0, 1.0, 0.78) if is_night else Color(MUTED, 0.9))
 	else:
-		_text_right(Loc.t("已送达 %d", "Delivered %d") % score, vp.x - 40.0, 162.0, 32, INK)
+		_text_right(Loc.t("已送达 %d", "Delivered %d") % score, vp.x - 40.0, 162.0, 32,
+			Color.WHITE if is_night else INK)
 	if stage_label != "":
-		_text_right(stage_label, vp.x - 40.0, 222.0, 20, Color(MUTED, 0.78))
+		_text_right(stage_label, vp.x - 40.0, 222.0, 20,
+			Color(1.0, 1.0, 1.0, 0.68) if is_night else Color(MUTED, 0.78))
 	_draw_resource_slots(vp)
 	var show_hint := hint_left > 0.0 or (network != null and network.lines.is_empty())
 	if show_hint:
@@ -328,16 +331,20 @@ func _draw_game_hud(vp: Vector2) -> void:
 		_text_centered(Loc.t(
 			"拖拽画线 · 拖端点延伸 · 拖线段插站 · 轻点翻折 · 拖左上角图标放车 · Ctrl+Z 撤销 · Esc 设置",
 			"Drag to draw · drag endpoint to extend · drag a segment to insert · tap to flip · drag top-left icons for vehicles · Ctrl+Z undo · Esc settings"
-		), vp.x * 0.5, vp.y - 46.0, 22, Color(MUTED, 0.9 * hint_alpha))
+		), vp.x * 0.5, vp.y - 46.0, 22,
+			Color(1.0, 1.0, 1.0, 0.72) if is_night else Color(MUTED, 0.9 * hint_alpha))
 	if paused and not game_over and not settings_menu and not week_modal \
 			and not mode_menu:
-		_text_centered(Loc.t("已暂停", "Paused"), vp.x * 0.5, vp.y * 0.5, 44, Color(INK, 0.75))
+		_text_centered(Loc.t("已暂停", "Paused"), vp.x * 0.5, vp.y * 0.5, 44,
+			Color(1.0, 1.0, 1.0, 0.85) if is_night else Color(INK, 0.75))
 		_text_centered(Loc.t("可继续修改线路、调动车厢", "You can still edit lines and move carriages"),
-			vp.x * 0.5, vp.y * 0.5 + 40.0, 22, Color(MUTED, 0.75))
+			vp.x * 0.5, vp.y * 0.5 + 40.0, 22,
+			Color(1.0, 1.0, 1.0, 0.7) if is_night else Color(MUTED, 0.75))
 	_draw_speed_buttons(vp)
 	if toast_left > 0.0:
 		var alpha: float = clampf(toast_left / 0.5, 0.0, 1.0)
-		_text_centered(toast_text, vp.x * 0.5, vp.y - 120.0, 26, Color(INK, alpha))
+		_text_centered(toast_text, vp.x * 0.5, vp.y - 120.0, 26,
+			Color(1.0, 1.0, 1.0, alpha) if is_night else Color(INK, alpha))
 	# 悬停车站：显示这个形状代表的地标
 	if hover_landmark != "":
 		var text_size := font.get_string_size(hover_landmark, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 15)
@@ -379,7 +386,8 @@ func _draw_clock(vp: Vector2) -> void:
 	var hand_dir := Vector2(sin(hand_angle), -cos(hand_angle))
 	draw_line(center, center + hand_dir * (radius - 9.0), hand_color, 3.5, true)
 	draw_circle(center, 4.0, hand_color, true, -1.0, true)
-	draw_arc(center, radius, 0.0, TAU, 48, Color(0.16, 0.17, 0.19, 0.7), 2.5, true)
+	draw_arc(center, radius, 0.0, TAU, 48,
+		Color(1.0, 1.0, 1.0, 0.55) if strength > 0.5 else Color(0.16, 0.17, 0.19, 0.7), 2.5, true)
 	# 数字时间（12 小时制 + 上午/下午）
 	var hour := int(floor(fmod(clock_hours, 24.0) + 0.0001)) % 24
 	var display_hour := hour % 12
@@ -388,7 +396,8 @@ func _draw_clock(vp: Vector2) -> void:
 	var minutes := int((clock_hours - floor(clock_hours)) * 60.0)
 	var suffix := Loc.t("上午", "AM") if hour < 12 else Loc.t("下午", "PM")
 	_text_centered("%s  %02d:%02d %s" % [weekday, display_hour, mini(minutes, 59), suffix],
-		center.x, center.y + radius + 18.0, 20, Color(MUTED, 0.9))
+		center.x, center.y + radius + 18.0, 20,
+		Color(1.0, 1.0, 1.0, 0.86) if strength > 0.5 else Color(MUTED, 0.9))
 
 
 func _draw_speed_buttons(vp: Vector2) -> void:
