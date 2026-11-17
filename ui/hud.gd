@@ -47,6 +47,7 @@ var line_cancel_id := -1
 var _line_cancel_rect := Rect2()
 
 var game_over := false
+var ending_focus := false
 var final_score := 0
 var game_over_can_restart := true
 var _game_over_restart_rect := Rect2()
@@ -334,7 +335,7 @@ func _draw_game_hud(vp: Vector2) -> void:
 		), vp.x * 0.5, vp.y - 46.0, 22,
 			Color(1.0, 1.0, 1.0, 0.72) if is_night else Color(MUTED, 0.9 * hint_alpha))
 	if paused and not game_over and not settings_menu and not week_modal \
-			and not mode_menu:
+			and not mode_menu and not ending_focus:
 		_text_centered(Loc.t("已暂停", "Paused"), vp.x * 0.5, vp.y * 0.5, 44,
 			Color(1.0, 1.0, 1.0, 0.85) if is_night else Color(INK, 0.75))
 		_text_centered(Loc.t("可继续修改线路、调动车厢", "You can still edit lines and move carriages"),
@@ -820,6 +821,31 @@ func _draw_name_modal(vp: Vector2) -> void:
 		vp.x * 0.5, vp.y * 0.5 + 70.0, 20, Color(1.0, 1.0, 1.0, 0.58))
 
 
+func _draw_map_hall_preview(entry: Dictionary, rect: Rect2) -> void:
+	var city := CustomMapStore.to_city_map(entry)
+	var border := DrawUtil.rounded_rect(rect, 8.0, 6)
+	draw_colored_polygon(border, Color("#F3EFE6"))
+	var inner := rect.grow(-2.0)
+	draw_rect(inner, Color("#F3EFE6"))
+	if city.rivers.is_empty():
+		_text_centered("—", rect.get_center().x, rect.get_center().y + 6.0, 22, MUTED)
+	else:
+		var world := Vector2(2400.0, 1200.0)
+		var scale := minf(inner.size.x / world.x, inner.size.y / world.y)
+		var offset := inner.get_center() - world * scale * 0.5
+		for river in city.rivers:
+			var points := PackedVector2Array()
+			for point in river:
+				points.append(offset + point * scale)
+			if points.size() >= 3:
+				if Geometry2D.triangulate_polygon(points).is_empty():
+					# 有些玩家上传的河道是窄条/自交多边形，退化成描边，避免预览空白
+					draw_polyline(DrawUtil.closed(points), WATER, 2.5, true)
+				else:
+					draw_colored_polygon(points, WATER)
+	draw_polyline(DrawUtil.closed(border), Color(0.55, 0.52, 0.47, 0.7), 1.5, true)
+
+
 func _draw_map_hall(vp: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.08, 0.09, 0.10, 0.78))
 	var panel_size := Vector2(minf(1760.0, vp.x - 120.0), 260.0 + float(map_hall_entries.size()) * 96.0)
@@ -845,11 +871,13 @@ func _draw_map_hall(vp: Vector2) -> void:
 		var row_poly := DrawUtil.rounded_rect(row, 12.0, 6)
 		draw_colored_polygon(row_poly, Color(INK, 0.06 if hovered else 0.03))
 		draw_polyline(DrawUtil.closed(row_poly), Color(0.72, 0.69, 0.62), 1.2, true)
+		var preview := Rect2(row.position + Vector2(12.0, 8.0), Vector2(150.0, 68.0))
+		_draw_map_hall_preview(entry, preview)
 		_text(String(entry.get("name_zh", entry.get("name_en", "未命名"))),
-			row.position + Vector2(28.0, 36.0), 28, INK)
+			row.position + Vector2(180.0, 36.0), 28, INK)
 		_text(Loc.t("作者 %s · 下载 %d", "by %s · %d downloads") % [
 			String(entry.get("author", "?")), int(entry.get("downloads", 0)),
-		], row.position + Vector2(28.0, 66.0), 20, MUTED)
+		], row.position + Vector2(180.0, 66.0), 20, MUTED)
 		_text_centered(Loc.t("下载", "Download"), row.end.x - 100.0,
 			row.position.y + 50.0, 26, Color(INK, 0.8))
 		y += 96.0

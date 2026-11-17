@@ -44,6 +44,14 @@ var _open_arg := ""
 var _name_edit_arg := false
 var _cloud_post_test := false
 var _leaderboard_kind := ""
+## 结束演出：先把镜头拉近到爆仓车站，再显示结算面板
+var _ending_focus := false
+var _ending_timer := 0.0
+var _ending_overlay_shown := false
+var _ending_station: Station = null
+var _ending_score := 0
+var _ending_best := 0
+var _ending_can_restart := true
 
 
 func _ready() -> void:
@@ -119,11 +127,24 @@ func _process(delta: float) -> void:
 		simulation.edit_in_progress = editor != null and editor.is_busy()
 		simulation.advance(delta, Game.speed)
 	if camera != null and simulation != null:
-		var target_zoom := simulation.camera_zoom_target()
-		var next_zoom := lerpf(camera.zoom.x, target_zoom, clampf(delta * 0.9, 0.0, 1.0))
-		camera.zoom = Vector2(next_zoom, next_zoom)
-		simulation.current_camera_zoom = next_zoom
-		simulation.screen_size = get_viewport_rect().size
+		if _ending_focus:
+			_ending_timer += delta
+			var focus_pos := _ending_station.pos if _ending_station != null else camera.position
+			camera.position = camera.position.lerp(focus_pos, clampf(delta * 5.0, 0.0, 1.0))
+			var cinematic_zoom := lerpf(camera.zoom.x, 3.1, clampf(delta * 3.2, 0.0, 1.0))
+			camera.zoom = Vector2(cinematic_zoom, cinematic_zoom)
+			simulation.current_camera_zoom = cinematic_zoom
+			simulation.screen_size = get_viewport_rect().size
+			if not _ending_overlay_shown and _ending_timer >= 0.9:
+				_ending_overlay_shown = true
+				if hud != null:
+					hud.show_game_over(_ending_score, _ending_best, _ending_can_restart)
+		else:
+			var target_zoom := simulation.camera_zoom_target()
+			var next_zoom := lerpf(camera.zoom.x, target_zoom, clampf(delta * 0.9, 0.0, 1.0))
+			camera.zoom = Vector2(next_zoom, next_zoom)
+			simulation.current_camera_zoom = next_zoom
+			simulation.screen_size = get_viewport_rect().size
 
 
 # ---------------------------------------------------------------------------
@@ -747,8 +768,19 @@ func _on_game_over(_station: Station) -> void:
 	Audio.play("gameover")
 	var score := 0 if simulation == null else simulation.score
 	_record_run_result()
+	_ending_score = score
+	_ending_best = maxi(score, _best_for_mode())
+	_ending_can_restart = not Game.is_daily()
+	_ending_station = _station
+	_ending_timer = 0.0
+	_ending_overlay_shown = false
+	_ending_focus = _station != null
 	if hud != null:
-		hud.show_game_over(score, maxi(score, _best_for_mode()), not Game.is_daily())
+		hud.ending_focus = true
+	if editor != null:
+		editor.set_process_unhandled_input(false)
+	if not _ending_focus and hud != null:
+		hud.show_game_over(_ending_score, _ending_best, _ending_can_restart)
 
 
 func _on_passengers_delivered(station: Station, count: int) -> void:
