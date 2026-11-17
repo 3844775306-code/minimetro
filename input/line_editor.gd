@@ -16,6 +16,8 @@ extends Node2D
 ## begin_gesture / move_gesture / end_gesture / advance 是公开 API，测试直接调用。
 
 signal toast_requested(message: String)
+## 没有手势在进行时按 Esc：交给外层打开暂停/设置菜单。
+signal settings_requested
 
 enum State { IDLE, DRAFT, REORDER, SEGMENT }
 
@@ -92,7 +94,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			undo()
 			get_viewport().set_input_as_handled()
 		elif event.keycode == KEY_ESCAPE:
-			cancel_gesture()
+			if state != State.IDLE or _dragging:
+				cancel_gesture()
+				get_viewport().set_input_as_handled()
+			else:
+				settings_requested.emit()
+				get_viewport().set_input_as_handled()
 
 
 func _process(delta: float) -> void:

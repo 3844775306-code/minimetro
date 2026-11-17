@@ -511,7 +511,10 @@ func _update_stations(dt: float) -> void:
 			st.overload_timer += dt
 			if not was_overloading:
 				overload_started.emit(st)
-			if st.overload_timer >= level.overload_grace and not is_over:
+			if level.endless:
+				# 无尽模式：计时环会顶满，但不会判负
+				st.overload_timer = minf(st.overload_timer, level.overload_grace)
+			elif st.overload_timer >= level.overload_grace and not is_over:
 				is_over = true
 				game_over.emit(st)
 				return

@@ -54,6 +54,10 @@ extends Resource
 @export var max_trains: int = 6
 @export var max_carriages: int = 3
 
+@export_group("模式")
+## 无尽模式：站点超载只显示计时环，不会判负。
+@export var endless: bool = false
+
 @export_group("线路配色")
 @export var line_colors: Array[Color] = [
 	Color("#D64545"),

@@ -1,13 +1,14 @@
 extends Node2D
-## 入口：装配世界（地图 / 线路 / 列车 / 站点 / 乘客 / 手势层）与 UI，驱动固定步长模拟。
+## 入口：装配世界与 UI、驱动模拟、处理模式/设置/存档事件、截图与冒烟 CLI。
 ##
 ## 命令行参数（放在 `--` 之后）：
 ##   --demo            确定性布局 + 3 条线路 + 预置乘客（截图/演示用）
-##   --pose=draft      摆出"正在画线"的中间姿态
-##   --pose=overload   摆出"站点超载计时"的姿态
+##   --pose=draft|insert|riders|interchange|pick|overload|gameover|week|settings|menu
+##   --mode=classic|endless|daily   直接以指定模式开局（跳过模式菜单）
 ##   --seed=12345      指定随机种子
 ##   --smoke=600       无渲染跑 N 个 tick 后打印状态并退出
 ##   --shot=<path>     渲染若干帧后把截图写到指定路径并退出
+## 不带任何参数启动时显示模式选择菜单。
 
 const PAPER_GRAIN := preload("res://art/shaders/paper_grain.gdshader")
 
@@ -30,16 +31,24 @@ var _demo := false
 var _pose := ""
 var _seed := 0
 var _smoke_ticks := -1
+var _mode_arg := -1
+var _menu_mode := false
+var _lang_arg := ""
 
 
 func _ready() -> void:
 	_parse_args()
-	Game.start_run(_seed)
-	network = Game.network
-	level = Game.level
+	if _lang_arg != "":
+		Loc.set_language(_lang_arg)
+	_resolve_run()
 	_build_world()
 	_build_ui()
-	_start_session()
+	if _menu_mode:
+		editor.set_process_unhandled_input(false)
+		_refresh_mode_bests()
+		hud.show_mode_menu()
+	else:
+		_start_session()
 	if _smoke_ticks > 0:
 		_run_smoke()
 	elif _shot_path != "":
@@ -52,11 +61,86 @@ func _process(delta: float) -> void:
 		hud.speed = Game.speed
 		hud.score = 0 if simulation == null else simulation.score
 		hud.week = 1 if simulation == null else simulation.week_index
+		hud.mode_title = _mode_label()
+		hud.best_score = _best_for_mode()
+		if hud.settings_menu:
+			_sync_settings_values()
 	if simulation != null and not Game.paused:
 		simulation.advance(delta, Game.speed)
 
 
+# ---------------------------------------------------------------------------
+# 启动 / 模式
+# ---------------------------------------------------------------------------
+
+func _resolve_run() -> void:
+	var direct := _demo or _shot_path != "" or _smoke_ticks > 0 \
+		or (_pose != "" and _pose != "menu") or _mode_arg >= 0
+	if _pose == "menu":
+		direct = false
+	if Game.pending_mode >= 0:
+		Game.start_run(_seed)
+	elif direct:
+		Game.start_run(_seed, _mode_arg)
+	else:
+		# 仅用于展示背景，真正开局在模式菜单选择后 reload
+		Game.start_run(_seed)
+		_menu_mode = true
+	network = Game.network
+	level = Game.level
+
+
+func _mode_label() -> String:
+	var title := GameMode.title(Game.mode)
+	if Game.is_daily():
+		return "%s · %s" % [title, Game.daily_date]
+	return title
+
+
+func _best_for_mode() -> int:
+	if Save == null:
+		return 0
+	if Game.is_daily():
+		return Save.daily_best(Game.daily_date)
+	return Save.best_score(Game.mode_key)
+
+
+func _refresh_mode_bests() -> void:
+	if hud == null or Save == null:
+		return
+	hud.mode_bests = {
+		"classic": Save.best_score("classic"),
+		"endless": Save.best_score("endless"),
+		"daily": Save.daily_best(GameMode.today()),
+	}
+
+
+func _choose_mode(kind: int) -> void:
+	Game.pending_mode = kind
+	get_tree().reload_current_scene()
+
+
+func _restart() -> void:
+	Game.pending_mode = Game.mode
+	get_tree().reload_current_scene()
+
+
+func _back_to_menu() -> void:
+	Game.pending_mode = -1
+	get_tree().reload_current_scene()
+
+
+# ---------------------------------------------------------------------------
+# 输入
+# ---------------------------------------------------------------------------
+
 func _unhandled_input(event: InputEvent) -> void:
+	if hud != null and hud.mode_menu:
+		_handle_mode_menu_input(event)
+		return
+	if hud != null and hud.settings_menu:
+		_handle_settings_input(event)
+		return
 	if hud != null and hud.week_modal:
 		_handle_week_input(event)
 		return
@@ -77,42 +161,117 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_3:
 			Game.speed = 3.0
 		KEY_R:
-			get_tree().reload_current_scene()
+			_restart()
+		KEY_M:
+			_back_to_menu()
 
 
-## 换乘站点选：左键点容量 6 的车站，右键 / Esc 取消（自动升级最拥挤站）。
-func _handle_station_pick(event: InputEvent) -> void:
+func _handle_mode_menu_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_ESCAPE:
-			_cancel_station_pick()
+		match event.keycode:
+			KEY_1:
+				_choose_mode(GameMode.Kind.CLASSIC)
+			KEY_2:
+				_choose_mode(GameMode.Kind.ENDLESS)
+			KEY_3:
+				_choose_mode(GameMode.Kind.DAILY)
 		return
-	if not (event is InputEventMouseButton) or not event.pressed:
-		return
-	if event.button_index == MOUSE_BUTTON_RIGHT:
-		_cancel_station_pick()
-		return
-	if event.button_index != MOUSE_BUTTON_LEFT:
-		return
-	var pos := get_global_mouse_position()
-	var st := network.station_at(pos, Shape.STATION_RADIUS + 8.0)
-	if st != null and st.capacity <= 6 and simulation.upgrade_station(st.id):
-		Audio.play("upgrade")
-		hud.hide_station_pick()
-		if editor != null:
-			editor.set_process_unhandled_input(true)
-	else:
-		hud.show_toast("请点击一座容量为 6 的车站")
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		var index := hud.mode_card_at(get_global_mouse_position())
+		if index >= 0:
+			_choose_mode(hud._mode_kind_at(index))
 
 
-func _cancel_station_pick() -> void:
-	if simulation == null:
+func _open_settings() -> void:
+	if hud == null:
 		return
-	var st := simulation.cancel_interchange()
-	hud.hide_station_pick()
+	Game.paused = true
+	hud.show_settings()
+	_sync_settings_values()
+	if editor != null:
+		editor.set_process_unhandled_input(false)
+
+
+func _close_settings() -> void:
+	if hud == null:
+		return
+	hud.hide_settings()
+	Game.paused = hud.game_over
 	if editor != null:
 		editor.set_process_unhandled_input(true)
-	if st != null:
-		hud.show_toast("已自动升级最拥挤的车站")
+
+
+func _sync_settings_values() -> void:
+	if hud == null or Save == null:
+		return
+	hud.settings_values = {
+		"master_volume": float(Save.get_setting("master_volume", 0.8)),
+		"music_volume": float(Save.get_setting("music_volume", 0.7)),
+		"fullscreen": bool(Save.get_setting("fullscreen", false)),
+		"language": String(Save.get_setting("language", "zh")),
+	}
+
+
+func _handle_settings_input(event: InputEvent) -> void:
+	if not (event is InputEventKey) or not event.pressed or event.echo:
+		return
+	var rows := hud.settings_row_count()
+	match event.keycode:
+		KEY_UP:
+			hud.settings_index = (hud.settings_index - 1 + rows) % rows
+		KEY_DOWN:
+			hud.settings_index = (hud.settings_index + 1) % rows
+		KEY_LEFT:
+			_adjust_setting(hud.settings_index, -1)
+		KEY_RIGHT:
+			_adjust_setting(hud.settings_index, 1)
+		KEY_ENTER, KEY_KP_ENTER, KEY_SPACE:
+			_activate_setting(hud.settings_index)
+		KEY_ESCAPE:
+			_close_settings()
+
+
+func _adjust_setting(index: int, direction: int) -> void:
+	if Save == null:
+		return
+	match index:
+		1:
+			var master := clampf(float(Save.get_setting("master_volume", 0.8)) + 0.1 * direction, 0.0, 1.0)
+			Save.set_setting("master_volume", master)
+		2:
+			var music := clampf(float(Save.get_setting("music_volume", 0.7)) + 0.1 * direction, 0.0, 1.0)
+			Save.set_setting("music_volume", music)
+		3:
+			Save.set_setting("fullscreen", not bool(Save.get_setting("fullscreen", false)))
+		4:
+			_toggle_language()
+	_sync_settings_values()
+
+
+func _activate_setting(index: int) -> void:
+	match index:
+		0:
+			_close_settings()
+		3:
+			Save.set_setting("fullscreen", not bool(Save.get_setting("fullscreen", false)))
+		4:
+			_toggle_language()
+		5:
+			_close_settings()
+			_restart()
+		6:
+			_close_settings()
+			_back_to_menu()
+	if index in [3, 4]:
+		_sync_settings_values()
+
+
+func _toggle_language() -> void:
+	if Save == null:
+		return
+	var current := String(Save.get_setting("language", "zh"))
+	Save.set_setting("language", "en" if current == "zh" else "zh")
+	_refresh_mode_bests()
 
 
 func _handle_week_input(event: InputEvent) -> void:
@@ -142,7 +301,6 @@ func _choose_upgrade(index: int) -> void:
 	simulation.choose_upgrade(index)
 	hud.hide_week()
 	if simulation.interchange_pending:
-		# 换乘站卡：先收起弹窗，让玩家在地图上点选目标车站
 		hud.show_station_pick()
 		if editor != null:
 			editor.set_process_unhandled_input(false)
@@ -151,11 +309,52 @@ func _choose_upgrade(index: int) -> void:
 		editor.set_process_unhandled_input(true)
 
 
+func _handle_station_pick(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_ESCAPE:
+			_cancel_station_pick()
+		return
+	if not (event is InputEventMouseButton) or not event.pressed:
+		return
+	if event.button_index == MOUSE_BUTTON_RIGHT:
+		_cancel_station_pick()
+		return
+	if event.button_index != MOUSE_BUTTON_LEFT:
+		return
+	var pos := get_global_mouse_position()
+	var st := network.station_at(pos, Shape.STATION_RADIUS + 8.0)
+	if st != null and st.capacity <= 6 and simulation.upgrade_station(st.id):
+		Audio.play("upgrade")
+		hud.hide_station_pick()
+		if editor != null:
+			editor.set_process_unhandled_input(true)
+	else:
+		hud.show_toast(Loc.t("请点击一座容量为 6 的车站", "Pick a station with capacity 6"))
+
+
+func _cancel_station_pick() -> void:
+	if simulation == null:
+		return
+	var st := simulation.cancel_interchange()
+	hud.hide_station_pick()
+	if editor != null:
+		editor.set_process_unhandled_input(true)
+	if st != null:
+		hud.show_toast(Loc.t("已自动升级最拥挤的车站", "Upgraded the busiest station"))
+
+
+# ---------------------------------------------------------------------------
+# 世界 / UI 装配
+# ---------------------------------------------------------------------------
+
 func _on_game_over(_station: Station) -> void:
 	Game.paused = true
 	Audio.play("gameover")
+	var score := 0 if simulation == null else simulation.score
+	if Save != null:
+		Save.record_run(Game.mode_key, score, Game.daily_date)
 	if hud != null:
-		hud.show_game_over(0 if simulation == null else simulation.score)
+		hud.show_game_over(score, maxi(score, _best_for_mode()))
 
 
 func _on_passengers_delivered(station: Station, count: int) -> void:
@@ -171,7 +370,6 @@ func _on_overload_started(station: Station) -> void:
 
 
 func _on_station_added(_station: Station) -> void:
-	# 演示布局是一次性批量生成的，不逐个播放出现音
 	if _demo:
 		return
 	Audio.play("station")
@@ -246,6 +444,7 @@ func _build_ui() -> void:
 	ui.add_child(hud)
 	hud.setup(network, level)
 	editor.toast_requested.connect(hud.show_toast)
+	editor.settings_requested.connect(_open_settings)
 
 	var grain_layer := CanvasLayer.new()
 	grain_layer.name = "Grain"
@@ -261,6 +460,10 @@ func _build_ui() -> void:
 	grain_layer.add_child(grain)
 
 
+# ---------------------------------------------------------------------------
+# 开局内容 / 演示姿态
+# ---------------------------------------------------------------------------
+
 func _start_session() -> void:
 	if _pose == "week":
 		level.week_seconds = 7.0
@@ -270,19 +473,25 @@ func _start_session() -> void:
 	simulation.passengers_delivered.connect(_on_passengers_delivered)
 	simulation.overload_started.connect(_on_overload_started)
 	network.station_added.connect(_on_station_added)
+
 	if _demo:
 		DemoSetup.build(network, level, 2 if _pose == "draft" else 3)
 		DemoSetup.seed_passengers(network)
 		_advance_sim(480)
-		if _pose == "draft":
-			# 从一座新站起手画线，先吸到已有站再拖向空中，展示"飞线"
+		_apply_pose()
+	else:
+		simulation.spawner.spawn_initial(network, level.start_station_count)
+
+
+func _apply_pose() -> void:
+	match _pose:
+		"draft":
 			var st := network.add_station(Vector2(1300, 880), Shape.Kind.TRIANGLE)
 			editor.begin_gesture(st.pos)
 			editor.move_gesture(Vector2(1470, 720))
 			editor.move_gesture(Vector2(1080, 520))
 			editor.set_process_unhandled_input(false)
-		elif _pose == "insert":
-			# 摆出"拖动线段插入车站"的姿态
+		"insert":
 			var line: MetroLine = network.lines[0]
 			var offs := line.geometry.stop_offsets
 			var mid := Vector2.ZERO
@@ -294,8 +503,7 @@ func _start_session() -> void:
 			editor.begin_gesture(mid)
 			editor.move_gesture(network.stations[6].pos)
 			editor.set_process_unhandled_input(false)
-		elif _pose == "riders":
-			# 摆出"列车满载乘客行驶中"的姿态（直接给 1 号线列车装 6 名乘客）
+		"riders":
 			var line: MetroLine = network.lines[0]
 			if not line.trains.is_empty() and line.stops.size() >= 4:
 				var train: Train = line.trains[0]
@@ -310,15 +518,24 @@ func _start_session() -> void:
 				train.state = Train.State.MOVING
 				train.line_version = line.version
 			editor.set_process_unhandled_input(false)
-		elif _pose == "interchange":
-			# 把一座换乘站升级到 12 容量，展示更大的站点图标
+		"interchange":
 			var st: Station = network.stations[6]
 			st.capacity = 12
 			for i in 5:
 				st.waiting.append(Passenger.new(Shape.Kind.SQUARE))
 			_advance_sim(90)
-		elif _pose == "pick":
-			# 摆出"换乘站选点"状态：模拟暂停 + 高亮所有容量 6 的车站
+		"overload":
+			var st := network.add_station(Vector2(1450, 900), Shape.Kind.DIAMOND)
+			for i in 9:
+				st.waiting.append(Passenger.new(Shape.Kind.CIRCLE))
+			_advance_sim(420)
+		"gameover":
+			level.overload_grace = 3.0
+			var st := network.add_station(Vector2(1450, 900), Shape.Kind.DIAMOND)
+			for i in 9:
+				st.waiting.append(Passenger.new(Shape.Kind.CIRCLE))
+			_advance_sim(300)
+		"pick":
 			simulation.week_pending = true
 			simulation.pending_cards.clear()
 			simulation.pending_cards.append(UpgradeCards.get_card("interchange"))
@@ -326,27 +543,24 @@ func _start_session() -> void:
 			hud.hide_week()
 			hud.show_station_pick()
 			editor.set_process_unhandled_input(false)
-		elif _pose == "overload":
-			# 一座没有线路的站 + 超容等待乘客，展示红色超载计时环
-			var st := network.add_station(Vector2(1450, 900), Shape.Kind.DIAMOND)
-			for i in 9:
-				st.waiting.append(Passenger.new(Shape.Kind.CIRCLE))
-			_advance_sim(420)
-		elif _pose == "gameover":
-			# 缩短宽限期并制造拥堵，截"游戏结束"界面
-			level.overload_grace = 3.0
-			var st := network.add_station(Vector2(1450, 900), Shape.Kind.DIAMOND)
-			for i in 9:
-				st.waiting.append(Passenger.new(Shape.Kind.CIRCLE))
-			_advance_sim(300)
-	else:
-		simulation.spawner.spawn_initial(network, level.start_station_count)
+		"settings":
+			Game.paused = true
+			hud.show_settings()
+			_sync_settings_values()
+			editor.set_process_unhandled_input(false)
+		_:
+			pass
 
 
 func _advance_sim(ticks: int) -> void:
 	for i in ticks:
-		simulation.tick(Simulation.STEP)
+		if simulation != null:
+			simulation.tick(Simulation.STEP)
 
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
 
 func _parse_args() -> void:
 	for arg in OS.get_cmdline_user_args():
@@ -358,12 +572,17 @@ func _parse_args() -> void:
 			_smoke_ticks = int(arg.trim_prefix("--smoke="))
 		elif arg.begins_with("--pose="):
 			_pose = arg.trim_prefix("--pose=")
+		elif arg.begins_with("--mode="):
+			_mode_arg = GameMode.from_key(arg.trim_prefix("--mode="))
+		elif arg.begins_with("--lang="):
+			_lang_arg = arg.trim_prefix("--lang=")
 		elif arg == "--demo":
 			_demo = true
 
 
 func _print_stats() -> void:
-	print("SMOKE_OK stations=%d lines=%d trains=%d delivered=%d waiting=%d seed=%d" % [
+	print("SMOKE_OK mode=%s stations=%d lines=%d trains=%d delivered=%d waiting=%d seed=%d" % [
+		Game.mode_key,
 		network.stations.size(),
 		network.lines.size(),
 		network.train_count(),
@@ -375,13 +594,13 @@ func _print_stats() -> void:
 
 func _run_smoke() -> void:
 	await get_tree().process_frame
-	_advance_sim(_smoke_ticks)
+	if simulation != null:
+		_advance_sim(_smoke_ticks)
 	_print_stats()
 	get_tree().quit(0)
 
 
 func _capture_and_quit() -> void:
-	# 等站点弹出动画播完再截
 	await get_tree().create_timer(0.45).timeout
 	await RenderingServer.frame_post_draw
 	var image := get_viewport().get_texture().get_image()

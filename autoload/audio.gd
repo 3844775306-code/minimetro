@@ -6,6 +6,8 @@ var _sfx := {}
 var _players: Array[AudioStreamPlayer] = []
 var _next := 0
 var _music: AudioStreamPlayer = null
+var _master_volume := 0.8
+var _music_volume := 0.7
 
 
 func _ready() -> void:
@@ -28,6 +30,16 @@ func play(sound: String) -> void:
 	_next = (_next + 1) % _players.size()
 	player.stream = _sfx[sound]
 	player.play()
+
+
+## 应用音量设置（0~1 线性）；headless 下播放器为空，直接跳过。
+func apply_volumes(master: float, music: float) -> void:
+	_master_volume = clampf(master, 0.0, 1.0)
+	_music_volume = clampf(music, 0.0, 1.0)
+	for player in _players:
+		player.volume_db = linear_to_db(maxf(_master_volume, 0.0001))
+	if _music != null:
+		_music.volume_db = linear_to_db(maxf(_master_volume * _music_volume * 0.35, 0.0001))
 
 
 func _exit_tree() -> void:

@@ -12,6 +12,8 @@ const TEST_SCRIPTS := [
 	"res://tests/test_upgrades.gd",
 	"res://tests/test_water.gd",
 	"res://tests/test_audio.gd",
+	"res://tests/test_profile.gd",
+	"res://tests/test_modes.gd",
 ]
 
 
