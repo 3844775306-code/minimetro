@@ -102,6 +102,15 @@ static func _test_legacy_line(h: TestHarness) -> void:
 	h.check(train.legacy_range_end - train.legacy_range_start < line.geometry.total_length,
 		"浅色只覆盖变化段，不是整条线")
 
+	# 视图必须用旧几何采样；否则模型还在旧线上，画面会跳到新线
+	var view := TrainView.new()
+	view.update_from(train, line)
+	var old_pos := train.legacy_geometry.sample(train.dist).origin
+	var new_pos := line.geometry.sample(train.dist).origin
+	h.near(view.position.distance_to(old_pos), 0.0, 0.1, "旧线收尾时列车视图使用旧几何")
+	h.check(old_pos.distance_to(new_pos) > 5.0, "测试场景新旧几何位置确实不同")
+	view.free()
+
 	var start_dist := train.dist
 	var farthest_legacy := start_dist
 	var finished := false

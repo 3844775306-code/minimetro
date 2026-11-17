@@ -25,7 +25,12 @@ var _high_speed := false
 
 
 func update_from(train: Train, line: MetroLine) -> void:
-	var xf := line.geometry.sample(train.dist)
+	# 旧线收尾期间列车沿“编辑前几何”行驶：视图也必须用旧几何采样，
+	# 否则模型在旧线上、画面却跳到了新线上。
+	var geometry := line.geometry
+	if train.legacy_active and train.legacy_geometry != null:
+		geometry = train.legacy_geometry
+	var xf := geometry.sample(train.dist)
 	position = xf.origin
 	# 车头朝向行进方向：反向行驶时整体转 180°，车厢才始终在车尾
 	var angle := xf.x.angle()

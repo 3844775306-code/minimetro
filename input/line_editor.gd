@@ -648,16 +648,23 @@ func _begin_fleet_drag(hit: Dictionary, is_carriage: bool) -> void:
 	state = State.CARRIAGE if is_carriage else State.TRAIN
 
 
-## 光标下的列车（靠近车身中心）。
+## 光标下的列车（靠近车身中心；旧线收尾时按旧几何算位置）。
 func _train_at(pos: Vector2) -> Dictionary:
 	for line in network.lines:
 		if not line.geometry.is_drawable():
 			continue
 		for train in line.trains:
-			var point := line.geometry.sample(train.dist).origin
+			var point := _train_world_position(line, train)
 			if point.distance_to(pos) <= 23.0:
 				return {"line": line, "train": train}
 	return {}
+
+
+func _train_world_position(line: MetroLine, train: Train) -> Vector2:
+	var geometry := line.geometry
+	if train.legacy_active and train.legacy_geometry != null:
+		geometry = train.legacy_geometry
+	return geometry.sample(train.dist).origin
 
 
 ## 光标下的车厢（车厢画在列车尾部，与 TrainView 使用同一套偏移）。
@@ -673,7 +680,10 @@ func _carriage_at(pos: Vector2) -> Dictionary:
 
 
 func _carriage_position(line: MetroLine, train: Train, index: int) -> Vector2:
-	var xf := line.geometry.sample(train.dist)
+	var geometry := line.geometry
+	if train.legacy_active and train.legacy_geometry != null:
+		geometry = train.legacy_geometry
+	var xf := geometry.sample(train.dist)
 	return xf.origin + xf.x.normalized() * -(
 		TrainView.CARRIAGE_FIRST_OFFSET + TrainView.CARRIAGE_SPACING * float(index)
 	)
