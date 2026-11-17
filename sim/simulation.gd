@@ -90,8 +90,29 @@ func hour_of_day() -> float:
 
 ## 白天 06:00~18:00；其余为夜晚（给 HUD 的时钟用）。
 func is_night() -> bool:
-	var hour := hour_of_day()
-	return hour < 6.0 or hour >= 18.0
+	return night_strength(hour_of_day()) >= 0.5
+
+
+## 夜色浓度：18:00~20:00 渐入、05:00~07:00 渐出，其余夜晚为 1、白天为 0。
+static func night_strength(hour: float) -> float:
+	var h := fmod(hour, 24.0)
+	if h >= 20.0 or h < 5.0:
+		return 1.0
+	if h >= 18.0:
+		return (h - 18.0) / 2.0
+	if h < 7.0:
+		return (7.0 - h) / 2.0
+	return 0.0
+
+
+func hour_12() -> int:
+	var h := int(floor(hour_of_day() + 0.0001)) % 24
+	h = h % 12
+	return 12 if h == 0 else h
+
+
+func is_pm() -> bool:
+	return hour_of_day() >= 12.0
 
 
 func day_index() -> int:
@@ -418,6 +439,9 @@ func _update_train(train: Train, line: MetroLine, dt: float) -> void:
 	if remaining <= step:
 		train.dist = train.target_dist
 		train.stop_index = train.target_index
+		# 环线到站后把弧长折回 [0, total)，便于继续从首站出发
+		if line.is_loop and line.geometry.total_length > 0.001:
+			train.dist = fmod(train.dist, line.geometry.total_length)
 		train.state = Train.State.DWELL
 		train.dwell_left = Train.DWELL_TIME
 		_on_station(train, line, line.stops[train.stop_index])
@@ -426,6 +450,17 @@ func _update_train(train: Train, line: MetroLine, dt: float) -> void:
 
 
 func _depart(train: Train, line: MetroLine) -> void:
+	if line.is_loop and line.stops.size() >= 3:
+		# 环线：单向循环，末站下一站是首站（弧长回绕到全长）
+		train.dir = 1
+		var next := (train.stop_index + 1) % line.stops.size()
+		train.target_index = next
+		var target := line.geometry.stop_offsets[next]
+		if target <= train.dist:
+			target += line.geometry.total_length
+		train.target_dist = target
+		train.state = Train.State.MOVING
+		return
 	var next := train.stop_index + train.dir
 	if next < 0 or next >= line.stops.size():
 		train.dir = -train.dir
@@ -479,6 +514,8 @@ func _on_station(train: Train, line: MetroLine, station: Station) -> void:
 
 
 func _next_departure_station_id(train: Train, line: MetroLine) -> int:
+	if line.is_loop and line.stops.size() >= 3:
+		return line.stops[(train.stop_index + 1) % line.stops.size()].id
 	var next := train.stop_index + train.dir
 	if next < 0 or next >= line.stops.size():
 		next = train.stop_index - train.dir

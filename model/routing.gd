@@ -93,6 +93,16 @@ func rebuild(network: MetroNetwork) -> void:
 			var eb: Array = _radj[b]
 			eb.append([a, RIDE_COST])
 			_radj[b] = eb
+		# 环线：末站与首站也要连起来
+		if line.is_loop and nodes.size() >= 3:
+			var first: int = nodes[0]
+			var last: int = nodes[nodes.size() - 1]
+			var ef: Array = _radj[first]
+			ef.append([last, RIDE_COST])
+			_radj[first] = ef
+			var el: Array = _radj[last]
+			el.append([first, RIDE_COST])
+			_radj[last] = el
 
 	# 4) 每个存在的形状跑一次多源 Dijkstra
 	var shapes: Array[int] = []
@@ -270,9 +280,12 @@ func _best_neighbor_station(line: MetroLine, node: int, dist: PackedFloat32Array
 		return -1
 	var best := INF
 	var best_station := -1
+	var loop := line.is_loop and nodes.size() >= 3
 	for step in [-1, 1]:
 		var j: int = pos + step
-		if j < 0 or j >= nodes.size():
+		if loop:
+			j = (j + nodes.size()) % nodes.size()
+		elif j < 0 or j >= nodes.size():
 			continue
 		var d: float = dist[nodes[j]]
 		if d < best:

@@ -76,6 +76,14 @@ static func _test_time(h: TestHarness) -> void:
 	h.near(sim.hour_of_day(), 7.0, 0.02, "24 秒后回到 07:00")
 	h.eq(sim.day_index(), 1, "进入第 1 天")
 
+	h.eq(Simulation.night_strength(12.0), 0.0, "正午没有夜色")
+	h.near(Simulation.night_strength(19.0), 0.5, 0.01, "19:00 夜色渐入一半")
+	h.eq(Simulation.night_strength(23.0), 1.0, "深夜夜色全满")
+	h.near(Simulation.night_strength(6.0), 0.5, 0.01, "06:00 晨光渐出到一半")
+	h.eq(Simulation.night_strength(9.0), 0.0, "上午没有夜色")
+	h.eq(sim.hour_12(), 7, "07:00 显示为 7 点")
+	h.check(not sim.is_pm(), "07:00 是上午")
+
 
 static func _test_train_drag(h: TestHarness) -> void:
 	h.section("fleet/train_drag")

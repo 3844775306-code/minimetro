@@ -217,41 +217,37 @@ func _draw_game_hud(vp: Vector2) -> void:
 		_text_centered(toast_text, vp.x * 0.5, vp.y - 120.0, 22, Color(INK, alpha))
 
 
-## 24 小时制时钟：0 点在上、12 点在下；夜晚半圈涂黑，指针颜色随昼夜反转。
+## 12 小时制时钟：12 点在上、6 点在下；到了夜晚整块表盘变黑、指针变白。
 func _draw_clock(vp: Vector2) -> void:
 	var center := Vector2(vp.x - 94.0, 100.0)
 	var radius := 42.0
-	draw_circle(center, radius, Color("#FBF8F1"))
-	# 夜半球：18:00 → 06:00（经过 0 点，即上半圈）
-	var night := PackedVector2Array()
-	night.append(center)
-	var steps := 30
-	var start_angle := TAU * 18.0 / 24.0
-	for i in range(steps + 1):
-		var a := start_angle + TAU * 0.5 * float(i) / float(steps)
-		night.append(center + Vector2(sin(a), -cos(a)) * radius)
-	draw_colored_polygon(night, Color("#2B2B2B"))
-	# 24 个刻度：夜侧用浅色、昼侧用深色
-	for i in 24:
-		var a := TAU * float(i) / 24.0
+	var strength := Simulation.night_strength(clock_hours)
+	var face := Color("#FBF8F1").lerp(Color("#1C1C1E"), strength)
+	draw_circle(center, radius, face)
+	var hand_color := Color(0.12, 0.13, 0.15, 0.95).lerp(Color(1.0, 1.0, 1.0, 0.95), strength)
+	var tick_color := Color(0.16, 0.17, 0.19, 0.5).lerp(Color(1.0, 1.0, 1.0, 0.55), strength)
+	# 12 个刻度
+	for i in 12:
+		var a := TAU * float(i) / 12.0
 		var dir := Vector2(sin(a), -cos(a))
-		var night_tick := i >= 18 or i < 6
-		var tick_color := Color(1.0, 1.0, 1.0, 0.55) if night_tick else Color(0.16, 0.17, 0.19, 0.5)
-		var inner := radius - (11.0 if i % 6 == 0 else 6.0)
+		var inner := radius - (11.0 if i % 3 == 0 else 6.0)
 		draw_line(center + dir * inner, center + dir * (radius - 2.0), tick_color, 1.6, true)
-	# 时针
-	var hours := fmod(clock_hours, 24.0)
-	var hand_angle := TAU * hours / 24.0
+	# 时针：12 小时一圈
+	var hour12 := fmod(clock_hours, 12.0)
+	var hand_angle := TAU * hour12 / 12.0
 	var hand_dir := Vector2(sin(hand_angle), -cos(hand_angle))
-	var on_night := is_night
-	var hand_color := Color(1.0, 1.0, 1.0, 0.95) if on_night else Color(0.12, 0.13, 0.15, 0.95)
 	draw_line(center, center + hand_dir * (radius - 9.0), hand_color, 3.5, true)
 	draw_circle(center, 4.0, hand_color, true, -1.0, true)
 	draw_arc(center, radius, 0.0, TAU, 48, Color(0.16, 0.17, 0.19, 0.7), 2.5, true)
-	# 数字时间
-	var minutes := int((hours - floor(hours)) * 60.0)
-	_text_centered("%02d:%02d" % [int(hours), mini(minutes, 59)], center.x,
-		center.y + radius + 22.0, 15, Color(MUTED, 0.85))
+	# 数字时间（12 小时制 + 上午/下午）
+	var hour := int(floor(fmod(clock_hours, 24.0) + 0.0001)) % 24
+	var display_hour := hour % 12
+	if display_hour == 0:
+		display_hour = 12
+	var minutes := int((clock_hours - floor(clock_hours)) * 60.0)
+	var suffix := Loc.t("上午", "AM") if hour < 12 else Loc.t("下午", "PM")
+	_text_centered("%02d:%02d %s" % [display_hour, mini(minutes, 59), suffix],
+		center.x, center.y + radius + 22.0, 15, Color(MUTED, 0.85))
 
 
 func _draw_speed_buttons(vp: Vector2) -> void:

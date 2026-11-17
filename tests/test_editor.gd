@@ -13,6 +13,7 @@ static func run(h: TestHarness) -> void:
 	_test_tap_flip(h)
 	_test_drag_insert(h)
 	_test_dwell_remove(h)
+	_test_loop(h)
 
 
 static func _make(level: LevelData) -> Array:
@@ -81,7 +82,9 @@ static func _test_retract_and_rollback(h: TestHarness) -> void:
 	editor.begin_gesture(a.pos)
 	editor.move_gesture(b.pos)
 	editor.move_gesture(a.pos)
-	h.eq(network.lines[0].stops.size(), 1, "拖回上一站回退一段")
+	h.eq(network.lines[0].stops.size(), 2, "拖回上一站不再立即回退（改为停留移出）")
+	editor.advance(LineEditor.DWELL_REMOVE_TIME + 0.1)
+	h.eq(network.lines[0].stops.size(), 1, "停留 1.5s 后才把上一站移出")
 
 	editor.end_gesture(a.pos)
 	h.eq(network.lines.size(), 0, "不足两站的线在抬手时回滚")
@@ -261,4 +264,33 @@ static func _test_dwell_remove(h: TestHarness) -> void:
 	h.check(not line.has_station(a), "被移出的是指针下的站")
 	h.check(line.stops[0] == b and line.stops[1] == c, "其余站序保持")
 	editor.end_gesture(a.pos)
+	editor.free()
+
+
+## 拖回对侧端点松手 → 闭合为环线。
+static func _test_loop(h: TestHarness) -> void:
+	h.section("editor/loop")
+	var level := LevelData.new()
+	var made := _make(level)
+	var network: MetroNetwork = made[0]
+	var editor: LineEditor = made[1]
+	var a := network.add_station(Vector2(300, 300), Shape.Kind.CIRCLE)
+	var b := network.add_station(Vector2(700, 300), Shape.Kind.SQUARE)
+	var c := network.add_station(Vector2(500, 700), Shape.Kind.TRIANGLE)
+
+	h.eq(editor.begin_gesture(a.pos), true, "从 A 开始画线")
+	editor.move_gesture(b.pos)
+	editor.move_gesture(c.pos)
+	h.eq(network.lines[0].stops.size(), 3, "先连成三站折线")
+	editor.move_gesture(a.pos)
+	h.check(editor._loop_candidate, "拖回起点进入可闭合状态")
+	editor.end_gesture(a.pos)
+	var line: MetroLine = network.lines[0]
+	h.check(line.is_loop, "松手后闭合成环线")
+	h.eq(line.stops.size(), 3, "环线仍是三站")
+	h.check(line.geometry.is_drawable(), "环线几何可绘制")
+	var perimeter := line.geometry.total_length
+	h.check(perimeter > 0.0, "环线总长大于 0")
+	h.check(line.geometry.sample(perimeter).origin.distance_to(a.pos) < 1.0,
+		"环线终点回到起点所在位置")
 	editor.free()

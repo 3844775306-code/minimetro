@@ -23,9 +23,10 @@ var stop_offsets := PackedFloat32Array()
 var total_length := 0.0
 
 
-## 按站点顺序重建几何。# flips 的 key 形如 "3>7"（线段起点站 id > 终点站 id）。
-func build(stops: Array[Station], flips: Dictionary = {}) -> void:
-	var raw := octilinear_route(stops, flips)
+## 按站点顺序重建几何。loop=true 时把末站到首站也连起来，形成闭合环线。
+## flips 的 key 形如 "3>7"（线段起点站 id > 终点站 id）。
+func build(stops: Array[Station], flips: Dictionary = {}, loop: bool = false) -> void:
+	var raw := octilinear_route(stops, flips, loop)
 	points = _round_corners(raw)
 	_rebuild_lengths()
 	stop_offsets = PackedFloat32Array()
@@ -46,20 +47,29 @@ static func segment_key(a_id: int, b_id: int) -> String:
 	return "%d>%d" % [a_id, b_id]
 
 
-## 完整八向折线（含站点与折点，未圆角）。
-static func octilinear_route(stops: Array[Station], flips: Dictionary = {}) -> PackedVector2Array:
+## 完整八向折线（含站点与折点，未圆角）。loop=true 时闭合回首站。
+static func octilinear_route(stops: Array[Station], flips: Dictionary = {},
+		loop: bool = false) -> PackedVector2Array:
 	var out := PackedVector2Array()
 	if stops.is_empty():
 		return out
 	out.append(stops[0].pos)
-	for i in range(stops.size() - 1):
-		var a: Vector2 = stops[i].pos
-		var b: Vector2 = stops[i + 1].pos
-		var flipped: bool = flips.has(segment_key(stops[i].id, stops[i + 1].id))
-		for bend in bends_between(a, b, flipped):
-			out.append(bend)
-		out.append(b)
+	var count := stops.size()
+	for i in range(count - 1):
+		_append_pair(out, stops[i], stops[i + 1], flips)
+	if loop and count >= 3:
+		_append_pair(out, stops[count - 1], stops[0], flips)
 	return out
+
+
+static func _append_pair(out: PackedVector2Array, a_station: Station, b_station: Station,
+		flips: Dictionary) -> void:
+	var a: Vector2 = a_station.pos
+	var b: Vector2 = b_station.pos
+	var flipped: bool = flips.has(segment_key(a_station.id, b_station.id))
+	for bend in bends_between(a, b, flipped):
+		out.append(bend)
+	out.append(b)
 
 
 ## 两站之间需要插入的折点（0 或 1 个）。

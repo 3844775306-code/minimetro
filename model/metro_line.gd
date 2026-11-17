@@ -10,6 +10,9 @@ var stops: Array[Station] = []
 ## 每条线段是否翻转弯曲方向（key = LineGeometry.segment_key(起点 id, 终点 id)）。
 var bend_flips := {}
 
+## 环线：末站与首站相连，列车沿着环单向循环。
+var is_loop := false
+
 ## 这条线上的列车（由 Simulation 负责投放 / 回收，也可被玩家拖动换线）。
 var trains: Array[Train] = []
 
@@ -23,7 +26,7 @@ func _init(p_id: int = 0, p_color: Color = Color.WHITE) -> void:
 
 
 func rebuild() -> void:
-	geometry.build(stops, bend_flips)
+	geometry.build(stops, bend_flips, is_loop)
 	version += 1
 
 
@@ -99,9 +102,9 @@ func index_of(st: Station) -> int:
 	return stops.find(st)
 
 
-## 端点：至少 2 站，且是该线首站或末站。
+## 端点：至少 2 站，且是该线首站或末站（环线没有端点）。
 func is_endpoint(st: Station) -> bool:
-	if stops.size() < 2:
+	if is_loop or stops.size() < 2:
 		return false
 	return stops[0] == st or stops[stops.size() - 1] == st
 

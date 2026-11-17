@@ -22,8 +22,9 @@ signal settings_requested
 enum State { IDLE, DRAFT, REORDER, SEGMENT, TRAIN, CARRIAGE }
 
 const SNAP_RADIUS := 32.0
-const HANDLE_HIT_RADIUS := 24.0
-const HANDLE_DISTANCE := 30.0
+## 端点手柄做大一点，更容易抓住
+const HANDLE_HIT_RADIUS := 30.0
+const HANDLE_DISTANCE := 34.0
 const REORDER_SNAP := 52.0
 const REORDER_DEADZONE := 9.0
 const SWAP_COOLDOWN := 0.15
@@ -67,6 +68,8 @@ var _fleet_target_train: Train = null
 
 var _hover_dwell := 0.0
 var _dwell_station: Station = null
+## 拖回对侧端点时进入"可闭合环线"状态：松手成环
+var _loop_candidate := false
 
 var _undo: Array[Dictionary] = []
 
@@ -135,6 +138,7 @@ func begin_gesture(pos: Vector2) -> bool:
 	_segment_line = null
 	_segment_index = -1
 	_segment_dragging = false
+	_loop_candidate = false
 	_fleet_line = null
 	_fleet_train = null
 	_fleet_dragging = false
@@ -184,6 +188,7 @@ func move_gesture(pos: Vector2) -> void:
 		return
 	cursor = pos
 	_refresh_hover(pos)
+	_update_loop_candidate()
 	match state:
 		State.DRAFT:
 			_draft_update()
@@ -208,11 +213,14 @@ func end_gesture(pos: Vector2) -> void:
 	cursor = pos
 	match state:
 		State.DRAFT:
-			var too_short := _draft_line == null or _draft_line.stops.size() < 2
-			if too_short:
-				_restore_pending_undo()
-			elif not _gesture_dirty:
-				_drop_pending_undo()
+			if _loop_candidate and _draft_line != null and _draft_line.stops.size() >= 3:
+				_close_loop()
+			else:
+				var too_short := _draft_line == null or _draft_line.stops.size() < 2
+				if too_short:
+					_restore_pending_undo()
+				elif not _gesture_dirty:
+					_drop_pending_undo()
 		State.REORDER:
 			if not _gesture_dirty:
 				_drop_pending_undo()
@@ -297,15 +305,13 @@ func _begin_reorder(line: MetroLine, st: Station) -> void:
 func _draft_update() -> void:
 	if _draft_line == null or hover_station == null:
 		return
+	if _loop_candidate:
+		return
 	var tip_index := _draft_tip_index()
-	var tip: Station = _draft_line.stops[tip_index]
-	if hover_station == tip:
+	if hover_station == _draft_line.stops[tip_index]:
 		return
 	if _draft_line.has_station(hover_station):
-		var back_index := tip_index + (-1 if not _draft_at_start else 1)
-		var stops := _draft_line.stops
-		if back_index >= 0 and back_index < stops.size() and stops[back_index] == hover_station:
-			_retract()
+		# 已在本线上的站：交给"停留 1.5s 移出"逻辑处理
 		return
 	_extend_with(hover_station)
 
@@ -329,20 +335,33 @@ func _extend_with(st: Station) -> void:
 	_gesture_dirty = true
 
 
-func _retract() -> void:
-	var min_len := _draft_base_len if not _draft_is_new else 1
-	if _draft_line.stops.size() <= min_len:
+## 拖回对侧端点（首站↔末站）时进入"可闭合成环"状态；松手即闭合。
+func _update_loop_candidate() -> void:
+	_loop_candidate = false
+	if state != State.DRAFT or _draft_line == null or hover_station == null:
 		return
+	if _draft_line.is_loop or _draft_line.stops.size() < 3:
+		return
+	var opposite: Station
 	if _draft_at_start:
-		_draft_line.remove_head()
+		opposite = _draft_line.stops[_draft_line.stops.size() - 1]
 	else:
-		_draft_line.remove_tail()
+		opposite = _draft_line.stops[0]
+	if hover_station == opposite:
+		_loop_candidate = true
+
+
+func _close_loop() -> void:
+	if _draft_line == null:
+		return
+	_draft_line.is_loop = true
+	_draft_line.rebuild()
 	network.touch()
 	_gesture_dirty = true
 
 
 # ---------------------------------------------------------------------------
-# 画线时"停留移出站点"
+# 画线时"停留移出站点"（任意已在本线上的站，不限相邻）
 # ---------------------------------------------------------------------------
 
 func _update_dwell(delta: float) -> void:
@@ -350,14 +369,15 @@ func _update_dwell(delta: float) -> void:
 		_hover_dwell = 0.0
 		_dwell_station = null
 		return
+	# 对侧端点既是"闭合环线"的落点，也可以停留 1.5s 把它移出线路
 	if not _draft_line.has_station(hover_station):
 		_hover_dwell = 0.0
 		_dwell_station = null
 		return
 	var tip_index := _draft_tip_index()
 	var idx := _draft_line.stops.find(hover_station)
-	# 指针下的就是笔尖站，或与笔尖相邻（那是"回退"语义）→ 不进入停留删除
-	if idx == tip_index or absi(idx - tip_index) == 1:
+	# 指针下就是笔尖站：不能把笔自己抽掉
+	if idx == tip_index or _draft_line.stops.size() <= 1:
 		_hover_dwell = 0.0
 		_dwell_station = null
 		return
@@ -376,11 +396,12 @@ func _remove_dwelled_station() -> void:
 	if target == null or _draft_line == null:
 		return
 	var idx := _draft_line.stops.find(target)
-	if idx < 0:
+	if idx < 0 or _draft_line.stops.size() <= 1:
 		return
 	_draft_line.remove_stop_at(idx)
 	network.touch()
 	_gesture_dirty = true
+	_loop_candidate = false
 
 
 # ---------------------------------------------------------------------------
@@ -636,7 +657,7 @@ func _handle_at(pos: Vector2) -> MetroLine:
 	if network == null:
 		return null
 	for line in network.lines:
-		if line.stops.size() < 2:
+		if line.stops.size() < 2 or line.is_loop:
 			continue
 		for at_start in [true, false]:
 			var hp := line.geometry.handle_position(at_start, HANDLE_DISTANCE)
@@ -649,6 +670,8 @@ func _handle_at(pos: Vector2) -> MetroLine:
 ## 若不是端点、且在某条线的中间，则返回那条线（用于重排）。
 func _middle_line_of(st: Station) -> MetroLine:
 	for line in network.lines:
+		if line.is_loop:
+			continue
 		if line.is_middle(st):
 			return line
 	return null
@@ -683,6 +706,7 @@ func _snapshot() -> Dictionary:
 			"color": line.color,
 			"stops": ids,
 			"flips": line.bend_flips.duplicate(),
+			"loop": line.is_loop,
 		})
 	return {"lines": lines_data, "next_line_id": network.next_line_id}
 
@@ -711,6 +735,7 @@ func _apply_snapshot(snap: Dictionary) -> void:
 				line.stops.append(st)
 		var flips: Dictionary = entry.get("flips", {})
 		line.bend_flips = flips
+		line.is_loop = bool(entry.get("loop", false))
 		line.rebuild()
 		network.lines.append(line)
 	network.next_line_id = int(snap["next_line_id"])
@@ -729,6 +754,7 @@ func _reset_gesture() -> void:
 	_segment_line = null
 	_segment_index = -1
 	_segment_dragging = false
+	_loop_candidate = false
 	_fleet_line = null
 	_fleet_train = null
 	_fleet_dragging = false
@@ -778,6 +804,14 @@ func _draw_draft_preview() -> void:
 	for i in range(preview.size() - 1):
 		draw_dashed_line(preview[i], preview[i + 1], Color(col, 0.9), 8.0, 14.0, true, true)
 	draw_circle(to, 7.0, Color(col, 0.95), true, -1.0, true)
+	if _loop_candidate and _draft_line != null and _draft_line.stops.size() >= 3:
+		var opposite: Station
+		if _draft_at_start:
+			opposite = _draft_line.stops[_draft_line.stops.size() - 1]
+		else:
+			opposite = _draft_line.stops[0]
+		draw_arc(opposite.pos, Shape.STATION_RADIUS + 20.0, 0.0, TAU, 48,
+			Color(_draft_line.color, 0.9), 3.0, true)
 	if _dwell_station != null and _hover_dwell > 0.0:
 		var t: float = clampf(_hover_dwell / DWELL_REMOVE_TIME, 0.0, 1.0)
 		draw_arc(_dwell_station.pos, Shape.STATION_RADIUS + 19.0, -PI * 0.5,
@@ -828,13 +862,14 @@ func _draw_carriage_drag_preview() -> void:
 				break
 
 
-func _draw_endpoint_handles() -> void:	for line in network.lines:
-		if line.stops.size() < 2:
+func _draw_endpoint_handles() -> void:
+	for line in network.lines:
+		if line.stops.size() < 2 or line.is_loop:
 			continue
 		for at_start in [true, false]:
 			var hp := line.geometry.handle_position(at_start, HANDLE_DISTANCE)
-			draw_circle(hp, 6.5, Color.WHITE, true, -1.0, true)
-			draw_arc(hp, 6.5, 0.0, TAU, 24, Color(line.color, 0.95), 3.0, true)
+			draw_circle(hp, 9.5, Color.WHITE, true, -1.0, true)
+			draw_arc(hp, 9.5, 0.0, TAU, 32, Color(line.color, 0.95), 3.5, true)
 
 
 ## 不在场景树里时（单元测试直接 new 出来）跳过重绘请求。
