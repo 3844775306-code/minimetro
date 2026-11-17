@@ -7,8 +7,8 @@ const INK := Color("#2B2B2B")
 const MUTED := Color("#7C7568")
 const PAPER := Color("#FBF8F1")
 const WATER := Color("#CFE4EA")
-const CHIP_W := 38.0
-const CHIP_H := 11.0
+const CHIP_W := 46.0
+const CHIP_H := 13.0
 const CHIP_GAP := 12.0
 
 var network: MetroNetwork = null
@@ -200,7 +200,7 @@ func _draw() -> void:
 
 func _draw_game_hud(vp: Vector2) -> void:
 	# 减负版 HUD：左上只留线色/库存，右上不再画面板（避免挡地图）
-	_draw_panel(Rect2(34.0, 66.0, 486.0, 104.0))
+	_draw_panel(Rect2(34.0, 46.0, 720.0, 156.0))
 	if map_name != "":
 		_text_centered(map_name, vp.x * 0.5, 54.0, 22, Color(MUTED, 0.8))
 	_draw_clock(vp)
@@ -335,7 +335,7 @@ func speed_button_at(pos: Vector2) -> int:
 
 func _draw_resource_slots(vp: Vector2) -> void:
 	var used := 0 if network == null else network.lines.size()
-	var y := 100.0
+	var y := 88.0
 	for i in level.start_lines:
 		var x := 64.0 + float(i) * (CHIP_W + CHIP_GAP)
 		if i < used:
@@ -344,56 +344,73 @@ func _draw_resource_slots(vp: Vector2) -> void:
 			_draw_capsule_outline(Vector2(x, y),
 				Color(level.line_colors[i % level.line_colors.size()], 0.32), CHIP_W, CHIP_H)
 
-	# 第二行：可拖拽的库存图标（列车 / 车厢 / 换乘中心）+ 桥梁余量
-	var row_y := 146.0
+	# 第二行：可拖拽的库存图标（列车 / 车厢 / 换乘中心 / 新干线）+ 桥梁余量
+	var row_y := 140.0
 	_stock_rects = {}
 	var slots := [
-		{"kind": "train", "x": 118.0, "label": Loc.t("列车", "Trains")},
-		{"kind": "carriage", "x": 226.0, "label": Loc.t("车厢", "Cars")},
-		{"kind": "interchange", "x": 334.0, "label": Loc.t("换乘", "Transfer")},
+		{"kind": "train", "x": 100.0, "label": Loc.t("列车", "Trains")},
+		{"kind": "carriage", "x": 250.0, "label": Loc.t("车厢", "Cars")},
+		{"kind": "interchange", "x": 400.0, "label": Loc.t("换乘", "Transfer")},
+		{"kind": "express", "x": 550.0, "label": Loc.t("新干线", "Shinkansen")},
 	]
 	for slot in slots:
 		var kind := String(slot["kind"])
 		var center := Vector2(float(slot["x"]), row_y)
 		var count := int(stock_counts.get(kind, 0))
 		_draw_stock_icon(kind, center, count > 0)
-		_text("x%d" % count, Vector2(center.x + 24.0, row_y + 6.0), 18,
-			Color(INK, 0.8) if count > 0 else Color(MUTED, 0.5))
-		_stock_rects[kind] = Rect2(center - Vector2(17.0, 15.0), Vector2(60.0, 30.0))
+		_text("x%d" % count, Vector2(center.x + 34.0, row_y + 8.0), 22,
+			Color(INK, 0.85) if count > 0 else Color(MUTED, 0.5))
+		_stock_rects[kind] = Rect2(center - Vector2(34.0, 23.0), Vector2(82.0, 46.0))
 
 	# 桥梁不是库存，是预算：画桥图标 + 已用/上限
-	var bridge_center := Vector2(452.0, row_y)
+	var bridge_center := Vector2(690.0, row_y)
 	_draw_stock_icon("bridge", bridge_center, true)
 	var bridges := 0 if network == null else network.used_bridges()
-	_text("%d/%d" % [bridges, level.start_bridges], Vector2(bridge_center.x + 24.0, row_y + 6.0),
-		18, Color(INK, 0.75))
+	_text("%d/%d" % [bridges, level.start_bridges], Vector2(bridge_center.x + 34.0, row_y + 8.0),
+		22, Color(INK, 0.75))
 
 
-## 左上角库存图标：列车 / 车厢 / 换乘中心 / 桥梁。
+## 左上角库存图标：列车 / 车厢 / 换乘中心 / 新干线 / 桥梁。
 func _draw_stock_icon(kind: String, center: Vector2, enabled: bool) -> void:
 	var ink := Color(INK, 0.9) if enabled else Color(MUTED, 0.45)
 	var paper := Color(PAPER, 0.95) if enabled else Color(PAPER, 0.5)
 	match kind:
 		"train":
-			_draw_capsule(center, paper, 30.0, 15.0)
-			_draw_capsule_outline(center, ink, 30.0, 15.0)
-			draw_rect(Rect2(center + Vector2(5.0, -5.0), Vector2(8.0, 10.0)), Color(ink, 0.25))
-			draw_rect(Rect2(center + Vector2(7.0, -3.0), Vector2(4.0, 6.0)), ink)
+			_draw_capsule(center, paper, 42.0, 21.0)
+			_draw_capsule_outline(center, ink, 42.0, 21.0)
+			draw_rect(Rect2(center + Vector2(7.0, -7.0), Vector2(11.0, 14.0)), Color(ink, 0.25))
+			draw_rect(Rect2(center + Vector2(10.0, -4.0), Vector2(5.0, 8.0)), ink)
 		"carriage":
-			var rect := Rect2(center - Vector2(8.0, 10.0), Vector2(16.0, 20.0))
-			draw_rect(rect, paper)
-			draw_rect(rect, ink, false, 2.0)
-			draw_rect(Rect2(rect.position + Vector2(3.5, 5.0), Vector2(9.0, 4.0)), Color(ink, 0.35))
+			_draw_capsule(center, paper, 30.0, 19.0)
+			_draw_capsule_outline(center, ink, 30.0, 19.0)
+			draw_rect(Rect2(center + Vector2(-9.0, -4.0), Vector2(7.0, 8.0)), Color(ink, 0.28))
+			draw_rect(Rect2(center + Vector2(2.0, -4.0), Vector2(7.0, 8.0)), Color(ink, 0.28))
 		"interchange":
-			draw_circle(center, 12.0, paper, true, -1.0, true)
-			draw_arc(center, 12.0, 0.0, TAU, 32, ink, 2.4, true)
-			draw_circle(center, 5.5, Color(ink, 0.18), true, -1.0, true)
-			draw_arc(center, 5.5, 0.0, TAU, 24, ink, 2.0, true)
+			draw_circle(center, 17.0, paper, true, -1.0, true)
+			draw_arc(center, 17.0, 0.0, TAU, 32, ink, 2.8, true)
+			draw_circle(center, 8.0, Color(ink, 0.18), true, -1.0, true)
+			draw_arc(center, 8.0, 0.0, TAU, 24, ink, 2.2, true)
+		"express":
+			# 新干线：更长的胶囊 + 尖头 + 两道速度线
+			_draw_capsule(center + Vector2(-3.0, 0.0), paper, 46.0, 18.0)
+			_draw_capsule_outline(center + Vector2(-3.0, 0.0), ink, 46.0, 18.0)
+			draw_colored_polygon(PackedVector2Array([
+				center + Vector2(20.0, -9.0), center + Vector2(30.0, 0.0),
+				center + Vector2(20.0, 9.0),
+			]), paper)
+			draw_polyline(DrawUtil.closed(PackedVector2Array([
+				center + Vector2(20.0, -9.0), center + Vector2(30.0, 0.0),
+				center + Vector2(20.0, 9.0),
+			])), ink, 2.2, true)
+			draw_line(center + Vector2(-20.0, -4.0), center + Vector2(6.0, -4.0),
+				Color(1.0, 1.0, 1.0, 0.75), 2.0, true)
+			draw_line(center + Vector2(-23.0, 4.0), center + Vector2(3.0, 4.0),
+				Color(1.0, 1.0, 1.0, 0.55), 2.0, true)
 		"bridge":
-			draw_line(center + Vector2(-13.0, 6.0), center + Vector2(13.0, 6.0), ink, 2.6, true)
-			draw_arc(center + Vector2(0.0, 6.0), 13.0, PI, TAU, 24, ink, 2.2, true)
-			draw_line(center + Vector2(-9.0, 6.0), center + Vector2(-9.0, 12.0), ink, 2.2, true)
-			draw_line(center + Vector2(9.0, 6.0), center + Vector2(9.0, 12.0), ink, 2.2, true)
+			draw_line(center + Vector2(-16.0, 8.0), center + Vector2(16.0, 8.0), ink, 3.2, true)
+			draw_arc(center + Vector2(0.0, 8.0), 16.0, PI, TAU, 24, ink, 2.8, true)
+			draw_line(center + Vector2(-11.0, 8.0), center + Vector2(-11.0, 15.0), ink, 2.6, true)
+			draw_line(center + Vector2(11.0, 8.0), center + Vector2(11.0, 15.0), ink, 2.6, true)
 
 
 ## 点中了哪个库存图标："train" / "carriage" / "interchange" / ""。

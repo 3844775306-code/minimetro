@@ -604,6 +604,15 @@ func _draw_stock_preview() -> void:
 			var body := Vector2(56.0, 28.0)
 			draw_rect(Rect2(cursor - body * 0.5, body), Color(paper, 0.85))
 			draw_rect(Rect2(cursor - body * 0.5, body), Color(ink, 0.85), false, 2.5)
+		"express":
+			var body := Vector2(66.0, 24.0)
+			draw_rect(Rect2(cursor - body * 0.5, body), Color(paper, 0.85))
+			draw_rect(Rect2(cursor - body * 0.5, body), Color(ink, 0.85), false, 2.5)
+			draw_colored_polygon(PackedVector2Array([
+				cursor + Vector2(body.x * 0.5, -body.y * 0.5),
+				cursor + Vector2(body.x * 0.5 + 10.0, 0.0),
+				cursor + Vector2(body.x * 0.5, body.y * 0.5),
+			]), Color(paper, 0.85))
 		"carriage":
 			var rect := Rect2(cursor - Vector2(10.0, 11.0), Vector2(20.0, 22.0))
 			draw_rect(rect, Color(paper, 0.85))

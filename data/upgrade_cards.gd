@@ -20,6 +20,14 @@ const CARDS := {
 		"desc_en": "Add a train, shorter waits",
 		"weight": 4.0,
 	},
+	"express": {
+		"id": "express",
+		"title_zh": "新干线",
+		"title_en": "Shinkansen",
+		"desc_zh": "一列最高速为普通列车 2 倍的高速列车（入库后拖到线路上）",
+		"desc_en": "A high-speed train with 2x top speed (drag it onto a line)",
+		"weight": 1.2,
+	},
 	"carriage": {
 		"id": "carriage",
 		"title_zh": "车厢",

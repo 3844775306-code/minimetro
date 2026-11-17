@@ -76,6 +76,7 @@ func _process(delta: float) -> void:
 		hud.weekday = "" if simulation == null else simulation.weekday_name()
 		hud.stock_counts = {
 			"train": 0 if simulation == null else simulation.inventory_trains,
+			"express": 0 if simulation == null else simulation.inventory_high_speed,
 			"carriage": 0 if simulation == null else simulation.inventory_carriages,
 			"interchange": 0 if simulation == null else simulation.inventory_interchanges,
 		}
@@ -199,6 +200,7 @@ func _input(event: InputEvent) -> void:
 			var count := 0
 			match stock:
 				"train": count = simulation.inventory_trains
+				"express": count = simulation.inventory_high_speed
 				"carriage": count = simulation.inventory_carriages
 				"interchange": count = simulation.inventory_interchanges
 			if count > 0 and editor.begin_stock_drag(stock, get_global_mouse_position()):
@@ -423,6 +425,12 @@ func _on_stock_drop(kind: String, pos: Vector2) -> void:
 				Audio.play("board")
 			else:
 				hud.show_toast(Loc.t("把列车拖到一条线路上", "Drop the train onto a line"))
+		"express":
+			ok = simulation.place_train(simulation.nearest_line(pos), pos, true)
+			if ok:
+				Audio.play("board")
+			else:
+				hud.show_toast(Loc.t("把新干线拖到一条线路上", "Drop the Shinkansen onto a line"))
 		"carriage":
 			ok = simulation.place_carriage(pos)
 			if ok:
@@ -859,6 +867,14 @@ func _apply_pose() -> void:
 				train.state = Train.State.DWELL
 				_advance_sim(20)
 				editor.set_process_unhandled_input(false)
+		"express":
+			# 演示：新干线 + 放大后的资源图标
+			simulation.inventory_high_speed = 2
+			if network.lines.size() >= 2:
+				var line: MetroLine = network.lines[1]
+				var mid := line.geometry.sample(line.geometry.total_length * 0.5).origin
+				simulation.place_train(line, mid, true)
+			_advance_sim(30)
 		"paused":
 			Game.paused = true
 			hud.paused = true

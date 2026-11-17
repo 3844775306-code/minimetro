@@ -5,6 +5,8 @@ static func run(h: TestHarness) -> void:
 	_test_time(h)
 	_test_train_drag(h)
 	_test_carriage_drag(h)
+	_test_express(h)
+	_test_interchange_dwell(h)
 
 
 static func _make_level() -> LevelData:
@@ -128,6 +130,66 @@ static func _test_train_drag(h: TestHarness) -> void:
 	h.eq(a.waiting.size(), 1, "车上的乘客在最近站下车等待")
 	h.eq(editor.state, LineEditor.State.IDLE, "拖动结束回到 IDLE")
 	editor.free()
+
+
+static func _test_express(h: TestHarness) -> void:
+	h.section("fleet/express")
+	var level := _make_level()
+	var made := _make_net(level)
+	var net: MetroNetwork = made[0]
+	var l1: MetroLine = made[1]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 9
+	var sim := Simulation.new(net, level, rng)
+	sim.auto_spawn = false
+	sim.inventory_high_speed = 1
+	h.check(sim.place_train(l1, Vector2(500, 300), true), "把库存新干线放到线路上")
+	h.eq(sim.inventory_high_speed, 0, "新干线库存扣减")
+	h.eq(l1.trains.size(), 1, "线路上多了一列车")
+	var train: Train = l1.trains[0]
+	h.check(train.high_speed, "列车标记为新干线")
+	h.near(train.speed_limit(), Train.MAX_SPEED * 2.0, 0.01, "新干线最高速是普通车 2 倍")
+	sim.apply_upgrade("express")
+	h.eq(sim.inventory_high_speed, 1, "新干线奖励卡入库")
+
+
+## 换乘枢纽（容量 12）上下客间隔 0.3s。
+static func _test_interchange_dwell(h: TestHarness) -> void:
+	h.section("fleet/interchange_dwell")
+	var level := _make_level()
+	var net := MetroNetwork.new(level)
+	var a := net.add_station(Vector2(300, 300), Shape.Kind.CIRCLE)
+	var b := net.add_station(Vector2(800, 300), Shape.Kind.SQUARE)
+	b.capacity = 12
+	var line := net.create_line()
+	line.add_stop(a)
+	line.add_stop(b)
+	net.touch()
+	for i in 3:
+		b.waiting.append(Passenger.new(Shape.Kind.CIRCLE))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3
+	var sim := Simulation.new(net, level, rng)
+	sim.auto_spawn = false
+	var train := _make_train(line)
+	train.dist = line.geometry.stop_offsets[1]
+	train.stop_index = 1
+	train.target_index = 0
+	train.line_version = line.version
+	# 先跑一 tick，让寻路缓存建立，再手动开始停站
+	sim.tick(Simulation.STEP)
+	sim._begin_stop(train, line, b)
+	h.near(train.action_interval, Train.DWELL_PER_PASSENGER_INTERCHANGE, 0.001,
+		"换乘枢纽每名乘客间隔 0.3s")
+	h.near(train.dwell_left, 3.0 * Train.DWELL_PER_PASSENGER_INTERCHANGE, 0.001,
+		"换乘枢纽总停站时间 = 0.3s × 人数")
+	h.eq(train.riders.size(), 1, "第一名立即上车")
+	for i in 10:
+		sim.tick(Simulation.STEP)
+	h.eq(train.riders.size(), 1, "0.16s 后仍只有 1 名")
+	for i in 10:
+		sim.tick(Simulation.STEP)
+	h.eq(train.riders.size(), 2, "0.33s 时第 2 名上车")
 
 
 static func _test_carriage_drag(h: TestHarness) -> void:

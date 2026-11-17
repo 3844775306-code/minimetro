@@ -21,6 +21,7 @@ var _drawn_color := Color.TRANSPARENT
 var _riders: Array[Passenger] = []
 var _rider_signature := -1
 var _carriages := 0
+var _high_speed := false
 
 
 func update_from(train: Train, line: MetroLine) -> void:
@@ -33,6 +34,7 @@ func update_from(train: Train, line: MetroLine) -> void:
 	rotation = angle
 	_riders = train.riders
 	_carriages = train.carriages
+	_high_speed = train.high_speed
 	var signature := _make_rider_signature(train)
 	if line.color != _drawn_color or signature != _rider_signature:
 		_drawn_color = line.color
@@ -42,7 +44,7 @@ func update_from(train: Train, line: MetroLine) -> void:
 
 func _make_rider_signature(train: Train) -> int:
 	var count := mini(train.riders.size(), train.capacity)
-	var signature := count * 131 + train.carriages
+	var signature := count * 131 + train.carriages * 7 + (1 if train.high_speed else 0)
 	for i in count:
 		signature = (signature * 31 + train.riders[i].target_shape) & 0x7fffffff
 	return signature
@@ -59,9 +61,10 @@ func _draw() -> void:
 ## 车头：纸色鼻锥 + 深色驾驶室 + 挡风玻璃 + 车灯，能明显看出行进方向。
 func _draw_cab() -> void:
 	var half := BODY * 0.5
+	var tip := 10.0 if _high_speed else 3.0
 	var nose := PackedVector2Array([
 		Vector2(half.x - 7.0, -half.y + 3.0),
-		Vector2(half.x + 3.0, 0.0),
+		Vector2(half.x + tip, 0.0),
 		Vector2(half.x - 7.0, half.y - 3.0),
 	])
 	draw_colored_polygon(nose, PAPER)
@@ -71,6 +74,12 @@ func _draw_cab() -> void:
 	draw_rect(Rect2(Vector2(half.x - 20.0, -7.5), Vector2(8.0, 15.0)),
 		Color(1.0, 1.0, 1.0, 0.85))
 	draw_circle(Vector2(half.x - 6.0, 0.0), 3.2, Color(1.0, 1.0, 0.86, 0.95))
+	if _high_speed:
+		# 新干线涂装：两侧白色速度线 + 更深色的车顶
+		draw_line(Vector2(-half.x + 10.0, -half.y + 6.0),
+			Vector2(half.x - 10.0, -half.y + 6.0), Color(1.0, 1.0, 1.0, 0.55), 2.0, true)
+		draw_line(Vector2(-half.x + 14.0, half.y - 7.0),
+			Vector2(half.x - 8.0, half.y - 7.0), Color(1.0, 1.0, 1.0, 0.45), 2.0, true)
 
 
 ## 车厢：和车体同款的圆角胶囊（纸色描边 + 线路色），没有车头；车内也画乘客。

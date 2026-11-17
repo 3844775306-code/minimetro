@@ -10,8 +10,9 @@ extends RefCounted
 const MAX_SPEED := 126.0
 const ACCEL := 90.0
 const DECEL := 144.0
-## 停站时间与上下车人数成正比：每人 0.5 秒。
+## 停站时间与上下车人数成正比：每人 0.5 秒；换乘枢纽（容量 12）每人 0.3 秒。
 const DWELL_PER_PASSENGER := 0.5
+const DWELL_PER_PASSENGER_INTERCHANGE := 0.3
 const BASE_CAPACITY := 6
 const CARRIAGE_CAPACITY := 6
 
@@ -19,6 +20,8 @@ enum State { MOVING, DWELL }
 
 var id: int = 0
 var line_id: int = 0
+## 新干线：最高速度是一般列车的 2 倍
+var high_speed := false
 
 ## 当前弧长位置与速度（速度不会突变，按 ACCEL/DECEL 变化）。
 var dist: float = 0.0
@@ -27,9 +30,10 @@ var speed: float = 0.0
 var dir: int = 1
 var state: int = State.DWELL
 var dwell_left: float = 0.0
-## 到站后的上下客队列：每人 0.5s，依次执行（视觉上逐个上下）
+## 到站后的上下客队列：每人 0.5s（换乘枢纽 0.3s），依次执行（视觉上逐个上下）
 var stop_actions: Array[Dictionary] = []
 var action_timer: float = 0.0
+var action_interval: float = DWELL_PER_PASSENGER
 
 ## 当前所在站（DWELL）或目标站（MOVING）在下行线的站序。
 var stop_index: int = 0
@@ -63,6 +67,11 @@ var relocate_docked := false
 
 func refresh_capacity() -> void:
 	capacity = BASE_CAPACITY + CARRIAGE_CAPACITY * carriages
+
+
+## 本列车的最高速度（新干线 = 一般车 ×2）。
+func speed_limit() -> float:
+	return MAX_SPEED * (2.0 if high_speed else 1.0)
 
 
 func is_full() -> bool:

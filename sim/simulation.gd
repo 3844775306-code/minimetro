@@ -41,6 +41,7 @@ var pending_cards: Array[Dictionary] = []
 
 ## 可用库存（从图标拖到地图上使用）
 var inventory_trains: int = 0
+var inventory_high_speed: int = 0
 var inventory_carriages: int = 0
 var inventory_interchanges: int = 0
 
@@ -400,7 +401,7 @@ func destination_weights(origin_shape: int) -> Dictionary:
 		weights[origin_shape] = 0.0
 	return weights
 func total_trains_owned() -> int:
-	return inventory_trains + network.train_count()
+	return inventory_trains + inventory_high_speed + network.train_count()
 
 
 func total_carriages_owned() -> int:
@@ -462,6 +463,8 @@ func apply_upgrade(card_id: String) -> void:
 			level.start_lines = mini(level.start_lines + 1, level.max_lines)
 		"train":
 			inventory_trains += 1
+		"express":
+			inventory_high_speed += 1
 		"carriage":
 			inventory_carriages += 1
 		"bridge":
@@ -472,14 +475,23 @@ func apply_upgrade(card_id: String) -> void:
 			push_warning("未知的升级卡: " + card_id)
 
 
-## 从库存拖一辆列车到线路上的任意位置；成功返回 true。
-func place_train(line: MetroLine, pos: Vector2) -> bool:
-	if inventory_trains <= 0 or line == null:
+## 从库存拖一辆列车到线路上的任意位置；high_speed=true 时放入新干线。
+func place_train(line: MetroLine, pos: Vector2, high_speed: bool = false) -> bool:
+	if line == null:
 		return false
+	if high_speed:
+		if inventory_high_speed <= 0:
+			return false
+	else:
+		if inventory_trains <= 0:
+			return false
 	if line.stops.size() < 2 or not line.geometry.is_drawable():
 		return false
-	inventory_trains -= 1
-	_spawn_train_at(line, pos)
+	if high_speed:
+		inventory_high_speed -= 1
+	else:
+		inventory_trains -= 1
+	_spawn_train_at(line, pos, high_speed)
 	return true
 
 
@@ -598,6 +610,7 @@ func _roll_cards() -> Array[Dictionary]:
 		pool.append(UpgradeCards.get_card("line"))
 	if total_trains_owned() < level.max_trains:
 		pool.append(UpgradeCards.get_card("train"))
+		pool.append(UpgradeCards.get_card("express"))
 	if total_carriages_owned() < level.max_carriages * 3:
 		pool.append(UpgradeCards.get_card("carriage"))
 	if level.start_bridges < level.max_bridges:
@@ -745,12 +758,13 @@ func _auto_assign_new_lines() -> void:
 			_spawn_train_at(line, line.stops[0].pos)
 
 
-func _spawn_train_at(line: MetroLine, pos: Vector2) -> void:
+func _spawn_train_at(line: MetroLine, pos: Vector2, high_speed: bool = false) -> void:
 	var train := Train.new()
 	train.id = _train_id
 	_train_id += 1
 	train.line_id = line.id
 	train.line_version = line.version
+	train.high_speed = high_speed
 	train.carriages = 0
 	train.refresh_capacity()
 	line.trains.append(train)
@@ -822,7 +836,7 @@ func _update_train(train: Train, line: MetroLine, dt: float) -> void:
 			train.action_timer -= dt
 			if train.action_timer <= 0.0:
 				_perform_next_stop_action(train, station)
-				train.action_timer += Train.DWELL_PER_PASSENGER
+				train.action_timer += train.action_interval
 		train.dwell_left -= dt
 		if train.dwell_left <= 0.0 and train.stop_actions.is_empty():
 			_depart(train, line)
@@ -833,10 +847,10 @@ func _update_train(train: Train, line: MetroLine, dt: float) -> void:
 		_arrive(train, line)
 		return
 	# 目标速度：最高速 / 前方弯道限速 / 需要停站时的刹车曲线，取最小
-	var desired := Train.MAX_SPEED
+	var desired := train.speed_limit()
 	var lookahead := train.speed * train.speed / (2.0 * Train.DECEL) + 40.0
 	for entry in line.geometry.curve_entries_ahead(train.dist, train.dir, lookahead):
-		var limit := entry.y * Train.MAX_SPEED
+		var limit := entry.y * train.speed_limit()
 		var allowed := sqrt(limit * limit + 2.0 * Train.DECEL * maxf(entry.x, 0.0))
 		desired = minf(desired, allowed)
 	if _need_stop(train, line) or _is_terminal(train, line):
@@ -965,7 +979,11 @@ func _depart(train: Train, line: MetroLine) -> void:
 func _begin_stop(train: Train, line: MetroLine, station: Station) -> void:
 	var next_departure := _next_departure_station_id(train, line)
 	train.stop_actions.clear()
-	train.action_timer = Train.DWELL_PER_PASSENGER
+	# 换乘枢纽的上下客更快：每人 0.3s，普通站 0.5s
+	var interval := Train.DWELL_PER_PASSENGER_INTERCHANGE if station.capacity > 6 \
+		else Train.DWELL_PER_PASSENGER
+	train.action_interval = interval
+	train.action_timer = interval
 	station.boarding = false
 
 	var staying: Array[Passenger] = []
@@ -996,11 +1014,12 @@ func _begin_stop(train: Train, line: MetroLine, station: Station) -> void:
 				train.stop_actions.append({"kind": "board", "passenger": passenger})
 				capacity_left -= 1
 
-	train.dwell_left = float(train.stop_actions.size()) * Train.DWELL_PER_PASSENGER
+	train.dwell_left = float(train.stop_actions.size()) * interval
 	if not train.stop_actions.is_empty():
 		station.boarding = true
-		# 第一名立刻上下，之后每 0.5s 一名
+		# 第一名立刻上下，之后每 0.5s（换乘枢纽 0.3s）一名
 		_perform_next_stop_action(train, station)
+		train.action_timer = interval
 	if train.stop_actions.is_empty() and train.dwell_left <= 0.0:
 		station.boarding = false
 
@@ -1128,10 +1147,10 @@ func _update_relocating_train(train: Train, line: MetroLine, dt: float) -> void:
 	if delta <= 0.001:
 		_unload_for_relocation(train, line, train.target_index)
 		return
-	var desired := minf(Train.MAX_SPEED, sqrt(maxf(2.0 * Train.DECEL * delta, 0.0)))
+	var desired := minf(train.speed_limit(), sqrt(maxf(2.0 * Train.DECEL * delta, 0.0)))
 	var lookahead := train.speed * train.speed / (2.0 * Train.DECEL) + 40.0
 	for entry in line.geometry.curve_entries_ahead(train.dist, train.dir, lookahead):
-		var limit := entry.y * Train.MAX_SPEED
+		var limit := entry.y * train.speed_limit()
 		var allowed := sqrt(limit * limit + 2.0 * Train.DECEL * maxf(entry.x, 0.0))
 		desired = minf(desired, allowed)
 	if desired < train.speed:
@@ -1304,10 +1323,10 @@ func _update_legacy_train(train: Train, line: MetroLine, dt: float) -> void:
 	if delta <= 0.001:
 		_legacy_arrive(train, line)
 		return
-	var desired := Train.MAX_SPEED
+	var desired := train.speed_limit()
 	var lookahead := train.speed * train.speed / (2.0 * Train.DECEL) + 40.0
 	for entry in geometry.curve_entries_ahead(train.dist, train.dir, lookahead):
-		var limit := entry.y * Train.MAX_SPEED
+		var limit := entry.y * train.speed_limit()
 		var allowed := sqrt(limit * limit + 2.0 * Train.DECEL * maxf(entry.x, 0.0))
 		desired = minf(desired, allowed)
 	if _legacy_need_stop(train) or _legacy_terminal(train, geometry):
