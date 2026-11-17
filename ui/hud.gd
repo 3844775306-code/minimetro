@@ -194,22 +194,22 @@ func _draw() -> void:
 
 func _draw_game_hud(vp: Vector2) -> void:
 	_draw_panel(Rect2(34.0, 66.0, 486.0, 104.0))
-	_draw_panel(Rect2(vp.x - 310.0, 52.0, 262.0, 268.0))
+	_draw_panel(Rect2(vp.x - 336.0, 36.0, 300.0, 300.0))
 	_text_centered("MINI METRO", vp.x * 0.5, 72.0, 18, Color(MUTED, 0.8))
 	_text_centered(mode_title, vp.x * 0.5, 98.0, 15, Color(MUTED, 0.65))
 	if stage_label != "":
 		_text_centered(stage_label, vp.x * 0.5, 122.0, 14, Color(MUTED, 0.55))
 	_draw_clock(vp)
-	_text_right(Loc.t("已送达 %d", "Delivered %d") % score, vp.x - 72.0, 200.0, 26, INK)
-	_text_right(Loc.t("最高 %d", "Best %d") % best_score, vp.x - 72.0, 228.0, 16,
+	_text_right(Loc.t("已送达 %d", "Delivered %d") % score, vp.x - 64.0, 212.0, 26, INK)
+	_text_right(Loc.t("最高 %d", "Best %d") % best_score, vp.x - 64.0, 240.0, 16,
 		Color(MUTED, 0.85))
 	_text_right(Loc.t("车站 %d · 列车 %d", "Stations %d · Trains %d") % [
 		0 if network == null else network.stations.size(),
 		0 if network == null else network.train_count(),
-	], vp.x - 72.0, 252.0, 16, Color(MUTED, 0.7))
+	], vp.x - 64.0, 264.0, 16, Color(MUTED, 0.7))
 	_text_right(Loc.t("第 %d 周 · 车厢 %d", "Week %d · Carriages %d") % [
 		week, 0 if network == null else network.total_carriages(),
-	], vp.x - 72.0, 276.0, 16, Color(MUTED, 0.6))
+	], vp.x - 64.0, 288.0, 16, Color(MUTED, 0.6))
 	_draw_resource_slots(vp)
 	_text_centered(Loc.t(
 		"拖拽连线 · 拖端点延伸 · 拖线段插站 · 轻点线路翻折 · 拖左上角图标放列车/车厢/换乘中心 · 拖动列车/车厢换线 · Ctrl+Z 撤销 · Esc 设置",
@@ -238,13 +238,13 @@ func _draw_game_hud(vp: Vector2) -> void:
 ## HUD 半透明纸面板：地图变丰富后保证左上/右上文字可读
 func _draw_panel(rect: Rect2) -> void:
 	var poly := DrawUtil.rounded_rect(rect, 14.0, 8)
-	draw_colored_polygon(poly, Color(0.99, 0.97, 0.92, 0.78))
-	draw_polyline(DrawUtil.closed(poly), Color(0.72, 0.69, 0.62, 0.45), 1.5, true)
+	draw_colored_polygon(poly, Color(0.99, 0.97, 0.92, 0.92))
+	draw_polyline(DrawUtil.closed(poly), Color(0.72, 0.69, 0.62, 0.5), 1.5, true)
 
 
 ## 12 小时制时钟：12 点在上、6 点在下；到了夜晚整块表盘变黑、指针变白。
 func _draw_clock(vp: Vector2) -> void:
-	var center := Vector2(vp.x - 94.0, 100.0)
+	var center := Vector2(vp.x - 100.0, 104.0)
 	var radius := 42.0
 	var strength := Simulation.night_strength(clock_hours)
 	var face := Color("#FBF8F1").lerp(Color("#1C1C1E"), strength)

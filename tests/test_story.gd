@@ -2,11 +2,30 @@ extends RefCounted
 ## 故事化城镇：地标语义、发展阶段的形状解锁/车站增长/相机拉远、按时段的乘客出行规律。
 
 static func run(h: TestHarness) -> void:
+	_test_starting_trio(h)
 	_test_landmarks(h)
 	_test_stages(h)
 	_test_time_rules(h)
 	_test_station_unlock_in_sim(h)
 	_test_passenger_pattern(h)
+
+
+## 开局固定三座基础车站：圆形、三角形、方形。
+static func _test_starting_trio(h: TestHarness) -> void:
+	h.section("story/starting_trio")
+	var level := _make_level()
+	var net := MetroNetwork.new(level)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 41
+	var spawner := StationSpawner.new(level, rng)
+	spawner.spawn_starting_trio(net)
+	h.eq(net.stations.size(), 3, "开局正好三座车站")
+	var shapes := {}
+	for st in net.stations:
+		shapes[st.shape] = true
+	h.check(shapes.has(Shape.Kind.CIRCLE), "开局有圆形（居民区）")
+	h.check(shapes.has(Shape.Kind.TRIANGLE), "开局有三角形（商务区）")
+	h.check(shapes.has(Shape.Kind.SQUARE), "开局有方形（车站）")
 
 
 static func _make_level(hour: float = 7.0) -> LevelData:
@@ -78,22 +97,22 @@ static func _test_stages(h: TestHarness) -> void:
 	var level := _make_level()
 	var net := MetroNetwork.new(level)
 	var sim := _make_sim(net, level)
-	_add_stations(net, 5)
-	h.eq(sim.development_stage(), 0, "5 站时是村庄")
+	_add_stations(net, 3)
+	h.eq(sim.development_stage(), 0, "3 站时是村庄")
 	var weights0 := sim.station_shape_weights()
 	h.check(weights0.has(Shape.Kind.CIRCLE) and weights0.has(Shape.Kind.SQUARE),
 		"村庄有居民区和车站")
-	h.check(not weights0.has(Shape.Kind.TRIANGLE), "村庄没有商务区")
-	h.near(sim.camera_zoom_target(), 1.0, 0.001, "开局相机较近")
+	h.check(weights0.has(Shape.Kind.TRIANGLE), "村庄也有商务区（开局三站之一）")
+	h.check(not weights0.has(Shape.Kind.PENTAGON), "村庄没有市政厅")
+	h.near(sim.camera_zoom_target(), 1.25, 0.001, "开局相机较近（1.25）")
 
-	_add_stations(net, 4)
+	_add_stations(net, 6)
 	h.eq(sim.development_stage(), 1, "9 站时是小镇")
-	h.check(sim.station_shape_weights().has(Shape.Kind.TRIANGLE), "小镇解锁商务区")
 	h.check(sim.station_shape_weights().has(Shape.Kind.PENTAGON), "小镇解锁市政厅")
+	h.check(sim.station_shape_weights().has(Shape.Kind.PLUS), "小镇解锁医院")
 	_add_stations(net, 6)
 	h.eq(sim.development_stage(), 2, "15 站时是城市")
 	var weights2 := sim.station_shape_weights()
-	h.check(weights2.has(Shape.Kind.PLUS), "城市解锁医院")
 	h.check(weights2.has(Shape.Kind.STAR), "城市解锁景点")
 	h.check(weights2.has(Shape.Kind.HEXAGON), "城市解锁大学")
 	h.check(not weights2.has(Shape.Kind.DIAMOND), "城市还没有度假区")
@@ -109,7 +128,7 @@ static func _test_stages(h: TestHarness) -> void:
 	h.check(sim.station_shape_weights().has(Shape.Kind.RING), "都会解锁公园")
 	h.check(sim.station_shape_weights().has(Shape.Kind.CLOVER), "都会解锁花园")
 	_add_stations(net, 8)
-	h.near(sim.camera_zoom_target(), 0.8, 0.001, "车站足够多时相机拉到最远 0.8")
+	h.near(sim.camera_zoom_target(), 1.0, 0.001, "车站足够多时相机回到正常距离 1.0")
 	h.check(sim.station_interval() < level.station_spawn_interval,
 		"城镇越大，新车站出现越快")
 
@@ -168,8 +187,9 @@ static func _test_station_unlock_in_sim(h: TestHarness) -> void:
 	h.check(net.stations.size() > 6, "村庄会继续出现新车站（%d）" % net.stations.size())
 	for i in range(6, mini(net.stations.size(), 8)):
 		var kind := net.stations[i].shape
-		h.check(kind == Shape.Kind.CIRCLE or kind == Shape.Kind.SQUARE,
-			"村庄阶段只出现居民区/车站")
+		h.check(kind == Shape.Kind.CIRCLE or kind == Shape.Kind.SQUARE
+			or kind == Shape.Kind.TRIANGLE,
+			"村庄阶段只出现居民区/车站/商务区")
 
 
 static func _test_passenger_pattern(h: TestHarness) -> void:

@@ -17,6 +17,15 @@ func spawn_initial(network: MetroNetwork, count: int, weights: Dictionary = {}) 
 		try_spawn(network, weights)
 
 
+## 开局固定三座基础地标：圆形居民区、三角形商务区、方形车站。
+func spawn_starting_trio(network: MetroNetwork) -> void:
+	for kind in [Shape.Kind.CIRCLE, Shape.Kind.TRIANGLE, Shape.Kind.SQUARE]:
+		var pos := _random_land_point(network)
+		if pos == Vector2.INF:
+			continue
+		network.add_station(pos, int(kind))
+
+
 func try_spawn(network: MetroNetwork, weights: Dictionary = {}) -> Station:
 	if network.stations.size() >= level.max_stations:
 		return null

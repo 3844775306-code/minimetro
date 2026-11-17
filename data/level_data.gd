@@ -20,7 +20,7 @@ extends Resource
 @export var max_bridges: int = 6
 
 @export_group("站点生成")
-@export var start_station_count: int = 5
+@export var start_station_count: int = 3
 @export var max_stations: int = 60
 @export var station_min_distance: float = 105.0
 @export var station_spawn_interval: float = 13.0

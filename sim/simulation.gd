@@ -172,18 +172,18 @@ func stage_name() -> String:
 
 
 ## 当前阶段允许出现的车站形状与权重：
-## 村庄只有居民区/车站，之后逐步解锁商务/市政、医院/景点/大学、度假/博物馆/体育场、公园/花园。
+## 开局固定为居民区/车站/商务区三种基础地标，之后逐步解锁其余 9 种。
 func station_shape_weights() -> Dictionary:
 	var stage := development_stage()
 	var weights := {
 		Shape.Kind.CIRCLE: 6.0,
 		Shape.Kind.SQUARE: 4.0,
+		Shape.Kind.TRIANGLE: 3.0,
 	}
 	if stage >= 1:
-		weights[Shape.Kind.TRIANGLE] = 3.0
 		weights[Shape.Kind.PENTAGON] = 1.2
+		weights[Shape.Kind.PLUS] = 1.2
 	if stage >= 2:
-		weights[Shape.Kind.PLUS] = 1.4
 		weights[Shape.Kind.STAR] = 1.0
 		weights[Shape.Kind.HEXAGON] = 1.2
 	if stage >= 3:
@@ -204,12 +204,12 @@ func station_interval() -> float:
 
 ## 相机拉远进度：0=开局（较近），1=最远（看到完整 2400×1200 地图）。
 func camera_progress() -> float:
-	return clampf((float(network.stations.size()) - 5.0) / 30.0, 0.0, 1.0)
+	return clampf((float(network.stations.size()) - 3.0) / 32.0, 0.0, 1.0)
 
 
-## 相机目标缩放：从 1.0 逐渐拉远到 0.8（最远值，正好看全整张地图）。
+## 相机目标缩放：开局较近（1.25），城镇发展后回到正常距离 1.0（看全地图）。
 func camera_zoom_target() -> float:
-	return lerpf(1.0, 0.8, camera_progress())
+	return lerpf(1.25, 1.0, camera_progress())
 
 
 ## 高斯型"时段热度"（小时, 中心, 宽度）。

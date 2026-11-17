@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://flrijnmcbdhk"
-path="res://.godot/imported/m2-riders-crop.png-28ac05cf9b9fe043de2afe23b8f425df.ctex"
+uid="uid://bmyyankywl5qc"
+path="res://.godot/imported/start.png-a559e0c755eb55503af7df3b4a280431.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://docs/images/m2-riders-crop.png"
-dest_files=["res://.godot/imported/m2-riders-crop.png-28ac05cf9b9fe043de2afe23b8f425df.ctex"]
+source_file="res://docs/images/start.png"
+dest_files=["res://.godot/imported/start.png-a559e0c755eb55503af7df3b4a280431.ctex"]
 
 [params]
 

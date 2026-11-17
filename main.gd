@@ -466,7 +466,7 @@ func _build_world() -> void:
 	camera = Camera2D.new()
 	camera.name = "Camera"
 	camera.position = level.world_size * 0.5
-	camera.zoom = Vector2.ONE
+	camera.zoom = Vector2(1.25, 1.25)
 	camera.enabled = true
 	add_child(camera)
 
@@ -619,8 +619,8 @@ func _start_session() -> void:
 		_advance_sim(480)
 		_apply_pose()
 	else:
-		simulation.spawner.spawn_initial(network, level.start_station_count,
-			simulation.station_shape_weights())
+		# 开局固定三座基础车站：圆形（居民区）、三角形（商务区）、方形（车站）
+		simulation.spawner.spawn_starting_trio(network)
 
 
 func _apply_pose() -> void:
