@@ -9,10 +9,12 @@ const PAPER := Color("#F3EFE6")
 const INK := Color("#2B2B2B")
 const MAX_RIDER_ICONS := 6
 const SEAT_RADIUS := 5.0
-## 车厢从车尾开始排：中心偏移 -(45 + 19.5*i)
-const CARRIAGE_FIRST_OFFSET := 45.0
-const CARRIAGE_SPACING := 19.5
-const CARRIAGE_SIZE := Vector2(18.0, 21.0)
+## 车厢和车体一样是圆角胶囊，只是没有车头；每节最多画 6 名乘客。
+const CARRIAGE_BODY := Vector2(46.0, 27.0)
+const CARRIAGE_OUTLINE := 4.0
+## 第一节车厢中心偏移；之后按车厢长度 + 间隙排列
+const CARRIAGE_FIRST_OFFSET := 60.5
+const CARRIAGE_SPACING := 49.0
 
 var _line_color := Color.WHITE
 var _drawn_color := Color.TRANSPARENT
@@ -39,10 +41,10 @@ func update_from(train: Train, line: MetroLine) -> void:
 
 
 func _make_rider_signature(train: Train) -> int:
-	var count := mini(train.riders.size(), MAX_RIDER_ICONS)
-	var signature := count + train.carriages * 100
+	var count := mini(train.riders.size(), train.capacity)
+	var signature := count * 131 + train.carriages
 	for i in count:
-		signature = signature * 7 + train.riders[i].target_shape
+		signature = (signature * 31 + train.riders[i].target_shape) & 0x7fffffff
 	return signature
 
 
@@ -71,15 +73,35 @@ func _draw_cab() -> void:
 	draw_circle(Vector2(half.x - 6.0, 0.0), 3.2, Color(1.0, 1.0, 0.86, 0.95))
 
 
-## 车厢：挂在车尾的小方块，跨越线路拖动时也用它做命中区域。
+## 车厢：和车体同款的圆角胶囊（纸色描边 + 线路色），没有车头；车内也画乘客。
 func _draw_carriages() -> void:
 	for i in _carriages:
 		var center := Vector2(-(CARRIAGE_FIRST_OFFSET + CARRIAGE_SPACING * float(i)), 0.0)
-		var rect := Rect2(center - CARRIAGE_SIZE * 0.5, CARRIAGE_SIZE)
-		draw_rect(Rect2(rect.position - Vector2(2.5, 2.5), rect.size + Vector2(5.0, 5.0)), PAPER)
-		draw_rect(rect, _drawn_color)
-		draw_rect(Rect2(rect.position + Vector2(3.0, 4.0), Vector2(rect.size.x - 6.0, 4.5)),
-			Color(1.0, 1.0, 1.0, 0.30))
+		_capsule(center, CARRIAGE_BODY + Vector2(CARRIAGE_OUTLINE * 2.0, CARRIAGE_OUTLINE * 2.0), PAPER)
+		_capsule(center, CARRIAGE_BODY, _drawn_color)
+		# 车顶一道浅色高光，和车头的挡风玻璃呼应
+		draw_line(center + Vector2(-CARRIAGE_BODY.x * 0.28, -CARRIAGE_BODY.y * 0.28),
+			center + Vector2(CARRIAGE_BODY.x * 0.28, -CARRIAGE_BODY.y * 0.28),
+			Color(1.0, 1.0, 1.0, 0.25), 2.0, true)
+		var from := Train.BASE_CAPACITY + i * Train.CARRIAGE_CAPACITY
+		if from >= _riders.size():
+			continue
+		var count := mini(_riders.size() - from, Train.CARRIAGE_CAPACITY)
+		for j in count:
+			_draw_rider_icon(
+				center + _carriage_seat_position(j, count),
+				_riders[from + j].target_shape,
+				SEAT_RADIUS * 0.82
+			)
+
+
+func _carriage_seat_position(index: int, count: int) -> Vector2:
+	if count <= 3:
+		var x := (float(index) - (float(count) - 1.0) * 0.5) * 13.0
+		return Vector2(x, 0.0)
+	var row := index / 3
+	var col := index % 3
+	return Vector2((float(col) - 1.0) * 13.0, -5.5 if row == 0 else 5.5)
 
 
 ## 车内乘客：最多画 6 个（两排三列），用小图标表示目的地形状。
@@ -99,17 +121,17 @@ func _seat_position(index: int, count: int) -> Vector2:
 	return Vector2((float(col) - 1.0) * 18.0, -8.0 if row == 0 else 8.0)
 
 
-func _draw_rider_icon(pos: Vector2, shape_kind: int) -> void:
+func _draw_rider_icon(pos: Vector2, shape_kind: int, radius: float = SEAT_RADIUS) -> void:
 	if shape_kind == Shape.Kind.CIRCLE:
-		draw_circle(pos, SEAT_RADIUS, PAPER, true, -1.0, true)
-		draw_arc(pos, SEAT_RADIUS, 0.0, TAU, 14, INK, 1.4, true)
+		draw_circle(pos, radius, PAPER, true, -1.0, true)
+		draw_arc(pos, radius, 0.0, TAU, 14, INK, 1.4, true)
 		return
 	if shape_kind == Shape.Kind.RING:
-		draw_arc(pos, SEAT_RADIUS * 0.9, 0.0, TAU, 14, INK, 1.5, true)
+		draw_arc(pos, radius * 0.9, 0.0, TAU, 14, INK, 1.5, true)
 		return
-	var poly := Shape.polygon(shape_kind, SEAT_RADIUS * 1.45)
+	var poly := Shape.polygon(shape_kind, radius * 1.45)
 	if poly.is_empty():
-		draw_circle(pos, SEAT_RADIUS, PAPER, true, -1.0, true)
+		draw_circle(pos, radius, PAPER, true, -1.0, true)
 		return
 	var shifted := DrawUtil.offset(poly, pos)
 	draw_colored_polygon(shifted, PAPER)

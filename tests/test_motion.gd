@@ -169,11 +169,24 @@ static func _test_curve_limit(h: TestHarness) -> void:
 	var factor135 := 1.0
 	for entry in line135.geometry.curve_entries:
 		factor135 = minf(factor135, float(entry.y))
-	h.near(factor45, 0.45, 0.001, "45° 弯限速 0.45")
-	h.near(factor90, 0.65, 0.001, "90° 弯限速 0.65")
-	h.near(factor135, 0.85, 0.001, "135° 弯限速 0.85")
-	h.check(factor45 < factor90 and factor90 < factor135,
-		"角度越小减速越大：45° < 90° < 135°")
+	# 180° 掉头：向东后直接折返向西
+	var j := net.add_station(Vector2(300, 1000), Shape.Kind.CIRCLE)
+	var k := net.add_station(Vector2(700, 1000), Shape.Kind.SQUARE)
+	var l := net.add_station(Vector2(400, 1000), Shape.Kind.TRIANGLE)
+	var line180 := net.create_line()
+	line180.add_stop(j)
+	line180.add_stop(k)
+	line180.add_stop(l)
+	net.touch()
+	var factor180 := 1.0
+	for entry in line180.geometry.curve_entries:
+		factor180 = minf(factor180, float(entry.y))
+	h.near(factor45, 0.9, 0.001, "45° 缓弯限速 0.9")
+	h.near(factor90, 0.7, 0.001, "90° 直角弯限速 0.7")
+	h.near(factor135, 0.5, 0.001, "135° 急弯限速 0.5")
+	h.near(factor180, 0.3, 0.001, "180° 掉头限速 0.3")
+	h.check(factor45 > factor90 and factor90 > factor135 and factor135 > factor180,
+		"转弯越急限速越低：45° > 90° > 135° > 180°")
 	var ahead := line90.geometry.curve_entries_ahead(0.0, 1, 2000.0)
 	h.check(not ahead.is_empty(), "弯道限速点能被前方查询找到")
 

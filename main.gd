@@ -614,6 +614,8 @@ func _start_session() -> void:
 	simulation.screen_size = get_viewport_rect().size
 	if camera != null:
 		simulation.current_camera_zoom = camera.zoom.x
+	if hud != null:
+		hud.map_name = Game.city.display_name() if Game.city != null else ""
 	if editor != null:
 		editor.simulation = simulation
 	simulation.game_over.connect(_on_game_over)

@@ -26,6 +26,8 @@ var is_night := false
 var weekday := ""
 ## 城镇发展阶段（村庄/小镇/城市/大都市 · 车站数）
 var stage_label := ""
+## 当前地图名（显示在屏幕顶部中央）
+var map_name := ""
 ## 操作提示显示剩余时间；超时后隐藏，避免长期占着底部
 var hint_left := 18.0
 ## 鼠标悬停车站时显示的地标名称
@@ -198,6 +200,8 @@ func _draw() -> void:
 func _draw_game_hud(vp: Vector2) -> void:
 	# 减负版 HUD：左上只留线色/库存，右上不再画面板（避免挡地图）
 	_draw_panel(Rect2(34.0, 66.0, 486.0, 104.0))
+	if map_name != "":
+		_text_centered(map_name, vp.x * 0.5, 54.0, 22, Color(MUTED, 0.8))
 	_draw_clock(vp)
 	_text_right(Loc.t("已送达 %d", "Delivered %d") % score, vp.x - 40.0, 152.0, 24, INK)
 	if stage_label != "":

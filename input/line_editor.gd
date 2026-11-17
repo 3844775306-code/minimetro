@@ -658,14 +658,16 @@ func _carriage_at(pos: Vector2) -> Dictionary:
 			continue
 		for train in line.trains:
 			for i in train.carriages:
-				if _carriage_position(line, train, i).distance_to(pos) <= 14.0:
+				if _carriage_position(line, train, i).distance_to(pos) <= 26.0:
 					return {"line": line, "train": train, "index": i}
 	return {}
 
 
 func _carriage_position(line: MetroLine, train: Train, index: int) -> Vector2:
 	var xf := line.geometry.sample(train.dist)
-	return xf.origin + xf.x.normalized() * -(45.0 + 19.5 * float(index))
+	return xf.origin + xf.x.normalized() * -(
+		TrainView.CARRIAGE_FIRST_OFFSET + TrainView.CARRIAGE_SPACING * float(index)
+	)
 
 
 ## 拖动目标是哪条线（排除源线路）：优先线路本体，其次站内线路。
@@ -1060,9 +1062,10 @@ func _draw_train_drag_preview() -> void:
 
 func _draw_carriage_drag_preview() -> void:
 	var color: Color = _fleet_line.color if _fleet_line != null else Color("#555555")
-	var rect := Rect2(cursor - Vector2(10.0, 11.0), Vector2(20.0, 22.0))
-	draw_rect(rect, Color(1.0, 1.0, 1.0, 0.6))
-	draw_rect(rect, Color(color, 0.9), false, 2.5)
+	var size := TrainView.CARRIAGE_BODY
+	var poly := DrawUtil.rounded_rect(Rect2(cursor - size * 0.5, size), size.y * 0.5, 8)
+	draw_colored_polygon(poly, Color(1.0, 1.0, 1.0, 0.65))
+	draw_polyline(DrawUtil.closed(poly), Color(color, 0.9), 2.5, true)
 	if _fleet_target_train != null:
 		for line in network.lines:
 			if line.geometry.is_drawable() and line.trains.has(_fleet_target_train):

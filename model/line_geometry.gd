@@ -66,19 +66,22 @@ func _build_curve_entries(raw: PackedVector2Array, loop: bool) -> void:
 				curve_entries.append(Vector2(0.0, _angle_to_factor(angle)))
 
 
-## 按要求：转角越小，减速幅度越大。八向线路实际会出现 45° / 90° / 135° 三种弯，
-## 分别用三档固定限速系数（45° 最慢、135° 最快）。
+## 转角（行进方向的变化量）→ 限速系数：
+## 45° 是缓弯、90° 是直角弯、135° 是急弯、180° 是掉头；越接近掉头越慢。
 const CURVE_FACTORS := {
-	45.0: 0.45,
-	90.0: 0.65,
-	135.0: 0.85,
+	45.0: 0.9,
+	90.0: 0.7,
+	135.0: 0.5,
+	180.0: 0.3,
 }
 
 
 static func _angle_to_factor(angle: float) -> float:
 	var degrees := rad_to_deg(angle)
 	var bucket := 45.0
-	if degrees >= 112.5:
+	if degrees >= 157.5:
+		bucket = 180.0
+	elif degrees >= 112.5:
 		bucket = 135.0
 	elif degrees >= 67.5:
 		bucket = 90.0
