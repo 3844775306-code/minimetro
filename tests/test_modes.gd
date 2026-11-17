@@ -4,6 +4,8 @@ extends RefCounted
 static func run(h: TestHarness) -> void:
 	_test_keys_and_seeds(h)
 	_test_endless(h)
+	_test_manager(h)
+	_test_throughput(h)
 
 
 static func _test_keys_and_seeds(h: TestHarness) -> void:
@@ -13,6 +15,7 @@ static func _test_keys_and_seeds(h: TestHarness) -> void:
 	h.eq(GameMode.key(GameMode.Kind.DAILY), "daily", "每日 key")
 	h.eq(GameMode.from_key("endless"), GameMode.Kind.ENDLESS, "key 反解")
 	h.eq(GameMode.from_key("nope"), GameMode.Kind.CLASSIC, "未知 key 回退经典")
+	h.eq(GameMode.key(GameMode.Kind.MANAGER), "manager", "管理 key")
 
 	var same_a := GameMode.daily_seed("2026-11-17")
 	var same_b := GameMode.daily_seed("2026-11-17")
@@ -61,3 +64,41 @@ static func _test_endless(h: TestHarness) -> void:
 	for i in 600:
 		sim2.tick(Simulation.STEP)
 	h.check(sim2.is_over, "经典模式同样条件会判负")
+
+
+static func _test_manager(h: TestHarness) -> void:
+	h.section("modes/manager")
+	var level := LevelData.new()
+	level.manager_mode = true
+	level.no_station_spawn = true
+	level.station_margin = 150.0
+	level.station_spawn_interval = 1.0
+	level.passenger_spawn_start = 99999.0
+	level.passenger_spawn_end = 99999.0
+	level.overload_grace = 9999.0
+	var net := MetroNetwork.new(level)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 12
+	var spawner := StationSpawner.new(level, rng)
+	spawner.spawn_manager_layout(net, 40, level.station_shape_weights)
+	h.eq(net.stations.size(), 40, "管理模式开局 40 座车站")
+	var sim := Simulation.new(net, level, rng)
+	sim.auto_spawn = true
+	for i in 120:
+		sim.tick(Simulation.STEP)
+	h.eq(net.stations.size(), 40, "管理模式不再生成新车站")
+	h.near(sim.camera_zoom_target(), 1.0, 0.001, "管理模式相机固定 1x")
+
+
+static func _test_throughput(h: TestHarness) -> void:
+	h.section("modes/throughput")
+	var level := LevelData.new()
+	var net := MetroNetwork.new(level)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 2
+	var sim := Simulation.new(net, level, rng)
+	h.near(sim.recent_throughput_per_5s(), 0.0, 0.001, "没有送达时指标为 0")
+	sim.elapsed = 40.0
+	sim._delivery_times = [0.0, 10.0, 20.0, 40.0]
+	h.near(sim.recent_throughput_per_5s(), 3.0 * 5.0 / 30.0, 0.001,
+		"近 30 秒 3 人送达 = 每 5 秒 0.5 人")

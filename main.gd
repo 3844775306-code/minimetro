@@ -69,6 +69,8 @@ func _process(delta: float) -> void:
 		hud.paused = Game.paused
 		hud.speed = Game.speed
 		hud.score = 0 if simulation == null else simulation.score
+		hud.throughput = 0.0 if simulation == null else simulation.recent_throughput_per_5s()
+		hud.endless_mode = Game.is_endless()
 		hud.week = 1 if simulation == null else simulation.week_index
 		hud.best_score = _best_for_mode()
 		hud.clock_hours = 7.0 if simulation == null else simulation.hour_of_day()
@@ -151,6 +153,7 @@ func _refresh_mode_bests() -> void:
 		"classic": Save.best_score("classic"),
 		"endless": Save.best_score("endless"),
 		"daily": Save.daily_best(GameMode.today()),
+		"manager": Save.best_score("manager"),
 	}
 
 
@@ -258,6 +261,8 @@ func _handle_mode_menu_input(event: InputEvent) -> void:
 				_choose_mode(GameMode.Kind.ENDLESS)
 			KEY_3:
 				_choose_mode(GameMode.Kind.DAILY)
+			KEY_4:
+				_choose_mode(GameMode.Kind.MANAGER)
 			KEY_LEFT:
 				_cycle_city(-1)
 			KEY_RIGHT:
@@ -648,9 +653,17 @@ func _start_session() -> void:
 		_advance_sim(480)
 		_apply_pose()
 	else:
-		# 开局固定三座基础车站：圆形（居民区）、三角形（商务区）、方形（车站）
-		simulation.spawner.spawn_rect = simulation.spawn_world_rect()
-		simulation.spawner.spawn_starting_trio(network)
+		if Game.mode == GameMode.Kind.MANAGER:
+			# 管理模式：固定 1x，一次性生成 40 座车站，之后不再生成
+			if camera != null:
+				camera.zoom = Vector2.ONE
+				simulation.current_camera_zoom = 1.0
+			simulation.spawner.spawn_rect = simulation.spawn_world_rect()
+			simulation.spawner.spawn_manager_layout(network, 40, level.station_shape_weights)
+		else:
+			# 开局固定三座基础车站：圆形（居民区）、三角形（商务区）、方形（车站）
+			simulation.spawner.spawn_rect = simulation.spawn_world_rect()
+			simulation.spawner.spawn_starting_trio(network)
 
 
 func _apply_pose() -> void:

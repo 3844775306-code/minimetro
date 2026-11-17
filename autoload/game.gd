@@ -45,6 +45,15 @@ func start_run(p_seed: int = 0, p_mode: int = -1) -> void:
 	level.start_lines = city.start_lines
 	level.start_trains = city.start_trains
 	level.start_bridges = city.start_bridges
+	if mode == GameMode.Kind.MANAGER:
+		# 管理模式：40 站、7 线、5 隧道的固定沙盘
+		level.manager_mode = true
+		level.no_station_spawn = true
+		level.start_lines = 7
+		level.start_trains = 7
+		level.start_bridges = 5
+		level.max_trains = 7
+		level.station_margin = 150.0
 	level.rivers.clear()
 	for river in city.rivers:
 		level.rivers.append(river)

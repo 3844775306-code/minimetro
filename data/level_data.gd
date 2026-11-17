@@ -11,6 +11,9 @@ extends Resource
 @export var land_corner_radius: float = 80.0
 ## 开局相机只显示中央 1920×1080，站点必须留在这个可见区域内
 @export var station_margin: float = 300.0
+## 管理模式：固定 1x 视角、开局 40 站、不再生成新车站
+@export var manager_mode: bool = false
+@export var no_station_spawn: bool = false
 
 @export_group("水域与桥梁")
 ## 河道多边形（闭合）。线路每穿过一条河道消耗 1 座桥/隧道。

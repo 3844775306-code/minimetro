@@ -48,6 +48,77 @@ func try_spawn(network: MetroNetwork, weights: Dictionary = {}) -> Station:
 	return network.add_station(pos, _pick_shape(weights))
 
 
+## 管理模式专用：一次性铺满 40 座站（8×5 网格 + 抖动），之后不再生成。
+func spawn_manager_layout(network: MetroNetwork, count: int = 40,
+		weights: Dictionary = {}) -> void:
+	var bounds := _spawn_bounds()
+	if bounds.size.x <= 1.0 or bounds.size.y <= 1.0:
+		return
+	var cols := 8
+	var rows := int(ceil(float(count) / float(cols)))
+	var cell := Vector2(bounds.size.x / float(cols), bounds.size.y / float(rows))
+	for i in count:
+		var col := i % cols
+		var row := i / cols
+		var center := bounds.position + Vector2(
+			(float(col) + 0.5) * cell.x,
+			(float(row) + 0.5) * cell.y
+		)
+		var pos := _random_point_near(network, center, cell * 0.40)
+		if pos == Vector2.INF:
+			pos = _random_land_point(network)
+		if pos != Vector2.INF:
+			network.add_station(pos, _pick_shape(weights))
+	var guard := 0
+	while network.stations.size() < count and guard < 200:
+		try_spawn(network, weights)
+		guard += 1
+
+
+## 在 center 附近找合法落点（管理模式网格抖动）
+func _random_point_near(network: MetroNetwork, center: Vector2, radius: Vector2) -> Vector2:
+	for attempt in 24:
+		var p := center + Vector2(
+			rng.randf_range(-radius.x, radius.x),
+			rng.randf_range(-radius.y, radius.y)
+		)
+		if _is_valid_point(network, p):
+			return p
+	# 退而求其次：中心与四角
+	for offset in [Vector2.ZERO, Vector2(-radius.x, 0.0), Vector2(radius.x, 0.0),
+			Vector2(0.0, -radius.y), Vector2(0.0, radius.y)]:
+		var p: Vector2 = center + offset
+		if _is_valid_point(network, p):
+			return p
+	return Vector2.INF
+
+
+func _is_valid_point(network: MetroNetwork, p: Vector2) -> bool:
+	if network.is_point_in_water(p):
+		return false
+	if network.water_distance(p) < level.station_water_clearance:
+		return false
+	for st in network.stations:
+		if st.pos.distance_to(p) < level.station_min_distance:
+			return false
+	return true
+
+
+func _spawn_bounds() -> Rect2:
+	var margin: float = level.station_margin
+	var min_x: float = margin
+	var max_x: float = level.world_size.x - margin
+	var min_y: float = margin
+	var max_y: float = level.world_size.y - margin
+	if spawn_rect.size.x > 0.0 and spawn_rect.size.y > 0.0:
+		min_x = maxf(min_x, spawn_rect.position.x)
+		max_x = minf(max_x, spawn_rect.end.x)
+		min_y = maxf(min_y, spawn_rect.position.y)
+		max_y = minf(max_y, spawn_rect.end.y)
+	return Rect2(Vector2(min_x, min_y), Vector2(maxf(0.0, max_x - min_x),
+		maxf(0.0, max_y - min_y)))
+
+
 ## 拒绝采样：随机落点，不满足约束就重试。
 ## anchor != INF 时只在 anchor 周围 max_radius 范围内取样（开局三站使用）。
 func _random_land_point(network: MetroNetwork, anchor: Vector2 = Vector2.INF,

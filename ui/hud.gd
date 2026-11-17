@@ -18,6 +18,9 @@ var font: SystemFont = null
 var paused := false
 var speed := 1.0
 var score := 0
+## 无尽模式的评价指标：近 30 秒平均每 5 秒客运量
+var throughput := 0.0
+var endless_mode := false
 var week := 1
 var best_score := 0
 ## 游戏内时钟（1 现实秒 = 1 游戏小时）
@@ -204,9 +207,16 @@ func _draw_game_hud(vp: Vector2) -> void:
 	if map_name != "":
 		_text_centered(map_name, vp.x * 0.5, 54.0, 22, Color(MUTED, 0.8))
 	_draw_clock(vp)
-	_text_right(Loc.t("已送达 %d", "Delivered %d") % score, vp.x - 40.0, 152.0, 24, INK)
+	if endless_mode:
+		# 无尽模式的评价主指标：近 30 秒平均每 5 秒客运量
+		_text_right(Loc.t("近30s · 每5s %.1f 人", "Last 30s · %.1f per 5s") % throughput,
+			vp.x - 40.0, 152.0, 22, INK)
+		_text_right(Loc.t("已送达 %d", "Delivered %d") % score,
+			vp.x - 40.0, 182.0, 16, Color(MUTED, 0.9))
+	else:
+		_text_right(Loc.t("已送达 %d", "Delivered %d") % score, vp.x - 40.0, 152.0, 24, INK)
 	if stage_label != "":
-		_text_right(stage_label, vp.x - 40.0, 176.0, 13, Color(MUTED, 0.75))
+		_text_right(stage_label, vp.x - 40.0, 206.0, 13, Color(MUTED, 0.75))
 	_draw_resource_slots(vp)
 	var show_hint := hint_left > 0.0 or (network != null and network.lines.is_empty())
 	if show_hint:
@@ -472,8 +482,8 @@ func _draw_mode_menu(vp: Vector2) -> void:
 		cx, cy - 254.0, 20, Color(1.0, 1.0, 1.0, 0.72))
 	_draw_city_selector(vp)
 	_draw_mode_cards(vp)
-	_text_centered(Loc.t("← → 切换城市 · 点击卡片或按 1 / 2 / 3 开始",
-		"Left / Right city · click a card or press 1 / 2 / 3"),
+	_text_centered(Loc.t("← → 切换城市 · 点击卡片或按 1 / 2 / 3 / 4 开始",
+		"Left / Right city · click a card or press 1 / 2 / 3 / 4"),
 		cx, cy + 246.0, 18, Color(1.0, 1.0, 1.0, 0.7))
 
 
@@ -523,15 +533,15 @@ func _draw_city_preview(rect: Rect2, city: CityMap) -> void:
 func _draw_mode_cards(vp: Vector2) -> void:
 	var cx := vp.x * 0.5
 	var cy := vp.y * 0.5
-	var width := 360.0
-	var height := 190.0
-	var gap := 30.0
-	var total := width * 3.0 + gap * 2.0
+	var width := 300.0
+	var height := 188.0
+	var gap := 22.0
+	var total := width * 4.0 + gap * 3.0
 	var start_x := cx - total * 0.5
 	var top := cy + 8.0
 	_mode_rects = []
 	var mouse := get_global_mouse_position()
-	for i in 3:
+	for i in 4:
 		var rect := Rect2(start_x + float(i) * (width + gap), top, width, height)
 		_mode_rects.append(rect)
 		var kind := _mode_kind_at(i)
@@ -558,6 +568,8 @@ func _mode_kind_at(index: int) -> int:
 			return GameMode.Kind.ENDLESS
 		2:
 			return GameMode.Kind.DAILY
+		3:
+			return GameMode.Kind.MANAGER
 		_:
 			return GameMode.Kind.CLASSIC
 

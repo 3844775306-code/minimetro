@@ -45,6 +45,9 @@ var inventory_high_speed: int = 0
 var inventory_carriages: int = 0
 var inventory_interchanges: int = 0
 
+## 最近送达时间列表（无尽模式评价指标：近 30 秒平均每 5 秒客运量）
+var _delivery_times: Array[float] = []
+
 var _accum: float = 0.0
 var _station_spawn_timer: float = 0.0
 var _passenger_spawn_timer: float = 0.0
@@ -214,7 +217,20 @@ func camera_progress() -> float:
 
 ## 相机目标缩放：开局 2.0（近看城镇中央），城镇发展后回到 1.0（地图铺满窗口）。
 func camera_zoom_target() -> float:
+	if level.manager_mode:
+		return 1.0
 	return lerpf(2.0, 1.0, camera_progress())
+
+
+## 无尽模式指标：近 30 秒的送达量换算成"平均每 5 秒多少名乘客"。
+func recent_throughput_per_5s() -> float:
+	var cutoff := elapsed - 30.0
+	var count := 0
+	for t in _delivery_times:
+		if t >= cutoff:
+			count += 1
+	var window := minf(30.0, maxf(elapsed, 5.0))
+	return float(count) * 5.0 / maxf(window, 0.001)
 
 
 ## 当前相机可见的世界范围（用于只生成屏幕内的新车站）。
@@ -655,11 +671,12 @@ func _weighted_pick(pool: Array[Dictionary]) -> int:
 # ---------------------------------------------------------------------------
 
 func _update_spawns(dt: float) -> void:
-	_station_spawn_timer -= dt
-	if _station_spawn_timer <= 0.0:
-		_station_spawn_timer = station_interval()
-		spawner.spawn_rect = spawn_world_rect()
-		spawner.try_spawn(network, station_shape_weights())
+	if not level.no_station_spawn:
+		_station_spawn_timer -= dt
+		if _station_spawn_timer <= 0.0:
+			_station_spawn_timer = station_interval()
+			spawner.spawn_rect = spawn_world_rect()
+			spawner.try_spawn(network, station_shape_weights())
 
 	if network.stations.is_empty():
 		return
@@ -1035,6 +1052,7 @@ func _perform_next_stop_action(train: Train, station: Station) -> void:
 			_remove_rider(train, passenger)
 			score += 1
 			delivered += 1
+			_delivery_times.append(elapsed)
 			passengers_delivered.emit(station, 1)
 		"transfer":
 			_remove_rider(train, passenger)
