@@ -21,6 +21,9 @@ var cumulative := PackedFloat32Array([0.0])
 var stop_offsets := PackedFloat32Array()
 ## 折线总长。
 var total_length := 0.0
+## 弯道限速点：x = 弧长位置，y = 限速系数（0.3~1.0，乘以列车最高速就是该弯的限速）。
+var curve_entries: Array[Vector2] = []
+var is_loop_geometry := false
 
 
 ## 按站点顺序重建几何。loop=true 时把末站到首站也连起来，形成闭合环线。
@@ -32,6 +35,61 @@ func build(stops: Array[Station], flips: Dictionary = {}, loop: bool = false) ->
 	stop_offsets = PackedFloat32Array()
 	for st in stops:
 		stop_offsets.append(nearest_distance(st.pos))
+	is_loop_geometry = loop
+	_build_curve_entries(raw, loop)
+
+
+## 从八向折线的每个拐点算"转角 → 限速系数"，供列车弯道减速用。
+func _build_curve_entries(raw: PackedVector2Array, loop: bool) -> void:
+	curve_entries.clear()
+	if raw.size() < 3:
+		return
+	for i in range(1, raw.size() - 1):
+		var previous := raw[i - 1]
+		var current := raw[i]
+		var next := raw[i + 1]
+		var incoming := current - previous
+		var outgoing := next - current
+		if incoming.length() < 0.001 or outgoing.length() < 0.001:
+			continue
+		var angle := absf(incoming.angle_to(outgoing))
+		if angle < 0.03:
+			continue
+		curve_entries.append(Vector2(nearest_distance(current), _angle_to_factor(angle)))
+	# 环线在接缝处还有一个转角（首站位置）
+	if loop and raw.size() >= 3:
+		var last_dir := raw[raw.size() - 1] - raw[raw.size() - 2]
+		var first_dir := raw[1] - raw[0]
+		if last_dir.length() > 0.001 and first_dir.length() > 0.001:
+			var angle := absf(last_dir.angle_to(first_dir))
+			if angle >= 0.03:
+				curve_entries.append(Vector2(0.0, _angle_to_factor(angle)))
+
+
+## 转角越大限速越低（与角度近似成正比）：45° 约 0.69，90° 约 0.38。
+static func _angle_to_factor(angle: float) -> float:
+	return clampf(1.0 - angle / (PI * 0.85), 0.30, 1.0)
+
+
+## 沿行进方向前方 distance 内的弯道限速点，返回 Vector2(距离, 限速系数)。
+func curve_entries_ahead(offset: float, dir: int, distance: float) -> Array[Vector2]:
+	var result: Array[Vector2] = []
+	if distance <= 0.0 or curve_entries.is_empty():
+		return result
+	var total := total_length
+	for entry in curve_entries:
+		var gap := 0.0
+		if dir >= 0:
+			gap = entry.x - offset
+			if gap < -1.0 and is_loop_geometry:
+				gap += total
+		else:
+			gap = offset - entry.x
+			if gap < -1.0 and is_loop_geometry:
+				gap += total
+		if gap >= -1.0 and gap <= distance:
+			result.append(Vector2(maxf(gap, 0.0), entry.y))
+	return result
 
 
 func is_drawable() -> bool:

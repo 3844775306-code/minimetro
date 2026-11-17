@@ -666,6 +666,7 @@ func _place_train_on_line(train: Train, line: MetroLine, pos: Vector2) -> void:
 	var total := line.geometry.total_length
 	var d := clampf(line.geometry.nearest_distance(pos), 0.0, total)
 	train.dist = d
+	train.speed = 0.0
 	train.state = Train.State.MOVING
 	train.dwell_left = 0.0
 	var best := 0

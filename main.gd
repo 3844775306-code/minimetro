@@ -20,6 +20,7 @@ var map_view: MapView = null
 var line_layer: LineLayer = null
 var bridge_layer: BridgeLayer = null
 var river_dash_layer: RiverDashLayer = null
+var near_line_layer: NearLineMarkerLayer = null
 var train_layer: TrainLayer = null
 var station_layer: StationLayer = null
 var passenger_layer: PassengerLayer = null
@@ -463,6 +464,11 @@ func _build_world() -> void:
 	river_dash_layer.z_index = 105
 	world.add_child(river_dash_layer)
 
+	near_line_layer = NearLineMarkerLayer.new()
+	near_line_layer.name = "NearLineMarkerLayer"
+	near_line_layer.z_index = 210
+	world.add_child(near_line_layer)
+
 	train_layer = TrainLayer.new()
 	train_layer.name = "TrainLayer"
 	train_layer.z_index = 150
@@ -495,6 +501,7 @@ func _build_world() -> void:
 	line_layer.setup(network)
 	bridge_layer.setup(network)
 	river_dash_layer.setup(network)
+	near_line_layer.setup(network)
 	train_layer.setup(network)
 	station_layer.setup(network)
 	passenger_layer.setup(network)

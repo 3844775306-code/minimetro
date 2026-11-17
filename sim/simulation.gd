@@ -292,6 +292,7 @@ func _place_train_at(train: Train, line: MetroLine, pos: Vector2) -> void:
 	var total := line.geometry.total_length
 	var d := clampf(line.geometry.nearest_distance(pos), 0.0, total)
 	train.dist = d
+	train.speed = 0.0
 	train.state = Train.State.MOVING
 	train.dwell_left = 0.0
 	var best := 0
@@ -477,9 +478,10 @@ func _spawn_train_at(line: MetroLine, pos: Vector2) -> void:
 			nearest = i
 	if best_diff <= 1.0:
 		train.stop_index = nearest
+		train.speed = 0.0
+		var count := _on_station(train, line, line.stops[nearest])
 		train.state = Train.State.DWELL
-		train.dwell_left = 0.6
-		_on_station(train, line, line.stops[nearest])
+		train.dwell_left = float(count) * Train.DWELL_PER_PASSENGER
 
 
 func _drop_trains(line: MetroLine) -> void:
@@ -522,19 +524,115 @@ func _update_train(train: Train, line: MetroLine, dt: float) -> void:
 			_depart(train, line)
 		return
 
-	var remaining := absf(train.target_dist - train.dist)
-	var step := Train.SPEED * dt
-	if remaining <= step:
-		train.dist = train.target_dist
-		train.stop_index = train.target_index
-		# 环线到站后把弧长折回 [0, total)，便于继续从首站出发
-		if line.is_loop and line.geometry.total_length > 0.001:
-			train.dist = fmod(train.dist, line.geometry.total_length)
-		train.state = Train.State.DWELL
-		train.dwell_left = Train.DWELL_TIME
-		_on_station(train, line, line.stops[train.stop_index])
+	var delta := _target_gap(train)
+	if delta <= 0.001:
+		_arrive(train, line)
+		return
+
+	# 目标速度：最高速 / 前方弯道限速 / 需要停站时的刹车曲线，取最小
+	var desired := Train.MAX_SPEED
+	var lookahead := train.speed * train.speed / (2.0 * Train.DECEL) + 40.0
+	for entry in line.geometry.curve_entries_ahead(train.dist, train.dir, lookahead):
+		var limit := entry.y * Train.MAX_SPEED
+		var allowed := sqrt(limit * limit + 2.0 * Train.DECEL * maxf(entry.x, 0.0))
+		desired = minf(desired, allowed)
+	if _need_stop(train, line) or _is_terminal(train, line):
+		desired = minf(desired, sqrt(maxf(2.0 * Train.DECEL * delta, 0.0)))
+
+	# 速度不能突变：只按 ACCEL / DECEL 变化
+	if desired < train.speed:
+		train.speed = maxf(desired, train.speed - Train.DECEL * dt)
 	else:
-		train.dist += signf(train.target_dist - train.dist) * step
+		train.speed = minf(desired, train.speed + Train.ACCEL * dt)
+	train.speed = maxf(train.speed, 0.0)
+
+	var step := train.speed * dt
+	if step >= delta:
+		train.dist = train.target_dist
+		_arrive(train, line)
+	else:
+		train.dist += float(train.dir) * step
+
+
+## 到下一个目标站还有多远（正值；环线 target 可能已加大过全长）。
+func _target_gap(train: Train) -> float:
+	return (train.target_dist - train.dist) * float(train.dir)
+
+
+## 到站：需要停车就上下客并停 0.5s×人数；无人上下车则保持速度直接驶过。
+func _arrive(train: Train, line: MetroLine) -> void:
+	train.stop_index = train.target_index
+	var station: Station = line.stops[train.stop_index]
+	var terminal := _is_terminal(train, line)
+	var needed := _need_stop(train, line)
+	if line.is_loop and line.geometry.total_length > 0.001:
+		train.dist = fmod(train.dist, line.geometry.total_length)
+	if needed or terminal:
+		train.speed = 0.0
+		var count := _on_station(train, line, station)
+		train.state = Train.State.DWELL
+		train.dwell_left = float(count) * Train.DWELL_PER_PASSENGER
+		if count == 0 and not terminal:
+			train.dwell_left = 0.0
+	else:
+		# 无人上下车：不停站，保持当前速度继续开往下一站
+		_depart(train, line)
+
+
+## 终点站（开放线路的首/末站）必须停一下好掉头；环线没有终点。
+func _is_terminal(train: Train, line: MetroLine) -> bool:
+	if line.is_loop:
+		return false
+	return train.target_index == 0 or train.target_index == line.stops.size() - 1
+
+
+## 从"当前站 + 方向"取下一个停靠站的站序；到端点时自动反向（对应掉头）。
+func _next_station_index(line: MetroLine, station_index: int, dir: int) -> int:
+	if line.is_loop and line.stops.size() >= 3:
+		return (station_index + 1) % line.stops.size()
+	var next := station_index + dir
+	if next < 0 or next >= line.stops.size():
+		next = station_index - dir
+	if next < 0 or next >= line.stops.size():
+		return -1
+	return next
+
+
+## 预测在某个站会不会有人上下车（用于提前刹车/决定是否驶过）。
+func _need_stop(train: Train, line: MetroLine) -> bool:
+	if train.target_index < 0 or train.target_index >= line.stops.size():
+		return true
+	return _station_activity(train, line, train.target_index) > 0
+
+
+func _station_activity(train: Train, line: MetroLine, station_index: int) -> int:
+	var station: Station = line.stops[station_index]
+	var next_index := _next_station_index(line, station_index, train.dir)
+	var next_id := -1 if next_index < 0 else line.stops[next_index].id
+	var alight := 0
+	for passenger in train.riders:
+		if passenger.target_shape == station.shape:
+			alight += 1
+			continue
+		if next_id < 0:
+			alight += 1
+			continue
+		var stay := routing.stay_cost(train.line_id, station.id, next_id, passenger.target_shape)
+		var leave := routing.board_cost(station.id, passenger.target_shape)
+		if stay > leave:
+			alight += 1
+	var activity := alight
+	var capacity_left := train.capacity - (train.riders.size() - alight)
+	if capacity_left > 0 and next_id >= 0:
+		for waiting in station.waiting:
+			var choice := routing.next_for(station.id, waiting.target_shape)
+			if int(choice.get("line", -1)) == train.line_id \
+					and int(choice.get("station", -1)) == next_id:
+				activity += 1
+				capacity_left -= 1
+				if capacity_left <= 0:
+					break
+	return activity
 
 
 func _depart(train: Train, line: MetroLine) -> void:
@@ -554,19 +652,19 @@ func _depart(train: Train, line: MetroLine) -> void:
 		train.dir = -train.dir
 		next = train.stop_index + train.dir
 	if next < 0 or next >= line.stops.size():
-		train.dwell_left = Train.DWELL_TIME
 		return
 	train.target_index = next
 	train.target_dist = line.geometry.stop_offsets[next]
 	train.state = Train.State.MOVING
 
 
-## 到站：先下（含送达/换乘），再上。
-func _on_station(train: Train, line: MetroLine, station: Station) -> void:
+## 到站：先下（含送达/换乘），再上。返回本次上下车总人数（用于停站时长）。
+func _on_station(train: Train, line: MetroLine, station: Station) -> int:
 	var next_departure := _next_departure_station_id(train, line)
 
 	var staying: Array[Passenger] = []
 	var delivered_here := 0
+	var alighted := 0
 	for passenger in train.riders:
 		if passenger.target_shape == station.shape:
 			score += 1
@@ -580,25 +678,28 @@ func _on_station(train: Train, line: MetroLine, station: Station) -> void:
 			staying.append(passenger)
 		else:
 			station.waiting.append(passenger)
+			alighted += 1
 	train.riders = staying
 	if delivered_here > 0:
 		passengers_delivered.emit(station, delivered_here)
 
+	var boarded := 0
 	var capacity_left := train.capacity - train.riders.size()
-	if capacity_left <= 0 or station.waiting.is_empty():
-		return
-	var keep: Array[Passenger] = []
-	for passenger in station.waiting:
-		if capacity_left > 0:
-			var choice := routing.next_for(station.id, passenger.target_shape)
-			if not choice.is_empty() \
-					and int(choice["line"]) == train.line_id \
-					and int(choice["station"]) == next_departure:
-				train.riders.append(passenger)
-				capacity_left -= 1
-				continue
-		keep.append(passenger)
-	station.waiting = keep
+	if capacity_left > 0 and not station.waiting.is_empty():
+		var keep: Array[Passenger] = []
+		for passenger in station.waiting:
+			if capacity_left > 0:
+				var choice := routing.next_for(station.id, passenger.target_shape)
+				if not choice.is_empty() \
+						and int(choice["line"]) == train.line_id \
+						and int(choice["station"]) == next_departure:
+					train.riders.append(passenger)
+					capacity_left -= 1
+					boarded += 1
+					continue
+			keep.append(passenger)
+		station.waiting = keep
+	return delivered_here + alighted + boarded
 
 
 func _next_departure_station_id(train: Train, line: MetroLine) -> int:
