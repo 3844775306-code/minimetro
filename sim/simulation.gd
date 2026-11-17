@@ -143,7 +143,7 @@ func is_weekend() -> bool:
 # 城镇发展：车站类型解锁、数量增长、相机拉远
 # ---------------------------------------------------------------------------
 
-## 0=村庄 1=小镇 2=城市 3=大都市
+## 0=村庄 1=小镇 2=城市 3=大都市 4=都会
 func development_stage() -> int:
 	var count := network.stations.size()
 	if count < 8:
@@ -152,7 +152,9 @@ func development_stage() -> int:
 		return 1
 	if count < 20:
 		return 2
-	return 3
+	if count < 28:
+		return 3
+	return 4
 
 
 func stage_name() -> String:
@@ -163,12 +165,14 @@ func stage_name() -> String:
 			return Loc.t("小镇", "Town")
 		2:
 			return Loc.t("城市", "City")
-		_:
+		3:
 			return Loc.t("大都市", "Metropolis")
+		_:
+			return Loc.t("都会", "Cosmopolis")
 
 
 ## 当前阶段允许出现的车站形状与权重：
-## 村庄只有居民区/车站，之后逐步解锁商务区、医院、景点、度假区。
+## 村庄只有居民区/车站，之后逐步解锁商务/市政、医院/景点/大学、度假/博物馆/体育场、公园/花园。
 func station_shape_weights() -> Dictionary:
 	var stage := development_stage()
 	var weights := {
@@ -177,28 +181,35 @@ func station_shape_weights() -> Dictionary:
 	}
 	if stage >= 1:
 		weights[Shape.Kind.TRIANGLE] = 3.0
+		weights[Shape.Kind.PENTAGON] = 1.2
 	if stage >= 2:
 		weights[Shape.Kind.PLUS] = 1.4
 		weights[Shape.Kind.STAR] = 1.0
+		weights[Shape.Kind.HEXAGON] = 1.2
 	if stage >= 3:
 		weights[Shape.Kind.DIAMOND] = 1.4
+		weights[Shape.Kind.SEMICIRCLE] = 1.0
+		weights[Shape.Kind.OCTAGON] = 1.0
+	if stage >= 4:
+		weights[Shape.Kind.RING] = 1.0
+		weights[Shape.Kind.CLOVER] = 0.8
 	return weights
 
 
 ## 城镇越大，新车站出现得越快。
 func station_interval() -> float:
-	var factors := [1.5, 1.2, 1.0, 0.8]
+	var factors := [1.5, 1.25, 1.1, 0.95, 0.8]
 	return level.station_spawn_interval * float(factors[development_stage()])
 
 
-## 相机拉远进度：0=开局，1=最远。
+## 相机拉远进度：0=开局（较近），1=最远（看到完整 2400×1200 地图）。
 func camera_progress() -> float:
-	return clampf((float(network.stations.size()) - 5.0) / 25.0, 0.0, 1.0)
+	return clampf((float(network.stations.size()) - 5.0) / 30.0, 0.0, 1.0)
 
 
-## 相机目标缩放：从 1.0 逐渐拉远到 0.78（最远值）。
+## 相机目标缩放：从 1.0 逐渐拉远到 0.8（最远值，正好看全整张地图）。
 func camera_zoom_target() -> float:
-	return lerpf(1.0, 0.78, camera_progress())
+	return lerpf(1.0, 0.8, camera_progress())
 
 
 ## 高斯型"时段热度"（小时, 中心, 宽度）。
@@ -229,63 +240,140 @@ func origin_activity(kind: int) -> float:
 			value = 0.4 + 0.8 * midday + 1.2 * weekend - 0.2 * night
 		Shape.Kind.STAR:
 			value = 0.5 + 0.9 * midday + 1.0 * weekend - 0.2 * night
+		Shape.Kind.PENTAGON:
+			value = 0.6 + 0.4 * morning + 0.5 * midday - 0.2 * night - 0.3 * weekend
+		Shape.Kind.HEXAGON:
+			value = 0.45 + 1.1 * morning + 0.6 * midday - 0.2 * night - 0.2 * weekend
+		Shape.Kind.OCTAGON:
+			value = 0.35 + 1.2 * evening + 0.7 * weekend - 0.1 * night
+		Shape.Kind.RING:
+			value = 0.45 + 0.9 * midday + 0.7 * weekend - 0.2 * night
+		Shape.Kind.SEMICIRCLE:
+			value = 0.4 + 0.8 * midday + 0.5 * weekend - 0.2 * night
+		Shape.Kind.CLOVER:
+			value = 0.4 + 0.7 * midday + 0.6 * weekend - 0.2 * night
 	return maxf(value, 0.05)
 
 
-## 某地标类型的乘客"想去哪"（结合早晚高峰与周末）：
-## 居民区早高峰去商务区/车站，商务区晚高峰回居民区，周末更多去度假区/景点。
-func destination_weights(origin_shape: int) -> Dictionary:
+## 目的地的"吸引力"：不同地标在不同时段更值得去。
+func _target_attraction(kind: int) -> float:
 	var h := hour_of_day()
 	var weekend := 1.0 if is_weekend() else 0.0
-	var morning := _bell(h, 7.5, 1.8)
-	var evening := _bell(h, 18.0, 1.8)
+	var night := 1.0 if (h < 5.5 or h >= 22.0) else 0.0
+	var morning := _bell(h, 7.5, 1.7)
+	var evening := _bell(h, 18.0, 1.9)
 	var midday := _bell(h, 13.0, 3.5)
-	var w := {}
-	match origin_shape:
+	var value := 0.5
+	match kind:
 		Shape.Kind.CIRCLE:
-			w[Shape.Kind.TRIANGLE] = 0.6 + 2.6 * morning + 0.4 * midday
-			w[Shape.Kind.SQUARE] = 2.4
-			w[Shape.Kind.PLUS] = 1.0
-			w[Shape.Kind.STAR] = 1.0 + 0.6 * weekend
-			w[Shape.Kind.DIAMOND] = 0.5 + 1.0 * weekend
-			w[Shape.Kind.CIRCLE] = 0.35
-		Shape.Kind.TRIANGLE:
-			w[Shape.Kind.CIRCLE] = 0.6 + 2.6 * evening + 0.4 * midday
-			w[Shape.Kind.SQUARE] = 2.2
-			w[Shape.Kind.PLUS] = 0.9
-			w[Shape.Kind.STAR] = 1.0
-			w[Shape.Kind.DIAMOND] = 0.8 + 0.8 * weekend
-			w[Shape.Kind.TRIANGLE] = 0.3
+			value = 0.5 + 0.9 * evening + 0.2 * midday
 		Shape.Kind.SQUARE:
-			w[Shape.Kind.CIRCLE] = 2.4
-			w[Shape.Kind.TRIANGLE] = 2.0
-			w[Shape.Kind.PLUS] = 1.0
-			w[Shape.Kind.STAR] = 1.0
-			w[Shape.Kind.DIAMOND] = 0.9 + 1.0 * weekend
+			value = 0.9 + 0.2 * morning + 0.2 * evening
+		Shape.Kind.TRIANGLE:
+			value = 0.5 + 1.3 * morning + 0.3 * midday
 		Shape.Kind.PLUS:
-			w[Shape.Kind.CIRCLE] = 2.6
-			w[Shape.Kind.SQUARE] = 1.4
-			w[Shape.Kind.PLUS] = 0.3
-			w[Shape.Kind.STAR] = 0.5
+			value = 0.7 + 0.4 * midday
 		Shape.Kind.DIAMOND:
-			w[Shape.Kind.SQUARE] = 2.5
-			w[Shape.Kind.STAR] = 1.5 + 0.8 * weekend
-			w[Shape.Kind.CIRCLE] = 1.4
-			w[Shape.Kind.TRIANGLE] = 0.7
+			value = 0.5 + 0.7 * midday + 0.9 * weekend - 0.3 * night
 		Shape.Kind.STAR:
-			w[Shape.Kind.SQUARE] = 2.4
-			w[Shape.Kind.DIAMOND] = 1.3 + 0.8 * weekend
-			w[Shape.Kind.CIRCLE] = 1.6
-			w[Shape.Kind.TRIANGLE] = 1.0
-			w[Shape.Kind.PLUS] = 0.5
-	if h < 5.5 or h >= 22.0:
-		if w.has(Shape.Kind.DIAMOND):
-			w[Shape.Kind.DIAMOND] = float(w[Shape.Kind.DIAMOND]) * 0.4
-		if w.has(Shape.Kind.STAR):
-			w[Shape.Kind.STAR] = float(w[Shape.Kind.STAR]) * 0.5
-	return w
+			value = 0.6 + 0.7 * midday + 0.8 * weekend - 0.3 * night
+		Shape.Kind.PENTAGON:
+			value = 0.6 + 0.5 * midday - 0.3 * weekend
+		Shape.Kind.HEXAGON:
+			value = 0.5 + 1.0 * morning + 0.5 * midday - 0.3 * weekend
+		Shape.Kind.OCTAGON:
+			value = 0.4 + 1.1 * evening + 0.8 * weekend - 0.2 * night
+		Shape.Kind.RING:
+			value = 0.6 + 0.7 * midday + 0.8 * weekend - 0.2 * night
+		Shape.Kind.SEMICIRCLE:
+			value = 0.6 + 0.6 * midday + 0.6 * weekend - 0.2 * night
+		Shape.Kind.CLOVER:
+			value = 0.55 + 0.5 * midday + 0.7 * weekend - 0.2 * night
+	return maxf(value, 0.05)
 
 
+## 各"起点地标"对各"目的地地标"的基础偏好（现实生活里的出行倾向）。
+func _role_affinity() -> Dictionary:
+	return {
+		"residential": {
+			"business": 1.0, "transit": 1.0, "hospital": 0.5, "university": 0.5,
+			"park": 0.5, "museum": 0.4, "garden": 0.4, "stadium": 0.3,
+			"civic": 0.25, "resort": 0.3, "landmark": 0.4, "residential": 0.2,
+		},
+		"transit": {
+			"residential": 1.0, "business": 0.8, "university": 0.5, "stadium": 0.5,
+			"park": 0.4, "museum": 0.4, "garden": 0.3, "hospital": 0.4,
+			"civic": 0.3, "resort": 0.5, "landmark": 0.5, "transit": 0.2,
+		},
+		"business": {
+			"residential": 1.0, "transit": 1.0, "hospital": 0.3, "university": 0.3,
+			"civic": 0.5, "stadium": 0.4, "museum": 0.4, "park": 0.35,
+			"garden": 0.3, "resort": 0.3, "landmark": 0.4, "business": 0.2,
+		},
+		"hospital": {
+			"residential": 1.0, "transit": 0.7, "park": 0.5, "garden": 0.4,
+			"museum": 0.3, "university": 0.3, "hospital": 0.2, "civic": 0.3,
+			"business": 0.25, "resort": 0.2, "landmark": 0.3,
+		},
+		"resort": {
+			"transit": 1.0, "landmark": 0.8, "park": 0.6, "stadium": 0.4,
+			"garden": 0.5, "museum": 0.5, "residential": 0.5, "business": 0.3,
+			"hospital": 0.2, "resort": 0.2,
+		},
+		"landmark": {
+			"transit": 1.0, "resort": 0.7, "park": 0.6, "museum": 0.6,
+			"garden": 0.5, "residential": 0.5, "business": 0.35, "hospital": 0.2,
+			"stadium": 0.4,
+		},
+		"university": {
+			"transit": 1.0, "park": 0.5, "museum": 0.5, "garden": 0.4,
+			"residential": 0.5, "business": 0.3, "stadium": 0.4, "civic": 0.25,
+			"hospital": 0.2, "resort": 0.3, "landmark": 0.4, "university": 0.2,
+		},
+		"civic": {
+			"transit": 1.0, "museum": 0.5, "park": 0.4, "residential": 0.4,
+			"business": 0.5, "hospital": 0.3, "university": 0.3, "stadium": 0.3,
+			"garden": 0.35, "landmark": 0.4, "resort": 0.3,
+		},
+		"stadium": {
+			"transit": 1.0, "residential": 0.4, "park": 0.4, "business": 0.35,
+			"hospital": 0.2, "university": 0.3, "museum": 0.3, "garden": 0.3,
+			"stadium": 0.2, "resort": 0.3, "landmark": 0.4,
+		},
+		"park": {
+			"transit": 1.0, "residential": 0.6, "museum": 0.5, "garden": 0.5,
+			"university": 0.4, "business": 0.3, "hospital": 0.25, "stadium": 0.3,
+			"landmark": 0.4, "resort": 0.4, "park": 0.2,
+		},
+		"museum": {
+			"transit": 1.0, "park": 0.5, "garden": 0.5, "residential": 0.5,
+			"university": 0.4, "business": 0.35, "hospital": 0.2, "landmark": 0.4,
+			"stadium": 0.25, "museum": 0.2,
+		},
+		"garden": {
+			"transit": 1.0, "park": 0.7, "museum": 0.5, "residential": 0.4,
+			"university": 0.35, "hospital": 0.2, "business": 0.2, "stadium": 0.25,
+			"landmark": 0.4, "resort": 0.3, "garden": 0.2,
+		},
+	}
+
+
+## 某地标类型的乘客"想去哪"：目的地吸引力 × 起点地标的出行偏好。
+func destination_weights(origin_shape: int) -> Dictionary:
+	var affinity: Dictionary = _role_affinity().get(Shape.landmark_role(origin_shape), {})
+	var weights := {}
+	for kind in [
+		Shape.Kind.CIRCLE, Shape.Kind.SQUARE, Shape.Kind.TRIANGLE,
+		Shape.Kind.PLUS, Shape.Kind.DIAMOND, Shape.Kind.STAR,
+		Shape.Kind.PENTAGON, Shape.Kind.HEXAGON, Shape.Kind.OCTAGON,
+		Shape.Kind.RING, Shape.Kind.SEMICIRCLE, Shape.Kind.CLOVER,
+	]:
+		var target_role := Shape.landmark_role(kind)
+		var base := float(affinity.get(target_role, 0.25))
+		weights[kind] = maxf(0.01, base * _target_attraction(kind))
+	if weights.has(origin_shape):
+		weights[origin_shape] = 0.0
+	return weights
 func total_trains_owned() -> int:
 	return inventory_trains + network.train_count()
 

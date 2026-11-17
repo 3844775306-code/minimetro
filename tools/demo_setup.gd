@@ -39,11 +39,11 @@ static func build_adaptive(network: MetroNetwork, level: LevelData, seed_value: 
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value
 	var spawner := StationSpawner.new(level, rng)
-	spawner.spawn_initial(network, 11)
-	var stations := network.stations.duplicate()
-	if stations.size() < 4:
+	spawner.spawn_initial(network, 18)
+	if network.stations.size() < 4:
 		return
-	var lengths := [mini(5, stations.size()), mini(4, stations.size()), mini(4, stations.size())]
+	var stations := network.stations.duplicate()
+	var lengths := [mini(6, stations.size()), mini(5, stations.size()), mini(5, stations.size())]
 	# 起点尽量分散（左 / 中 / 右），让三条线覆盖整张地图
 	var sorted := stations.duplicate()
 	sorted.sort_custom(func(a: Station, b: Station) -> bool: return a.pos.x < b.pos.x)

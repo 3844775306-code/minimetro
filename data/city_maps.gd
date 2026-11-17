@@ -2,12 +2,12 @@ class_name CityMaps
 extends RefCounted
 ## 城市地图注册表。
 ## 河道中心线采用真实城市河道的 WGS84 经纬度简化坐标（公开地理常识数据），
-## 用等距圆柱投影映射到 1920×1080 世界坐标；宽度按玩法放大，不是精确测绘图。
-## 纸城是虚构地图。
+## 用等距圆柱投影映射到 2400×1200 世界坐标；宽度按玩法放大，不是精确测绘图。
+## 纸城是虚构地图。地图变大后每座城市都增加了更多水系（支流/运河/河流）。
 
-const WORLD_SIZE := Vector2(1920, 1080)
+const WORLD_SIZE := Vector2(2400, 1200)
 ## 城市水位可用的绘图区域（留出陆地圆角与站点边距）。
-const MAP_AREA := Rect2(170.0, 130.0, 1580.0, 820.0)
+const MAP_AREA := Rect2(200.0, 160.0, 2000.0, 980.0)
 
 static var _cache: Array[CityMap] = []
 
@@ -26,9 +26,8 @@ static func get_city(city_id: String) -> CityMap:
 
 
 static func index_of(city_id: String) -> int:
-	var cities := all()
-	for i in cities.size():
-		if cities[i].id == city_id:
+	for i in all().size():
+		if all()[i].id == city_id:
 			return i
 	return 0
 
@@ -48,7 +47,6 @@ static func band(centerline: PackedVector2Array, width: float) -> PackedVector2A
 	)
 	if offset.is_empty():
 		return _raw_band(centerline, width)
-	# 极端自交时可能切成多块，取面积最大的一块作为河面
 	var best: PackedVector2Array = offset[0]
 	var best_area := absf(_signed_area(best))
 	for i in range(1, offset.size()):
@@ -159,6 +157,11 @@ static func geo_band(points: Array, bbox: Rect2, width: float, extend_to_edge: b
 	return band(centerline, width)
 
 
+## 真实水域（海湾等）的经纬度轮廓 → 世界坐标多边形。
+static func geo_polygon(points: Array, bbox: Rect2) -> PackedVector2Array:
+	return project(points, bbox, fit_geo(bbox, bbox.position.y + bbox.size.y * 0.5))
+
+
 ## 把折线两端沿端点方向延长（延长量约为绘图区对角线的 1/4），让水流穿出画面。
 static func extend_ends(centerline: PackedVector2Array, target: Rect2) -> PackedVector2Array:
 	if centerline.size() < 2:
@@ -175,130 +178,170 @@ static func extend_ends(centerline: PackedVector2Array, target: Rect2) -> Packed
 	return out
 
 
-## 真实水域（海湾等）的经纬度轮廓 → 世界坐标多边形。
-static func geo_polygon(points: Array, bbox: Rect2) -> PackedVector2Array:
-	return project(points, bbox, fit_geo(bbox, bbox.position.y + bbox.size.y * 0.5))
-
-
 static func _build_all() -> Array[CityMap]:
 	var cities: Array[CityMap] = []
-	# 纸城：虚构河道（默认教学图）
+	# 纸城：虚构河道（默认教学图）——主河 + 西侧支流 + 东南水湾
 	cities.append(_make({
 		"id": "paper",
 		"name_zh": "纸城",
 		"name_en": "Paper City",
 		"rivers": [
 			band(PackedVector2Array([
-				Vector2(1190, 80), Vector2(1260, 300), Vector2(1180, 520),
-				Vector2(1290, 760), Vector2(1230, 1000),
-			]), 192.0),
+				Vector2(1540, 20), Vector2(1600, 260), Vector2(1510, 480),
+				Vector2(1590, 720), Vector2(1500, 980), Vector2(1540, 1180),
+			]), 190.0),
+			band(PackedVector2Array([
+				Vector2(-40, 780), Vector2(300, 750), Vector2(620, 790),
+				Vector2(900, 760), Vector2(1220, 820), Vector2(1510, 780),
+			]), 90.0),
+			band(PackedVector2Array([
+				Vector2(1800, 1220), Vector2(1930, 1010), Vector2(2090, 930),
+				Vector2(2230, 990), Vector2(2340, 1220),
+			]), 130.0),
 		],
 		"lines": 3,
 		"trains": 3,
 		"bridges": 2,
 	}))
 
-	# 伦敦：泰晤士河（WGS84 简化中心线，西 → 东）
-	var london_box := Rect2(-0.280, 51.440, 0.340, 0.100)
+	# 伦敦：泰晤士河（西 → 东）+ 利河（Lea，北侧支流）+ 拉文斯本河（南侧小支流）
+	var london_box := Rect2(-0.340, 51.420, 0.460, 0.160)
 	cities.append(_make({
 		"id": "london",
 		"name_zh": "伦敦",
 		"name_en": "London",
-		"rivers": [geo_band([
-			Vector2(-0.235, 51.487), Vector2(-0.220, 51.470), Vector2(-0.205, 51.462),
-			Vector2(-0.190, 51.458), Vector2(-0.175, 51.465), Vector2(-0.160, 51.475),
-			Vector2(-0.145, 51.482), Vector2(-0.130, 51.493), Vector2(-0.115, 51.502),
-			Vector2(-0.095, 51.508), Vector2(-0.075, 51.506), Vector2(-0.045, 51.501),
-			Vector2(-0.015, 51.496), Vector2(0.005, 51.482), Vector2(0.035, 51.488),
-			Vector2(0.060, 51.495),
-		], london_box, 120.0)],
+		"rivers": [
+			geo_band([
+				Vector2(-0.300, 51.487), Vector2(-0.270, 51.477), Vector2(-0.245, 51.468),
+				Vector2(-0.220, 51.466), Vector2(-0.195, 51.470), Vector2(-0.175, 51.478),
+				Vector2(-0.155, 51.484), Vector2(-0.135, 51.495), Vector2(-0.115, 51.503),
+				Vector2(-0.095, 51.509), Vector2(-0.075, 51.507), Vector2(-0.050, 51.502),
+				Vector2(-0.020, 51.497), Vector2(0.005, 51.492), Vector2(0.030, 51.488),
+				Vector2(0.060, 51.492), Vector2(0.090, 51.500), Vector2(0.115, 51.505),
+			], london_box, 118.0),
+			geo_band([
+				Vector2(0.010, 51.575), Vector2(0.000, 51.550), Vector2(-0.010, 51.525),
+				Vector2(-0.005, 51.500),
+			], london_box, 46.0),
+			geo_band([
+				Vector2(-0.020, 51.420), Vector2(-0.010, 51.440), Vector2(0.000, 51.460),
+				Vector2(0.005, 51.480),
+			], london_box, 30.0, false),
+		],
 		"lines": 3,
 		"trains": 3,
 		"bridges": 2,
 	}))
 
-	# 巴黎：塞纳河（东 → 西）
-	var paris_box := Rect2(2.220, 48.810, 0.200, 0.070)
+	# 巴黎：塞纳河（东 → 西）+ 马恩河（东侧汇入）+ 圣马丁运河（北侧）
+	var paris_box := Rect2(2.180, 48.780, 0.340, 0.130)
 	cities.append(_make({
 		"id": "paris",
 		"name_zh": "巴黎",
 		"name_en": "Paris",
-		"rivers": [geo_band([
-			Vector2(2.400, 48.830), Vector2(2.385, 48.838), Vector2(2.370, 48.845),
-			Vector2(2.355, 48.852), Vector2(2.340, 48.857), Vector2(2.325, 48.862),
-			Vector2(2.310, 48.864), Vector2(2.295, 48.863), Vector2(2.280, 48.860),
-			Vector2(2.265, 48.855), Vector2(2.250, 48.848), Vector2(2.235, 48.840),
-		], paris_box, 84.0)],
+		"rivers": [
+			geo_band([
+				Vector2(2.460, 48.835), Vector2(2.430, 48.836), Vector2(2.400, 48.833),
+				Vector2(2.385, 48.840), Vector2(2.365, 48.847), Vector2(2.350, 48.853),
+				Vector2(2.335, 48.858), Vector2(2.320, 48.862), Vector2(2.305, 48.864),
+				Vector2(2.290, 48.863), Vector2(2.275, 48.860), Vector2(2.260, 48.855),
+				Vector2(2.245, 48.848), Vector2(2.230, 48.840), Vector2(2.215, 48.833),
+			], paris_box, 84.0),
+			geo_band([
+				Vector2(2.500, 48.845), Vector2(2.470, 48.840), Vector2(2.440, 48.836),
+				Vector2(2.410, 48.834),
+			], paris_box, 44.0),
+			geo_band([
+				Vector2(2.365, 48.885), Vector2(2.365, 48.872), Vector2(2.362, 48.858),
+			], paris_box, 22.0, false),
+		],
 		"lines": 3,
 		"trains": 3,
 		"bridges": 2,
 	}))
 
-	# 纽约：哈德逊河（西）+ 东河（东），中间是曼哈顿
-	var ny_box := Rect2(-74.060, 40.680, 0.160, 0.200)
+	# 纽约：哈德逊河（西）+ 东河（东）+ 哈莱姆河（北）
+	var ny_box := Rect2(-74.100, 40.640, 0.240, 0.270)
 	cities.append(_make({
 		"id": "newyork",
 		"name_zh": "纽约",
 		"name_en": "New York",
 		"rivers": [
 			geo_band([
-				Vector2(-74.015, 40.700), Vector2(-74.012, 40.715), Vector2(-74.008, 40.730),
-				Vector2(-74.003, 40.745), Vector2(-73.998, 40.760), Vector2(-73.990, 40.775),
-				Vector2(-73.978, 40.795), Vector2(-73.965, 40.815), Vector2(-73.950, 40.835),
-				Vector2(-73.938, 40.855),
+				Vector2(-74.030, 40.660), Vector2(-74.020, 40.700), Vector2(-74.012, 40.730),
+				Vector2(-74.005, 40.760), Vector2(-73.990, 40.790), Vector2(-73.970, 40.820),
+				Vector2(-73.950, 40.850), Vector2(-73.930, 40.880),
 			], ny_box, 104.0),
 			geo_band([
-				Vector2(-73.995, 40.700), Vector2(-73.985, 40.702), Vector2(-73.978, 40.708),
-				Vector2(-73.970, 40.720), Vector2(-73.965, 40.735), Vector2(-73.960, 40.750),
-				Vector2(-73.952, 40.765), Vector2(-73.945, 40.780), Vector2(-73.938, 40.795),
+				Vector2(-74.000, 40.660), Vector2(-73.990, 40.690), Vector2(-73.985, 40.710),
+				Vector2(-73.978, 40.730), Vector2(-73.968, 40.750), Vector2(-73.958, 40.770),
+				Vector2(-73.945, 40.790), Vector2(-73.935, 40.810), Vector2(-73.925, 40.840),
 			], ny_box, 78.0),
+			geo_band([
+				Vector2(-73.935, 40.805), Vector2(-73.925, 40.815), Vector2(-73.918, 40.830),
+				Vector2(-73.912, 40.850), Vector2(-73.910, 40.870),
+			], ny_box, 44.0),
 		],
 		"lines": 3,
 		"trains": 4,
 		"bridges": 3,
 	}))
 
-	# 柏林：施普雷河（东 → 西）+ 南部运河（Landwehrkanal，两端接回施普雷河）
-	var berlin_box := Rect2(13.240, 52.460, 0.360, 0.090)
+	# 柏林：施普雷河（东 → 西）+ 南部运河 + 哈弗尔河（西）+ 达默河（东南）
+	var berlin_box := Rect2(13.080, 52.380, 0.640, 0.250)
 	cities.append(_make({
 		"id": "berlin",
 		"name_zh": "柏林",
 		"name_en": "Berlin",
 		"rivers": [
 			geo_band([
-				Vector2(13.570, 52.450), Vector2(13.530, 52.470), Vector2(13.500, 52.490),
+				Vector2(13.700, 52.420), Vector2(13.660, 52.440), Vector2(13.620, 52.450),
+				Vector2(13.570, 52.460), Vector2(13.530, 52.475), Vector2(13.500, 52.490),
 				Vector2(13.475, 52.500), Vector2(13.450, 52.508), Vector2(13.425, 52.512),
 				Vector2(13.400, 52.517), Vector2(13.375, 52.521), Vector2(13.350, 52.525),
 				Vector2(13.320, 52.528), Vector2(13.290, 52.533), Vector2(13.260, 52.535),
+				Vector2(13.230, 52.537), Vector2(13.200, 52.540), Vector2(13.160, 52.548),
+				Vector2(13.120, 52.552),
 			], berlin_box, 74.0),
 			geo_band([
 				Vector2(13.375, 52.512), Vector2(13.365, 52.500), Vector2(13.355, 52.490),
 				Vector2(13.360, 52.482), Vector2(13.380, 52.480), Vector2(13.400, 52.483),
 				Vector2(13.420, 52.490), Vector2(13.415, 52.505),
 			], berlin_box, 46.0, false),
+			geo_band([
+				Vector2(13.100, 52.500), Vector2(13.150, 52.520), Vector2(13.180, 52.550),
+				Vector2(13.160, 52.580), Vector2(13.120, 52.600),
+			], berlin_box, 70.0),
+			geo_band([
+				Vector2(13.700, 52.380), Vector2(13.660, 52.410), Vector2(13.620, 52.440),
+				Vector2(13.580, 52.460),
+			], berlin_box, 50.0),
 		],
 		"lines": 3,
 		"trains": 3,
 		"bridges": 3,
 	}))
 
-	# 东京：隅田川（北 → 南）+ 东京湾东南水域
-	var tokyo_box := Rect2(139.720, 35.580, 0.220, 0.210)
+	# 东京：隅田川（北 → 南）+ 荒川（东侧）+ 东京湾
+	var tokyo_box := Rect2(139.660, 35.500, 0.340, 0.340)
 	cities.append(_make({
 		"id": "tokyo",
 		"name_zh": "东京",
 		"name_en": "Tokyo",
 		"rivers": [
 			geo_band([
-				Vector2(139.800, 35.770), Vector2(139.805, 35.755), Vector2(139.800, 35.740),
-				Vector2(139.798, 35.725), Vector2(139.795, 35.710), Vector2(139.790, 35.695),
-				Vector2(139.785, 35.680), Vector2(139.782, 35.665), Vector2(139.778, 35.650),
+				Vector2(139.800, 35.830), Vector2(139.805, 35.780), Vector2(139.800, 35.730),
+				Vector2(139.798, 35.690), Vector2(139.790, 35.660), Vector2(139.780, 35.620),
+				Vector2(139.775, 35.580),
 			], tokyo_box, 96.0),
-			# 东京湾：东南角的大片水域，岸线弯向隅田川口，其余方向穿出画面
+			geo_band([
+				Vector2(139.840, 35.840), Vector2(139.860, 35.780), Vector2(139.870, 35.720),
+				Vector2(139.865, 35.650), Vector2(139.850, 35.600),
+			], tokyo_box, 70.0),
 			geo_polygon([
-				Vector2(139.795, 35.665), Vector2(139.850, 35.650), Vector2(139.910, 35.615),
-				Vector2(139.980, 35.520), Vector2(139.860, 35.470), Vector2(139.720, 35.500),
-				Vector2(139.700, 35.590), Vector2(139.740, 35.640),
+				Vector2(139.760, 35.600), Vector2(139.840, 35.580), Vector2(139.920, 35.550),
+				Vector2(139.990, 35.500), Vector2(139.950, 35.440), Vector2(139.780, 35.460),
+				Vector2(139.700, 35.520),
 			], tokyo_box),
 		],
 		"lines": 3,
@@ -306,25 +349,31 @@ static func _build_all() -> Array[CityMap]:
 		"bridges": 2,
 	}))
 
-	# 上海：黄浦江（南 → 北，陆家嘴弯）+ 苏州河（西 → 东汇入黄浦江）
-	var shanghai_box := Rect2(121.320, 31.150, 0.240, 0.280)
+	# 上海：黄浦江（南 → 北）+ 苏州河 + 川杨河（东侧）+ 淀浦河（南侧）
+	var shanghai_box := Rect2(121.240, 31.080, 0.400, 0.400)
 	cities.append(_make({
 		"id": "shanghai",
 		"name_zh": "上海",
 		"name_en": "Shanghai",
 		"rivers": [
 			geo_band([
-				Vector2(121.465, 31.180), Vector2(121.470, 31.195), Vector2(121.472, 31.210),
-				Vector2(121.475, 31.225), Vector2(121.482, 31.238), Vector2(121.490, 31.248),
-				Vector2(121.497, 31.258), Vector2(121.503, 31.268), Vector2(121.505, 31.280),
-				Vector2(121.500, 31.295), Vector2(121.492, 31.310), Vector2(121.480, 31.325),
-				Vector2(121.468, 31.345), Vector2(121.455, 31.365), Vector2(121.443, 31.390),
+				Vector2(121.460, 31.100), Vector2(121.465, 31.150), Vector2(121.470, 31.200),
+				Vector2(121.475, 31.240), Vector2(121.490, 31.270), Vector2(121.505, 31.300),
+				Vector2(121.500, 31.330), Vector2(121.480, 31.370), Vector2(121.460, 31.410),
+				Vector2(121.440, 31.460),
 			], shanghai_box, 112.0),
 			geo_band([
-				Vector2(121.360, 31.245), Vector2(121.390, 31.243), Vector2(121.420, 31.246),
-				Vector2(121.445, 31.250), Vector2(121.465, 31.252), Vector2(121.485, 31.250),
-				Vector2(121.497, 31.247),
+				Vector2(121.280, 31.250), Vector2(121.340, 31.245), Vector2(121.400, 31.245),
+				Vector2(121.445, 31.250), Vector2(121.480, 31.253), Vector2(121.505, 31.248),
 			], shanghai_box, 52.0),
+			geo_band([
+				Vector2(121.600, 31.150), Vector2(121.590, 31.200), Vector2(121.560, 31.240),
+				Vector2(121.520, 31.260),
+			], shanghai_box, 40.0, false),
+			geo_band([
+				Vector2(121.300, 31.100), Vector2(121.360, 31.120), Vector2(121.420, 31.140),
+				Vector2(121.460, 31.160),
+			], shanghai_box, 45.0, false),
 		],
 		"lines": 3,
 		"trains": 4,

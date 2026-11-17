@@ -8,6 +8,8 @@ const PAPER := Color("#F3EFE6")
 const PAPER_EDGE := Color("#E2DAC9")
 const RIVER_EDGE := Color("#B7D3DB")
 const PAPER_SHADOW := Color(0.10, 0.12, 0.14, 0.07)
+## 地图外的"桌面"颜色：相机拉远后看到的是桌面/地图外框，不是海水
+const DESK := Color("#D8D0C1")
 
 var level: LevelData = null
 var _land := PackedVector2Array()
@@ -25,10 +27,10 @@ func setup(p_level: LevelData) -> void:
 func _draw() -> void:
 	if level == null or _land.is_empty():
 		return
+	# 相机拉远时看到世界外圈：是桌面/地图外框，不是水
+	draw_rect(Rect2(Vector2(-1600.0, -1600.0),
+		level.world_size + Vector2(3200.0, 3200.0)), DESK)
 	draw_rect(Rect2(Vector2.ZERO, level.world_size), WATER)
-	# 相机拉远时会看到世界外圈，继续铺水色，避免露出空背景
-	draw_rect(Rect2(Vector2(-1400.0, -1400.0),
-		level.world_size + Vector2(2800.0, 2800.0)), WATER)
 	draw_colored_polygon(DrawUtil.offset(_land, Vector2(9, 11)), PAPER_SHADOW)
 	draw_colored_polygon(_land, PAPER)
 	draw_polyline(DrawUtil.closed(_land), PAPER_EDGE, 3.0, true)

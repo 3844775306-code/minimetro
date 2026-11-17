@@ -610,11 +610,11 @@ func _start_session() -> void:
 	network.station_added.connect(_on_station_added)
 
 	if _demo:
-		if Game.city_id == CityMaps.default_city_id():
-			DemoSetup.build(network, level, 2 if _pose == "draft" else 3)
-		else:
-			# 非默认城市：用固定种子生成站点 + 最近邻串线，适配任意河道
-			DemoSetup.build_adaptive(network, level, hash("citydemo-" + Game.city_id))
+		# 所有演示都用自适应布局，适配 2400×1200 大地图与新增水系
+		var demo_seed := 3
+		if Game.city_id != CityMaps.default_city_id():
+			demo_seed = hash("citydemo-" + Game.city_id)
+		DemoSetup.build_adaptive(network, level, demo_seed)
 		DemoSetup.seed_passengers(network)
 		_advance_sim(480)
 		_apply_pose()
@@ -790,10 +790,12 @@ func _apply_pose() -> void:
 			var shapes := [
 				Shape.Kind.CIRCLE, Shape.Kind.SQUARE, Shape.Kind.TRIANGLE,
 				Shape.Kind.PLUS, Shape.Kind.STAR, Shape.Kind.DIAMOND,
+				Shape.Kind.PENTAGON, Shape.Kind.HEXAGON, Shape.Kind.OCTAGON,
+				Shape.Kind.RING, Shape.Kind.SEMICIRCLE, Shape.Kind.CLOVER,
 			]
-			for i in 26:
-				var candidate := Vector2(260.0 + float(i % 6) * 240.0,
-					220.0 + float(i / 6) * 190.0)
+			for i in 30:
+				var candidate := Vector2(320.0 + float(i % 6) * 360.0,
+					260.0 + float(i / 6) * 200.0)
 				if network.station_at(candidate, 90.0) == null \
 						and not network.is_point_in_water(candidate):
 					network.add_station(candidate, shapes[i % shapes.size()])

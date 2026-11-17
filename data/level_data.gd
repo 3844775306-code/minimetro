@@ -6,10 +6,11 @@ extends Resource
 @export var title: String = "纸城 · 手势原型"
 
 @export_group("地图")
-@export var world_size: Vector2 = Vector2(1920, 1080)
-@export var land_margin: float = 96.0
-@export var land_corner_radius: float = 72.0
-@export var station_margin: float = 150.0
+@export var world_size: Vector2 = Vector2(2400, 1200)
+@export var land_margin: float = 110.0
+@export var land_corner_radius: float = 80.0
+## 开局相机只显示中央 1920×1080，站点必须留在这个可见区域内
+@export var station_margin: float = 300.0
 
 @export_group("水域与桥梁")
 ## 河道多边形（闭合）。线路每穿过一条河道消耗 1 座桥/隧道。
@@ -20,17 +21,23 @@ extends Resource
 
 @export_group("站点生成")
 @export var start_station_count: int = 5
-@export var max_stations: int = 40
+@export var max_stations: int = 60
 @export var station_min_distance: float = 105.0
 @export var station_spawn_interval: float = 13.0
-## 形状权重：越大越常见。菱形 / 星形是稀有站，给乘客目的地增加多样性。
+## 形状权重：越大越常见。后期形状（度假区/景点/体育场/公园等）更稀有。
 @export var station_shape_weights: Dictionary = {
 	Shape.Kind.CIRCLE: 5.0,
 	Shape.Kind.TRIANGLE: 4.0,
 	Shape.Kind.SQUARE: 4.0,
 	Shape.Kind.PLUS: 1.0,
+	Shape.Kind.PENTAGON: 0.9,
+	Shape.Kind.HEXAGON: 0.9,
 	Shape.Kind.DIAMOND: 1.2,
 	Shape.Kind.STAR: 0.8,
+	Shape.Kind.OCTAGON: 0.7,
+	Shape.Kind.RING: 0.7,
+	Shape.Kind.SEMICIRCLE: 0.6,
+	Shape.Kind.CLOVER: 0.5,
 }
 
 @export_group("乘客与压力")

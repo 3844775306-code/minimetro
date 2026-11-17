@@ -9,6 +9,12 @@ enum Kind {
 	DIAMOND,
 	STAR,
 	PLUS,
+	PENTAGON,
+	HEXAGON,
+	OCTAGON,
+	RING,
+	SEMICIRCLE,
+	CLOVER,
 }
 
 ## 站点图标的基准半径（@1920x1080 设计分辨率）。
@@ -37,6 +43,18 @@ static func polygon(kind: int, radius: float = STATION_RADIUS) -> PackedVector2A
 			return _star(5, radius, radius * 0.46)
 		Kind.PLUS:
 			return _plus(radius)
+		Kind.PENTAGON:
+			return _regular(5, radius, -PI / 2.0)
+		Kind.HEXAGON:
+			return _regular(6, radius, -PI / 2.0)
+		Kind.OCTAGON:
+			return _regular(8, radius, PI / 8.0)
+		Kind.RING:
+			return PackedVector2Array()
+		Kind.SEMICIRCLE:
+			return _semicircle(radius)
+		Kind.CLOVER:
+			return _clover(radius)
 		_:
 			return PackedVector2Array()
 
@@ -49,6 +67,12 @@ static func shape_name(kind: int) -> String:
 		Kind.DIAMOND: return "菱形"
 		Kind.STAR: return "星形"
 		Kind.PLUS: return "十字"
+		Kind.PENTAGON: return "五边形"
+		Kind.HEXAGON: return "六边形"
+		Kind.OCTAGON: return "八边形"
+		Kind.RING: return "圆环"
+		Kind.SEMICIRCLE: return "半圆"
+		Kind.CLOVER: return "四叶草"
 		_: return "未知"
 
 
@@ -61,6 +85,12 @@ static func landmark_name(kind: int) -> String:
 		Kind.PLUS: return Loc.t("医院", "Hospital")
 		Kind.DIAMOND: return Loc.t("度假区", "Resort")
 		Kind.STAR: return Loc.t("景点", "Landmark")
+		Kind.PENTAGON: return Loc.t("市政厅", "Civic hall")
+		Kind.HEXAGON: return Loc.t("大学", "University")
+		Kind.OCTAGON: return Loc.t("体育场", "Stadium")
+		Kind.RING: return Loc.t("公园", "Park")
+		Kind.SEMICIRCLE: return Loc.t("博物馆", "Museum")
+		Kind.CLOVER: return Loc.t("花园", "Garden")
 		_: return Loc.t("未知地标", "Unknown")
 
 
@@ -73,7 +103,32 @@ static func landmark_role(kind: int) -> String:
 		Kind.PLUS: return "hospital"
 		Kind.DIAMOND: return "resort"
 		Kind.STAR: return "landmark"
+		Kind.PENTAGON: return "civic"
+		Kind.HEXAGON: return "university"
+		Kind.OCTAGON: return "stadium"
+		Kind.RING: return "park"
+		Kind.SEMICIRCLE: return "museum"
+		Kind.CLOVER: return "garden"
 		_: return "unknown"
+
+
+static func _semicircle(radius: float) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	var steps := 14
+	for i in steps + 1:
+		var a := PI + PI * float(i) / float(steps)  # 上半圆
+		pts.append(Vector2(cos(a), sin(a)) * radius)
+	return pts
+
+
+static func _clover(radius: float) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	var steps := 48
+	for i in steps:
+		var a := TAU * float(i) / float(steps)
+		var petal := 0.62 + 0.38 * absf(cos(a * 2.0))
+		pts.append(Vector2(cos(a), sin(a)) * radius * petal)
+	return pts
 
 
 static func _regular(sides: int, radius: float, start_angle: float) -> PackedVector2Array:

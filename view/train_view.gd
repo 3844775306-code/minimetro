@@ -104,6 +104,9 @@ func _draw_rider_icon(pos: Vector2, shape_kind: int) -> void:
 		draw_circle(pos, SEAT_RADIUS, PAPER, true, -1.0, true)
 		draw_arc(pos, SEAT_RADIUS, 0.0, TAU, 14, INK, 1.4, true)
 		return
+	if shape_kind == Shape.Kind.RING:
+		draw_arc(pos, SEAT_RADIUS * 0.9, 0.0, TAU, 14, INK, 1.5, true)
+		return
 	var poly := Shape.polygon(shape_kind, SEAT_RADIUS * 1.45)
 	if poly.is_empty():
 		draw_circle(pos, SEAT_RADIUS, PAPER, true, -1.0, true)

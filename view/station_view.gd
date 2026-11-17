@@ -57,7 +57,13 @@ func _draw() -> void:
 
 	var shadow_offset := Vector2(2.5, 3.5)
 	var stroke := OVERLOAD_RING if overloading else STROKE
-	if station.shape == Shape.Kind.CIRCLE:
+	if station.shape == Shape.Kind.RING:
+		draw_circle(shadow_offset, r, SHADOW, true, -1.0, true)
+		draw_circle(Vector2.ZERO, r, FILL, true, -1.0, true)
+		draw_arc(Vector2.ZERO, r, 0.0, TAU, 48, stroke, 3.0, true)
+		draw_circle(Vector2.ZERO, r * 0.44, FILL, true, -1.0, true)
+		draw_arc(Vector2.ZERO, r * 0.44, 0.0, TAU, 32, stroke, 2.5, true)
+	elif station.shape == Shape.Kind.CIRCLE:
 		draw_circle(shadow_offset, r, SHADOW, true, -1.0, true)
 		draw_circle(Vector2.ZERO, r, FILL, true, -1.0, true)
 		draw_arc(Vector2.ZERO, r, 0.0, TAU, 48, stroke, 3.0, true)

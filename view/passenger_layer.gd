@@ -57,6 +57,9 @@ func _draw_icon(pos: Vector2, shape_kind: int) -> void:
 	if shape_kind == Shape.Kind.CIRCLE:
 		draw_circle(pos, radius, INK, true, -1.0, true)
 		return
+	if shape_kind == Shape.Kind.RING:
+		draw_arc(pos, radius * 0.9, 0.0, TAU, 20, INK, 2.4, true)
+		return
 	var poly := Shape.polygon(shape_kind, radius * 1.15)
 	if poly.is_empty():
 		draw_circle(pos, radius, INK, true, -1.0, true)

@@ -193,6 +193,8 @@ func _draw() -> void:
 # ---------------------------------------------------------------------------
 
 func _draw_game_hud(vp: Vector2) -> void:
+	_draw_panel(Rect2(34.0, 66.0, 486.0, 104.0))
+	_draw_panel(Rect2(vp.x - 310.0, 52.0, 262.0, 268.0))
 	_text_centered("MINI METRO", vp.x * 0.5, 72.0, 18, Color(MUTED, 0.8))
 	_text_centered(mode_title, vp.x * 0.5, 98.0, 15, Color(MUTED, 0.65))
 	if stage_label != "":
@@ -231,6 +233,13 @@ func _draw_game_hud(vp: Vector2) -> void:
 		draw_colored_polygon(poly, Color("#FBF8F1", 0.96))
 		draw_polyline(DrawUtil.closed(poly), Color(0.55, 0.52, 0.47), 1.6, true)
 		_text(hover_landmark, rect.position + Vector2(11.0, 20.0), 15, INK)
+
+
+## HUD 半透明纸面板：地图变丰富后保证左上/右上文字可读
+func _draw_panel(rect: Rect2) -> void:
+	var poly := DrawUtil.rounded_rect(rect, 14.0, 8)
+	draw_colored_polygon(poly, Color(0.99, 0.97, 0.92, 0.78))
+	draw_polyline(DrawUtil.closed(poly), Color(0.72, 0.69, 0.62, 0.45), 1.5, true)
 
 
 ## 12 小时制时钟：12 点在上、6 点在下；到了夜晚整块表盘变黑、指针变白。

@@ -42,6 +42,8 @@ static func _test_landmarks(h: TestHarness) -> void:
 	var kinds := [
 		Shape.Kind.CIRCLE, Shape.Kind.SQUARE, Shape.Kind.TRIANGLE,
 		Shape.Kind.PLUS, Shape.Kind.DIAMOND, Shape.Kind.STAR,
+		Shape.Kind.PENTAGON, Shape.Kind.HEXAGON, Shape.Kind.OCTAGON,
+		Shape.Kind.RING, Shape.Kind.SEMICIRCLE, Shape.Kind.CLOVER,
 	]
 	var names := {}
 	for kind in kinds:
@@ -56,6 +58,19 @@ static func _test_landmarks(h: TestHarness) -> void:
 	h.eq(Shape.landmark_name(Shape.Kind.PLUS), "医院", "加号 = 医院")
 	h.eq(Shape.landmark_name(Shape.Kind.DIAMOND), "度假区", "菱形 = 度假区")
 	h.eq(Shape.landmark_name(Shape.Kind.STAR), "景点", "星形 = 景点")
+	h.eq(Shape.landmark_name(Shape.Kind.PENTAGON), "市政厅", "五边形 = 市政厅")
+	h.eq(Shape.landmark_name(Shape.Kind.HEXAGON), "大学", "六边形 = 大学")
+	h.eq(Shape.landmark_name(Shape.Kind.OCTAGON), "体育场", "八边形 = 体育场")
+	h.eq(Shape.landmark_name(Shape.Kind.RING), "公园", "圆环 = 公园")
+	h.eq(Shape.landmark_name(Shape.Kind.SEMICIRCLE), "博物馆", "半圆 = 博物馆")
+	h.eq(Shape.landmark_name(Shape.Kind.CLOVER), "花园", "四叶草 = 花园")
+	h.check(Shape.polygon(Shape.Kind.RING).is_empty(), "圆环用特殊绘制（无多边形）")
+	var shapes_with_polygon := [
+		Shape.Kind.PENTAGON, Shape.Kind.HEXAGON, Shape.Kind.OCTAGON,
+		Shape.Kind.SEMICIRCLE, Shape.Kind.CLOVER,
+	]
+	for kind in shapes_with_polygon:
+		h.check(Shape.polygon(kind).size() >= 5, "新形状有多边形：" + Shape.shape_name(kind))
 
 
 static func _test_stages(h: TestHarness) -> void:
@@ -69,22 +84,32 @@ static func _test_stages(h: TestHarness) -> void:
 	h.check(weights0.has(Shape.Kind.CIRCLE) and weights0.has(Shape.Kind.SQUARE),
 		"村庄有居民区和车站")
 	h.check(not weights0.has(Shape.Kind.TRIANGLE), "村庄没有商务区")
-	h.near(sim.camera_zoom_target(), 1.0, 0.001, "开局相机不拉远")
+	h.near(sim.camera_zoom_target(), 1.0, 0.001, "开局相机较近")
 
 	_add_stations(net, 4)
 	h.eq(sim.development_stage(), 1, "9 站时是小镇")
 	h.check(sim.station_shape_weights().has(Shape.Kind.TRIANGLE), "小镇解锁商务区")
+	h.check(sim.station_shape_weights().has(Shape.Kind.PENTAGON), "小镇解锁市政厅")
 	_add_stations(net, 6)
 	h.eq(sim.development_stage(), 2, "15 站时是城市")
 	var weights2 := sim.station_shape_weights()
 	h.check(weights2.has(Shape.Kind.PLUS), "城市解锁医院")
 	h.check(weights2.has(Shape.Kind.STAR), "城市解锁景点")
+	h.check(weights2.has(Shape.Kind.HEXAGON), "城市解锁大学")
 	h.check(not weights2.has(Shape.Kind.DIAMOND), "城市还没有度假区")
 	_add_stations(net, 6)
 	h.eq(sim.development_stage(), 3, "21 站时是大都市")
-	h.check(sim.station_shape_weights().has(Shape.Kind.DIAMOND), "大都市解锁度假区")
-	_add_stations(net, 9)
-	h.near(sim.camera_zoom_target(), 0.78, 0.001, "车站足够多时相机拉到最远 0.78")
+	var weights3 := sim.station_shape_weights()
+	h.check(weights3.has(Shape.Kind.DIAMOND), "大都市解锁度假区")
+	h.check(weights3.has(Shape.Kind.SEMICIRCLE), "大都市解锁博物馆")
+	h.check(weights3.has(Shape.Kind.OCTAGON), "大都市解锁体育场")
+	h.check(not weights3.has(Shape.Kind.RING), "大都市还没有公园")
+	_add_stations(net, 8)
+	h.eq(sim.development_stage(), 4, "29 站时是都会")
+	h.check(sim.station_shape_weights().has(Shape.Kind.RING), "都会解锁公园")
+	h.check(sim.station_shape_weights().has(Shape.Kind.CLOVER), "都会解锁花园")
+	_add_stations(net, 8)
+	h.near(sim.camera_zoom_target(), 0.8, 0.001, "车站足够多时相机拉到最远 0.8")
 	h.check(sim.station_interval() < level.station_spawn_interval,
 		"城镇越大，新车站出现越快")
 

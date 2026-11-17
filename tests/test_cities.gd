@@ -40,7 +40,7 @@ static func _test_geometry(h: TestHarness) -> void:
 			var inside := true
 			for point in river:
 				# 干流两端会故意延长出画面，这里只要求不要飞出得太离谱
-				if point.x < -520.0 or point.x > 2440.0 or point.y < -520.0 or point.y > 1600.0:
+				if point.x < -900.0 or point.x > 3300.0 or point.y < -900.0 or point.y > 2100.0:
 					inside = false
 			h.check(inside, "河道在画布范围内（允许穿出画面）：" + city.id)
 
@@ -50,8 +50,9 @@ static func _test_geo_projection(h: TestHarness) -> void:
 	var bbox := Rect2(13.240, 52.460, 0.360, 0.090)
 	var latitude := bbox.position.y + bbox.size.y * 0.5
 	var target := CityMaps.fit_geo(bbox, latitude)
-	var expected_aspect := (bbox.size.x * cos(deg_to_rad(latitude))) / bbox.size.y
-	h.near(target.size.x / target.size.y, expected_aspect, 0.01, "投影保持真实宽高比")
+	h.check(target.size.x > 0.0 and target.size.y > 0.0, "2400×1200 大地图有合法投影")
+	h.near(target.size.x / target.size.y, (bbox.size.x * cos(deg_to_rad(latitude))) / bbox.size.y,
+		0.01, "投影保持真实宽高比")
 	h.check(target.position.x >= CityMaps.MAP_AREA.position.x - 0.5, "投影在绘图区内（左）")
 	h.check(target.end.x <= CityMaps.MAP_AREA.end.x + 0.5, "投影在绘图区内（右）")
 	h.check(target.position.y >= CityMaps.MAP_AREA.position.y - 0.5, "投影在绘图区内（上）")
