@@ -36,12 +36,12 @@ func setup(p_level: LevelData) -> void:
 func _draw() -> void:
 	if level == null or _land.is_empty():
 		return
-	# 昼夜只改变地面色调：夜晚地面/桌面变为全黑，HUD、列车、线路保持原色。
-	var land_color := PAPER.lerp(Color("#000000"), _night)
-	var water_color := WATER.lerp(Color("#020609"), _night)
-	var desk_color := DESK.lerp(Color("#000000"), _night)
-	var edge_color := PAPER_EDGE.lerp(Color("#0A0A0A"), _night)
-	var river_edge := RIVER_EDGE.lerp(Color("#08141A"), _night)
+	# 夜晚只让地面/桌面变暗；河流始终保持白天的颜色。
+	var land_color := PAPER.lerp(Color("#4A4E52"), _night)
+	var water_color := WATER
+	var desk_color := DESK.lerp(Color("#393C3F"), _night)
+	var edge_color := PAPER_EDGE.lerp(Color("#2E3134"), _night)
+	var river_edge := RIVER_EDGE
 	var shadow := Color(0.10, 0.12, 0.14, lerpf(0.07, 0.18, _night))
 	# 相机拉远时看到世界外圈：是桌面/地图外框，不是水
 	draw_rect(Rect2(Vector2(-1600.0, -1600.0),
