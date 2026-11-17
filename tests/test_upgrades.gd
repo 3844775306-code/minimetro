@@ -9,7 +9,6 @@ static func run(h: TestHarness) -> void:
 	_test_apply_carriage(h)
 	_test_apply_bridge(h)
 	_test_apply_interchange(h)
-	_test_interchange_pick(h)
 
 
 static func _make_level(week_seconds: float = 999.0) -> LevelData:
@@ -114,12 +113,15 @@ static func _test_apply_train(h: TestHarness) -> void:
 	var net := _make_network(level)
 	var sim := _make_sim(net, level)
 	sim.tick(Simulation.STEP)
-	h.eq(net.train_count(), 2, "两条线各一列车")
-	var before_trains := level.start_trains
+	h.eq(net.train_count(), 2, "两条新线各自动配一列车")
+	h.eq(sim.inventory_trains, 0, "初始列车库存被新线用光")
 	sim.apply_upgrade("train")
-	h.eq(level.start_trains, before_trains + 1, "列车资源 +1")
-	_run(sim, 10)
-	h.eq(net.train_count(), 3, "下一 tick 自动投放第三列车")
+	h.eq(sim.inventory_trains, 1, "列车资源进入库存 +1")
+	h.eq(net.train_count(), 2, "没有新线时不会自动投放")
+	var pos := Vector2(500.0, 200.0)
+	h.check(sim.place_train(net.lines[0], pos), "手动拖放库存列车")
+	h.eq(net.train_count(), 3, "拖放后上线第三列车")
+	h.eq(sim.inventory_trains, 0, "库存相应减少")
 
 
 static func _test_apply_carriage(h: TestHarness) -> void:
@@ -129,18 +131,14 @@ static func _test_apply_carriage(h: TestHarness) -> void:
 	var sim := _make_sim(net, level)
 	sim.tick(Simulation.STEP)
 	sim.apply_upgrade("carriage")
-	h.eq(net.total_carriages(), 1, "一节车厢")
-	var expected := Train.BASE_CAPACITY + Train.CARRIAGE_CAPACITY
-	var found := false
-	for line in net.lines:
-		for train in line.trains:
-			if train.carriages > 0:
-				found = true
-				h.eq(train.capacity, expected, "挂车厢的列车容量 +6")
-	h.check(found, "车厢挂到了某列车上（车厢现在按列车挂）")
-
-	sim.apply_upgrade("carriage")
-	h.eq(net.total_carriages(), 2, "第二节点到另一列车")
+	h.eq(sim.inventory_carriages, 1, "车厢进入库存")
+	h.eq(net.total_carriages(), 0, "未拖放前不在线路上")
+	var train: Train = net.lines[0].trains[0]
+	var pos := net.lines[0].geometry.sample(train.dist).origin
+	h.check(sim.place_carriage(pos), "拖到列车上挂载成功")
+	h.eq(train.carriages, 1, "列车挂上一节车厢")
+	h.eq(train.capacity, Train.BASE_CAPACITY + Train.CARRIAGE_CAPACITY, "容量 +6")
+	h.eq(net.total_carriages(), 1, "全网一节车厢")
 
 
 static func _test_apply_bridge(h: TestHarness) -> void:
@@ -158,59 +156,20 @@ static func _test_apply_bridge(h: TestHarness) -> void:
 static func _test_apply_interchange(h: TestHarness) -> void:
 	h.section("upgrades/interchange")
 	var level := _make_level()
+	level.start_interchanges = 0
 	var net := _make_network(level)
 	var sim := _make_sim(net, level)
 	var stations := net.stations
-	stations[0].waiting.append(Passenger.new(Shape.Kind.SQUARE))
-	stations[0].waiting.append(Passenger.new(Shape.Kind.SQUARE))
-	stations[2].waiting.append(Passenger.new(Shape.Kind.CIRCLE))
+	sim.apply_upgrade("interchange")
+	h.eq(sim.inventory_interchanges, 1, "换乘中心进入库存")
+	h.eq(stations[0].capacity, 6, "未拖放前容量不变")
+	h.check(sim.place_interchange(stations[0]), "拖到车站上升级成功")
+	h.eq(stations[0].capacity, 12, "目标站容量 6 → 12")
+	h.eq(sim.inventory_interchanges, 0, "库存扣减")
+	h.check(not sim.place_interchange(stations[1]), "没有库存时不能再放")
 
 	sim.apply_upgrade("interchange")
-	h.eq(stations[0].capacity, 12, "最拥挤站点升级为换乘站")
-	h.eq(stations[2].capacity, 6, "其他站容量不变")
-
-	sim.apply_upgrade("interchange")
-	var upgraded := 0
-	for st in net.stations:
-		if st.capacity > 6:
-			upgraded += 1
-	h.eq(upgraded, 2, "第二座换乘站落在下一个拥挤站")
-
-
-## 换乘站卡：手动点选车站的完整流程（含无效点、重复升级、取消兜底）。
-static func _test_interchange_pick(h: TestHarness) -> void:
-	h.section("upgrades/interchange_pick")
-	var level := _make_level()
-	var net := _make_network(level)
-	var sim := _make_sim(net, level)
-	var stations := net.stations
-	stations[0].waiting.append(Passenger.new(Shape.Kind.SQUARE))
-
-	sim.week_pending = true
-	sim.pending_cards.clear()
-	sim.pending_cards.append(UpgradeCards.get_card("interchange"))
-	sim.choose_upgrade(0)
-	h.check(sim.interchange_pending, "选中换乘站卡后进入点选状态")
-	h.check(sim.week_pending, "点选期间保持暂停")
-	h.check(not sim.upgrade_station(9999), "不存在的站点不接受")
-	h.check(sim.interchange_pending, "无效点选后仍等待")
-	h.check(sim.upgrade_station(stations[2].id), "可以升级指定站点")
-	h.eq(stations[2].capacity, 12, "指定站点容量变 12")
-	h.check(not sim.interchange_pending, "完成点选后退出点选状态")
-	h.check(not sim.week_pending, "完成点选后进入下一周")
-	h.eq(sim.week_index, 2, "周数递增")
-
-	# 已升级的站不能重复升级
-	sim.pending_cards.append(UpgradeCards.get_card("interchange"))
-	sim.week_pending = true
-	sim.choose_upgrade(0)
-	h.check(sim.interchange_pending, "第二次换乘站卡进入点选")
-	h.check(not sim.upgrade_station(stations[2].id), "换乘站不能重复升级")
-
-	# 取消点选：兜底升级最拥挤的容量 6 站点
-	stations[1].waiting.append(Passenger.new(Shape.Kind.CIRCLE))
-	stations[1].waiting.append(Passenger.new(Shape.Kind.CIRCLE))
-	sim.cancel_interchange()
-	h.eq(stations[1].capacity, 12, "取消时兜底升级最拥挤站")
-	h.check(not sim.interchange_pending, "取消后退出点选")
-	h.check(not sim.week_pending, "取消后恢复运行")
+	h.check(not sim.place_interchange(stations[0]), "已升级的站不能重复放")
+	h.eq(sim.inventory_interchanges, 1, "失败的放置不扣库存")
+	h.check(sim.place_interchange(stations[1]), "可以放到另一座站")
+	h.eq(stations[1].capacity, 12, "第二座换乘站生效")

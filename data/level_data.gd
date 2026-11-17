@@ -41,10 +41,11 @@ extends Resource
 ## 站点超载后多久判定游戏结束（秒）。
 @export var overload_grace: float = 30.0
 
-@export_group("初始资源")
+@export_group("初始资源（库存，从 HUD 图标拖到地图上使用）")
 @export var start_lines: int = 3
 @export var start_trains: int = 3
 @export var start_carriages: int = 0
+@export var start_interchanges: int = 1
 @export var start_bridges: int = 2
 
 @export_group("资源上限与周循环")
@@ -55,6 +56,7 @@ extends Resource
 @export var max_lines: int = 7
 @export var max_trains: int = 6
 @export var max_carriages: int = 3
+@export var max_interchanges: int = 3
 
 @export_group("模式")
 ## 无尽模式：站点超载只显示计时环，不会判负。

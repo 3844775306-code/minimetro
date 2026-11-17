@@ -34,8 +34,11 @@ var delivered: int = 0
 var week_index: int = 1
 var week_pending: bool = false
 var pending_cards: Array[Dictionary] = []
-## 换乘站卡选中后、等待玩家点选目标车站的状态（期间模拟保持暂停）。
-var interchange_pending: bool = false
+
+## 可用库存（从图标拖到地图上使用）
+var inventory_trains: int = 0
+var inventory_carriages: int = 0
+var inventory_interchanges: int = 0
 
 var _accum: float = 0.0
 var _station_spawn_timer: float = 0.0
@@ -43,6 +46,8 @@ var _passenger_spawn_timer: float = 0.0
 ## 下一次周结算对应的游戏小时。
 var _week_end_hour: float = 0.0
 var _train_id: int = 0
+## 已经做过"新线自动配车"判定的线路 id
+var _auto_lines := {}
 
 
 func _init(p_network: MetroNetwork, p_level: LevelData, p_rng: RandomNumberGenerator) -> void:
@@ -53,6 +58,9 @@ func _init(p_network: MetroNetwork, p_level: LevelData, p_rng: RandomNumberGener
 	_station_spawn_timer = level.station_spawn_interval
 	_passenger_spawn_timer = level.passenger_spawn_start
 	_week_end_hour = level.week_seconds
+	inventory_trains = level.start_trains
+	inventory_carriages = level.start_carriages
+	inventory_interchanges = level.start_interchanges
 
 
 ## 由主循环每帧调用；speed 为倍速（倍速 = 多跑 tick，而不是放大 delta）。
@@ -75,7 +83,7 @@ func tick(dt: float) -> void:
 		routing.rebuild(network)
 	if auto_spawn:
 		_update_spawns(dt)
-	_ensure_trains()
+	_auto_assign_new_lines()
 	_update_trains(dt)
 	_update_stations(dt)
 	if is_over:
@@ -119,6 +127,30 @@ func day_index() -> int:
 	return int(floor(elapsed / HOURS_PER_DAY + 0.0001))
 
 
+## 星期几（第 0 天 = 周一）。
+func weekday_name() -> String:
+	var zh := ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+	var en := ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+	var index := day_index() % 7
+	return Loc.t(zh[index], en[index])
+
+
+func total_trains_owned() -> int:
+	return inventory_trains + network.train_count()
+
+
+func total_carriages_owned() -> int:
+	return inventory_carriages + network.total_carriages()
+
+
+func total_interchanges_owned() -> int:
+	var upgraded := 0
+	for st in network.stations:
+		if st.capacity > 6:
+			upgraded += 1
+	return inventory_interchanges + upgraded
+
+
 # ---------------------------------------------------------------------------
 # 周循环 / 升级
 # ---------------------------------------------------------------------------
@@ -140,46 +172,19 @@ func _update_week() -> void:
 
 
 ## 选择本周末的升级卡（暂停状态下由 UI 调用）。
-## 换乘站卡不立即生效，而是进入"等待点选车站"状态（interchange_pending）。
+## 列车/车厢/换乘中心都只是入库，玩家之后从 HUD 图标拖到地图上使用。
 func choose_upgrade(index: int) -> void:
-	if not week_pending or interchange_pending:
+	if not week_pending:
 		return
 	if index < 0 or index >= pending_cards.size():
 		return
 	var card_id := String(pending_cards[index]["id"])
 	pending_cards = []
-	if card_id == "interchange":
-		interchange_pending = true
-		return
 	apply_upgrade(card_id)
 	_finish_week()
 
 
-## 玩家点选了要升级的车站：容量 6 → 12，然后进入下一周。
-func upgrade_station(station_id: int) -> bool:
-	if not interchange_pending:
-		return false
-	var st := network.station_by_id(station_id)
-	if st == null or st.capacity > 6:
-		return false
-	st.capacity = 12
-	_finish_week()
-	return true
-
-
-## 取消点选：兜底自动升级"最拥挤的容量 6 站点"，保证不会卡在暂停里。
-func cancel_interchange() -> Station:
-	if not interchange_pending:
-		return null
-	var st := _interchange_station()
-	if st != null:
-		st.capacity = 12
-	_finish_week()
-	return st
-
-
 func _finish_week() -> void:
-	interchange_pending = false
 	week_pending = false
 	pending_cards = []
 	week_index += 1
@@ -192,68 +197,143 @@ func apply_upgrade(card_id: String) -> void:
 		"line":
 			level.start_lines = mini(level.start_lines + 1, level.max_lines)
 		"train":
-			level.start_trains = mini(level.start_trains + 1, level.max_trains)
+			inventory_trains += 1
 		"carriage":
-			_apply_carriage()
+			inventory_carriages += 1
 		"bridge":
 			level.start_bridges = mini(level.start_bridges + 1, level.max_bridges)
 		"interchange":
-			_apply_interchange()
+			inventory_interchanges += 1
 		_:
 			push_warning("未知的升级卡: " + card_id)
 
 
-## 换乘站：把"容量未升级且等待最多"的站点容量提到 12。
-func _interchange_station() -> Station:
-	var best: Station = null
-	var best_waiting := -1
-	for st in network.stations:
-		if st.capacity > 6:
-			continue
-		if st.waiting.size() > best_waiting:
-			best_waiting = st.waiting.size()
-			best = st
-	return best
+## 从库存拖一辆列车到线路上的任意位置；成功返回 true。
+func place_train(line: MetroLine, pos: Vector2) -> bool:
+	if inventory_trains <= 0 or line == null:
+		return false
+	if line.stops.size() < 2 or not line.geometry.is_drawable():
+		return false
+	inventory_trains -= 1
+	_spawn_train_at(line, pos)
+	return true
 
 
-func _apply_interchange() -> void:
-	var st := _interchange_station()
-	if st == null:
-		return
-	st.capacity = 12
-
-
-func _apply_carriage() -> void:
-	var train := _carriage_train()
+## 从库存拖一节车厢：挂到光标附近（或目标线路上）的列车上。
+func place_carriage(pos: Vector2) -> bool:
+	if inventory_carriages <= 0:
+		return false
+	var train := _train_near(pos)
 	if train == null:
-		return
+		return false
+	if train.carriages >= level.max_carriages:
+		return false
+	inventory_carriages -= 1
 	train.carriages += 1
 	train.refresh_capacity()
+	return true
 
 
-## 可以加挂车厢的列车：未到单车车厢上限、当前车厢最少。
-func _carriage_train() -> Train:
+## 从库存拖一个换乘中心：放在容量 6 的车站上，容量提到 12。
+func place_interchange(station: Station) -> bool:
+	if inventory_interchanges <= 0 or station == null:
+		return false
+	if station.capacity > 6:
+		return false
+	inventory_interchanges -= 1
+	station.capacity = 12
+	return true
+
+
+## 光标附近最近的一列车（先看列车位置，其次看所在线路）。
+func _train_near(pos: Vector2) -> Train:
 	var best: Train = null
+	var best_dist := 56.0
 	for line in network.lines:
+		if not line.geometry.is_drawable():
+			continue
 		for train in line.trains:
-			if train.carriages >= level.max_carriages:
-				continue
-			if best == null or train.carriages < best.carriages:
+			var d := line.geometry.sample(train.dist).origin.distance_to(pos)
+			if d < best_dist:
+				best_dist = d
 				best = train
+	if best != null:
+		return best
+	var line := nearest_line(pos)
+	if line == null:
+		return null
+	best = null
+	best_dist = INF
+	for train in line.trains:
+		var d := line.geometry.sample(train.dist).origin.distance_to(pos)
+		if d < best_dist:
+			best_dist = d
+			best = train
 	return best
+
+
+## 距离 pos 最近、且在拾取半径内的线路（供拖放资源用）。
+func nearest_line(pos: Vector2, max_dist: float = 24.0) -> MetroLine:
+	var best: MetroLine = null
+	var best_dist := max_dist
+	for line in network.lines:
+		if line.stops.size() < 2 or not line.geometry.is_drawable():
+			continue
+		var offset := line.geometry.nearest_distance(pos)
+		var d := line.geometry.sample(offset).origin.distance_to(pos)
+		if d < best_dist:
+			best_dist = d
+			best = line
+	return best
+
+
+## 把列车放到线路上的任意弧长位置：朝最近的前方站行驶（环线自动回绕）。
+func _place_train_at(train: Train, line: MetroLine, pos: Vector2) -> void:
+	var total := line.geometry.total_length
+	var d := clampf(line.geometry.nearest_distance(pos), 0.0, total)
+	train.dist = d
+	train.state = Train.State.MOVING
+	train.dwell_left = 0.0
+	var best := 0
+	var best_diff := INF
+	for i in line.geometry.stop_offsets.size():
+		var diff := absf(line.geometry.stop_offsets[i] - d)
+		if diff < best_diff:
+			best_diff = diff
+			best = i
+	train.stop_index = best
+	if line.is_loop and line.stops.size() >= 3:
+		train.dir = 1
+		var next := (best + 1) % line.stops.size()
+		train.target_index = next
+		var target := line.geometry.stop_offsets[next]
+		if target <= d:
+			target += total
+		train.target_dist = target
+		return
+	var next := best + 1
+	if next < line.stops.size() and line.geometry.stop_offsets[next] >= d:
+		train.dir = 1
+		train.target_index = next
+		train.target_dist = line.geometry.stop_offsets[next]
+	else:
+		var prev := maxi(best - 1, 0)
+		train.dir = -1
+		train.target_index = prev
+		train.target_dist = line.geometry.stop_offsets[prev]
 
 
 func _roll_cards() -> Array[Dictionary]:
 	var pool: Array[Dictionary] = []
 	if network.lines.size() < level.max_lines:
 		pool.append(UpgradeCards.get_card("line"))
-	if network.train_count() < level.max_trains:
+	if total_trains_owned() < level.max_trains:
 		pool.append(UpgradeCards.get_card("train"))
-	if _carriage_train() != null:
+	if total_carriages_owned() < level.max_carriages * 3:
 		pool.append(UpgradeCards.get_card("carriage"))
 	if level.start_bridges < level.max_bridges:
 		pool.append(UpgradeCards.get_card("bridge"))
-	if _interchange_station() != null:
+	if total_interchanges_owned() < level.max_interchanges and _interchange_station() != null:
 		pool.append(UpgradeCards.get_card("interchange"))
 
 	var picked: Array[Dictionary] = []
@@ -264,6 +344,14 @@ func _roll_cards() -> Array[Dictionary]:
 		picked.append(pool[index])
 		pool.remove_at(index)
 	return picked
+
+
+## 容量 6 的车站（换乘中心的目标）。
+func _interchange_station() -> Station:
+	for st in network.stations:
+		if st.capacity <= 6:
+			return st
+	return null
 
 
 func _weighted_pick(pool: Array[Dictionary]) -> int:
@@ -348,50 +436,50 @@ func _spawn_passenger() -> void:
 # 列车
 # ---------------------------------------------------------------------------
 
-func _ensure_trains() -> void:
+## 只有"新开的线路"才会自动配 1 列车（且库存里还有车）；其余都要玩家手动拖。
+func _auto_assign_new_lines() -> void:
+	# 清理已经删除的线路标记
+	var live := {}
+	for line in network.lines:
+		live[line.id] = true
+	for id in _auto_lines.keys().duplicate():
+		if not live.has(id):
+			_auto_lines.erase(id)
 	for line in network.lines:
 		if line.stops.size() < 2 or not line.geometry.is_drawable():
 			_drop_trains(line)
-
-	var used := network.train_count()
-	var guard := 0
-	while used < level.start_trains and guard < 12:
-		guard += 1
-		var best: MetroLine = null
-		for line in network.lines:
-			if line.stops.size() < 2 or not line.geometry.is_drawable():
-				continue
-			if best == null:
-				best = line
-				continue
-			if line.trains.size() < best.trains.size():
-				best = line
-			elif line.trains.size() == best.trains.size() and line.stops.size() > best.stops.size():
-				best = line
-		if best == null:
-			break
-		_spawn_train(best)
-		used += 1
+			continue
+		if _auto_lines.has(line.id):
+			continue
+		_auto_lines[line.id] = true
+		if inventory_trains > 0:
+			inventory_trains -= 1
+			_spawn_train_at(line, line.stops[0].pos)
 
 
-func _spawn_train(line: MetroLine) -> void:
+func _spawn_train_at(line: MetroLine, pos: Vector2) -> void:
 	var train := Train.new()
 	train.id = _train_id
 	_train_id += 1
 	train.line_id = line.id
-	# 同线多车时按已有列车数错开站位与方向，避免两列车完全重叠
-	var existing := line.trains.size()
-	var stop_index := existing % line.stops.size()
-	train.dir = 1 if existing % 2 == 0 else -1
-	train.stop_index = stop_index
-	train.dist = line.geometry.stop_offsets[stop_index]
-	train.state = Train.State.DWELL
-	train.dwell_left = 0.6
 	train.line_version = line.version
 	train.carriages = 0
 	train.refresh_capacity()
 	line.trains.append(train)
-	_on_station(train, line, line.stops[stop_index])
+	_place_train_at(train, line, pos)
+	# 正好放在站点上：立即停靠一次，自动配车/拖到站台都能马上上下客
+	var nearest := 0
+	var best_diff := INF
+	for i in line.geometry.stop_offsets.size():
+		var diff := absf(line.geometry.stop_offsets[i] - train.dist)
+		if diff < best_diff:
+			best_diff = diff
+			nearest = i
+	if best_diff <= 1.0:
+		train.stop_index = nearest
+		train.state = Train.State.DWELL
+		train.dwell_left = 0.6
+		_on_station(train, line, line.stops[nearest])
 
 
 func _drop_trains(line: MetroLine) -> void:

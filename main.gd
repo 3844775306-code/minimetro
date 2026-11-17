@@ -19,6 +19,7 @@ var simulation: Simulation = null
 var map_view: MapView = null
 var line_layer: LineLayer = null
 var bridge_layer: BridgeLayer = null
+var river_dash_layer: RiverDashLayer = null
 var train_layer: TrainLayer = null
 var station_layer: StationLayer = null
 var passenger_layer: PassengerLayer = null
@@ -69,6 +70,12 @@ func _process(delta: float) -> void:
 		hud.best_score = _best_for_mode()
 		hud.clock_hours = 7.0 if simulation == null else simulation.hour_of_day()
 		hud.is_night = false if simulation == null else simulation.is_night()
+		hud.weekday = "" if simulation == null else simulation.weekday_name()
+		hud.stock_counts = {
+			"train": 0 if simulation == null else simulation.inventory_trains,
+			"carriage": 0 if simulation == null else simulation.inventory_carriages,
+			"interchange": 0 if simulation == null else simulation.inventory_interchanges,
+		}
 		if _night_filter != null:
 			var strength := 0.0 if simulation == null else Simulation.night_strength(simulation.hour_of_day())
 			_night_filter.color = Color(0.03, 0.06, 0.16, 0.36 * strength)
@@ -165,10 +172,23 @@ func _back_to_menu() -> void:
 func _input(event: InputEvent) -> void:
 	if hud == null:
 		return
-	if hud.mode_menu or hud.settings_menu or hud.week_modal or hud.station_pick or hud.game_over:
+	if hud.mode_menu or hud.settings_menu or hud.week_modal or hud.game_over:
 		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		var speed := hud.speed_button_at(get_global_mouse_position())
+		var pos := get_global_mouse_position()
+		# 左上角库存图标：拖到地图上放资源
+		var stock := hud.stock_icon_at(pos)
+		if stock != "" and simulation != null:
+			var count := 0
+			match stock:
+				"train": count = simulation.inventory_trains
+				"carriage": count = simulation.inventory_carriages
+				"interchange": count = simulation.inventory_interchanges
+			if count > 0 and editor.begin_stock_drag(stock, pos):
+				Audio.play("click")
+				get_viewport().set_input_as_handled()
+				return
+		var speed := hud.speed_button_at(pos)
 		if speed > 0:
 			Game.speed = float(speed)
 			Audio.play("click")
@@ -184,9 +204,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if hud != null and hud.week_modal:
 		_handle_week_input(event)
-		return
-	if hud != null and hud.station_pick:
-		_handle_station_pick(event)
 		return
 	if not (event is InputEventKey):
 		return
@@ -350,47 +367,42 @@ func _choose_upgrade(index: int) -> void:
 	Audio.play("click")
 	simulation.choose_upgrade(index)
 	hud.hide_week()
-	if simulation.interchange_pending:
-		hud.show_station_pick()
-		if editor != null:
-			editor.set_process_unhandled_input(false)
-		return
 	if editor != null:
 		editor.set_process_unhandled_input(true)
+
+
+## 从 HUD 库存图标拖到地图上：放列车 / 挂车厢 / 放换乘中心。
+func _on_stock_drop(kind: String, pos: Vector2) -> void:
+	if simulation == null:
+		return
+	var ok := false
+	match kind:
+		"train":
+			ok = simulation.place_train(simulation.nearest_line(pos), pos)
+			if ok:
+				Audio.play("board")
+			else:
+				hud.show_toast(Loc.t("把列车拖到一条线路上", "Drop the train onto a line"))
+		"carriage":
+			ok = simulation.place_carriage(pos)
+			if ok:
+				Audio.play("board")
+			else:
+				hud.show_toast(Loc.t("把车厢拖到一列车上", "Drop the carriage onto a train"))
+		"interchange":
+			var st := network.station_at(pos, Shape.STATION_RADIUS + 14.0)
+			ok = simulation.place_interchange(st)
+			if ok:
+				Audio.play("upgrade")
+			else:
+				hud.show_toast(Loc.t("把换乘中心拖到容量 6 的车站上",
+					"Drop the interchange onto a capacity-6 station"))
+	if ok:
+		hud.queue_redraw()
 
 
 func _handle_station_pick(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_ESCAPE:
-			_cancel_station_pick()
-		return
-	if not (event is InputEventMouseButton) or not event.pressed:
-		return
-	if event.button_index == MOUSE_BUTTON_RIGHT:
-		_cancel_station_pick()
-		return
-	if event.button_index != MOUSE_BUTTON_LEFT:
-		return
-	var pos := get_global_mouse_position()
-	var st := network.station_at(pos, Shape.STATION_RADIUS + 8.0)
-	if st != null and st.capacity <= 6 and simulation.upgrade_station(st.id):
-		Audio.play("upgrade")
-		hud.hide_station_pick()
-		if editor != null:
-			editor.set_process_unhandled_input(true)
-	else:
-		hud.show_toast(Loc.t("请点击一座容量为 6 的车站", "Pick a station with capacity 6"))
-
-
-func _cancel_station_pick() -> void:
-	if simulation == null:
-		return
-	var st := simulation.cancel_interchange()
-	hud.hide_station_pick()
-	if editor != null:
-		editor.set_process_unhandled_input(true)
-	if st != null:
-		hud.show_toast(Loc.t("已自动升级最拥挤的车站", "Upgraded the busiest station"))
+	pass
 
 
 # ---------------------------------------------------------------------------
@@ -446,6 +458,11 @@ func _build_world() -> void:
 	bridge_layer.z_index = 110
 	world.add_child(bridge_layer)
 
+	river_dash_layer = RiverDashLayer.new()
+	river_dash_layer.name = "RiverDashLayer"
+	river_dash_layer.z_index = 105
+	world.add_child(river_dash_layer)
+
 	train_layer = TrainLayer.new()
 	train_layer.name = "TrainLayer"
 	train_layer.z_index = 150
@@ -477,6 +494,7 @@ func _build_world() -> void:
 
 	line_layer.setup(network)
 	bridge_layer.setup(network)
+	river_dash_layer.setup(network)
 	train_layer.setup(network)
 	station_layer.setup(network)
 	passenger_layer.setup(network)
@@ -495,6 +513,7 @@ func _build_ui() -> void:
 	hud.setup(network, level)
 	editor.toast_requested.connect(hud.show_toast)
 	editor.settings_requested.connect(_open_settings)
+	editor.stock_drop_requested.connect(_on_stock_drop)
 
 	var grain_layer := CanvasLayer.new()
 	grain_layer.name = "Grain"
@@ -607,13 +626,15 @@ func _apply_pose() -> void:
 				st.waiting.append(Passenger.new(Shape.Kind.CIRCLE))
 			_advance_sim(300)
 		"pick":
-			simulation.week_pending = true
-			simulation.pending_cards.clear()
-			simulation.pending_cards.append(UpgradeCards.get_card("interchange"))
-			simulation.choose_upgrade(0)
-			hud.hide_week()
-			hud.show_station_pick()
-			editor.set_process_unhandled_input(false)
+			# 演示：从左上角图标把一列车拖到线路上
+			simulation.inventory_trains += 1
+			simulation.inventory_interchanges += 1
+			if not network.lines.is_empty():
+				var line: MetroLine = network.lines[0]
+				var drop := line.geometry.sample(line.geometry.total_length * 0.5).origin
+				editor.begin_stock_drag("train", hud.stock_icon_center("train"))
+				editor.move_gesture(drop)
+				editor.set_process_unhandled_input(false)
 		"settings":
 			Game.paused = true
 			hud.show_settings()
@@ -622,7 +643,18 @@ func _apply_pose() -> void:
 		"carriages":
 			simulation.apply_upgrade("carriage")
 			simulation.apply_upgrade("carriage")
-			_advance_sim(60)
+			_advance_sim(30)
+			var placed := 0
+			for line in network.lines:
+				if line.trains.is_empty():
+					continue
+				var train: Train = line.trains[0]
+				var pos := line.geometry.sample(train.dist).origin
+				if simulation.place_carriage(pos):
+					placed += 1
+				if placed >= 2:
+					break
+			_advance_sim(30)
 		"loop":
 			if network.lines.size() >= 1 and network.stations.size() > 7:
 				var line: MetroLine = network.lines[0]

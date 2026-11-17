@@ -19,7 +19,9 @@ signal toast_requested(message: String)
 ## 没有手势在进行时按 Esc：交给外层打开暂停/设置菜单。
 signal settings_requested
 
-enum State { IDLE, DRAFT, REORDER, SEGMENT, TRAIN, CARRIAGE }
+enum State { IDLE, DRAFT, REORDER, SEGMENT, TRAIN, CARRIAGE, STOCK }
+
+signal stock_drop_requested(kind: String, pos: Vector2)
 
 const SNAP_RADIUS := 32.0
 ## 端点手柄做大一点，更容易抓住
@@ -65,6 +67,12 @@ var _fleet_train: Train = null
 var _fleet_dragging := false
 var _fleet_target_line: MetroLine = null
 var _fleet_target_train: Train = null
+
+## 从 HUD 库存图标拖资源到地图
+var _stock_kind := ""
+var _stock_hover_line: MetroLine = null
+var _stock_hover_station: Station = null
+var _stock_hover_train: Train = null
 
 var _hover_dwell := 0.0
 var _dwell_station: Station = null
@@ -205,6 +213,8 @@ func move_gesture(pos: Vector2) -> void:
 			if cursor.distance_to(_press_pos) >= 8.0:
 				_fleet_dragging = true
 			_fleet_target_train = _target_train(pos, _fleet_train)
+		State.STOCK:
+			_stock_update_hover(pos)
 	_request_redraw()
 
 
@@ -235,6 +245,8 @@ func end_gesture(pos: Vector2) -> void:
 		State.CARRIAGE:
 			if _fleet_dragging and _fleet_train != null:
 				_move_carriage(_fleet_train, _fleet_target_train)
+		State.STOCK:
+			stock_drop_requested.emit(_stock_kind, pos)
 	_reset_gesture()
 	_request_redraw()
 
@@ -378,10 +390,8 @@ func _update_dwell(delta: float) -> void:
 		_hover_dwell = 0.0
 		_dwell_station = null
 		return
-	var tip_index := _draft_tip_index()
-	var idx := _draft_line.stops.find(hover_station)
-	# 指针下就是笔尖站：不能把笔自己抽掉
-	if idx == tip_index or _draft_line.stops.size() <= 1:
+	# 任意已在线上的站都能移出（含首/末站与笔尖下的端点站），只剩 1 站时保底
+	if _draft_line.stops.size() <= 1:
 		_hover_dwell = 0.0
 		_dwell_station = null
 		return
@@ -482,6 +492,67 @@ func _segment_at_offset(line: MetroLine, offset: float) -> int:
 
 
 # ---------------------------------------------------------------------------
+# 从 HUD 库存图标拖资源到地图
+# ---------------------------------------------------------------------------
+
+func begin_stock_drag(kind: String, pos: Vector2) -> bool:
+	if network == null:
+		return false
+	_dragging = true
+	_press_pos = pos
+	cursor = pos
+	_stock_kind = kind
+	_stock_hover_line = null
+	_stock_hover_station = null
+	_stock_hover_train = null
+	state = State.STOCK
+	_refresh_hover(pos)
+	_request_redraw()
+	return true
+
+
+func _stock_update_hover(pos: Vector2) -> void:
+	_stock_hover_station = network.station_at(pos, Shape.STATION_RADIUS + 12.0)
+	_stock_hover_train = _train_at(pos).get("train")
+	_stock_hover_line = null
+	if _stock_kind == "interchange":
+		return
+	_stock_hover_line = _target_line(pos, null)
+	if _stock_kind == "carriage" and _stock_hover_train == null and _stock_hover_line != null:
+		_stock_hover_train = _least_carriage_train(_stock_hover_line)
+
+
+func _draw_stock_preview() -> void:
+	var paper := Color.WHITE
+	var ink := Color("#2B2B2B")
+	match _stock_kind:
+		"train":
+			var body := Vector2(56.0, 28.0)
+			draw_rect(Rect2(cursor - body * 0.5, body), Color(paper, 0.85))
+			draw_rect(Rect2(cursor - body * 0.5, body), Color(ink, 0.85), false, 2.5)
+		"carriage":
+			var rect := Rect2(cursor - Vector2(10.0, 11.0), Vector2(20.0, 22.0))
+			draw_rect(rect, Color(paper, 0.85))
+			draw_rect(rect, Color(ink, 0.85), false, 2.5)
+		"interchange":
+			draw_circle(cursor, 13.0, Color(paper, 0.9), true, -1.0, true)
+			draw_arc(cursor, 13.0, 0.0, TAU, 32, Color(ink, 0.9), 2.5, true)
+	if _stock_kind == "interchange" and _stock_hover_station != null:
+		draw_arc(_stock_hover_station.pos, Shape.STATION_RADIUS + 16.0, 0.0, TAU, 48,
+			Color(ink, 0.7), 3.0, true)
+	elif _stock_hover_line != null:
+		var offset := _stock_hover_line.geometry.nearest_distance(cursor)
+		var point := _stock_hover_line.geometry.sample(offset).origin
+		draw_arc(point, 24.0, 0.0, TAU, 40, Color(ink, 0.7), 3.0, true)
+	if _stock_kind == "carriage" and _stock_hover_train != null:
+		for line in network.lines:
+			if line.geometry.is_drawable() and line.trains.has(_stock_hover_train):
+				var point := line.geometry.sample(_stock_hover_train.dist).origin
+				draw_arc(point, 30.0, 0.0, TAU, 40, Color(ink, 0.8), 3.0, true)
+				break
+
+
+# ---------------------------------------------------------------------------
 # 拖动列车 / 车厢换线
 # ---------------------------------------------------------------------------
 
@@ -501,7 +572,7 @@ func _train_at(pos: Vector2) -> Dictionary:
 			continue
 		for train in line.trains:
 			var point := line.geometry.sample(train.dist).origin
-			if point.distance_to(pos) <= 15.0:
+			if point.distance_to(pos) <= 23.0:
 				return {"line": line, "train": train}
 	return {}
 
@@ -513,14 +584,14 @@ func _carriage_at(pos: Vector2) -> Dictionary:
 			continue
 		for train in line.trains:
 			for i in train.carriages:
-				if _carriage_position(line, train, i).distance_to(pos) <= 10.0:
+				if _carriage_position(line, train, i).distance_to(pos) <= 14.0:
 					return {"line": line, "train": train, "index": i}
 	return {}
 
 
 func _carriage_position(line: MetroLine, train: Train, index: int) -> Vector2:
 	var xf := line.geometry.sample(train.dist)
-	return xf.origin + xf.x.normalized() * -(30.0 + 13.0 * float(index))
+	return xf.origin + xf.x.normalized() * -(45.0 + 19.5 * float(index))
 
 
 ## 拖动目标是哪条线（排除源线路）：优先线路本体，其次站内线路。
@@ -549,7 +620,7 @@ func _target_line(pos: Vector2, exclude: MetroLine) -> MetroLine:
 ## 车厢的落点列车：优先光标附近的列车，其次目标线路上车厢最少的列车。
 func _target_train(pos: Vector2, exclude: Train) -> Train:
 	var best: Train = null
-	var best_dist := 46.0
+	var best_dist := 60.0
 	for line in network.lines:
 		if not line.geometry.is_drawable():
 			continue
@@ -586,14 +657,44 @@ func _move_train(train: Train, from_line: MetroLine, to_line: MetroLine) -> void
 	to_line.trains.append(train)
 	train.line_id = to_line.id
 	train.line_version = -1
-	train.dir = 1
-	train.state = Train.State.DWELL
-	train.dwell_left = 0.5
-	train.stop_index = 0
-	train.target_index = 0
-	train.dist = to_line.geometry.stop_offsets[0]
-	train.target_dist = train.dist
+	_place_train_on_line(train, to_line, cursor)
 	network.touch()
+
+
+## 让列车落在目标线上的任意弧长位置（不需要从起点站出发）。
+func _place_train_on_line(train: Train, line: MetroLine, pos: Vector2) -> void:
+	var total := line.geometry.total_length
+	var d := clampf(line.geometry.nearest_distance(pos), 0.0, total)
+	train.dist = d
+	train.state = Train.State.MOVING
+	train.dwell_left = 0.0
+	var best := 0
+	var best_diff := INF
+	for i in line.geometry.stop_offsets.size():
+		var diff := absf(line.geometry.stop_offsets[i] - d)
+		if diff < best_diff:
+			best_diff = diff
+			best = i
+	train.stop_index = best
+	if line.is_loop and line.stops.size() >= 3:
+		train.dir = 1
+		var next := (best + 1) % line.stops.size()
+		train.target_index = next
+		var target := line.geometry.stop_offsets[next]
+		if target <= d:
+			target += total
+		train.target_dist = target
+		return
+	var next := best + 1
+	if next < line.stops.size() and line.geometry.stop_offsets[next] >= d:
+		train.dir = 1
+		train.target_index = next
+		train.target_dist = line.geometry.stop_offsets[next]
+	else:
+		var prev := maxi(best - 1, 0)
+		train.dir = -1
+		train.target_index = prev
+		train.target_dist = line.geometry.stop_offsets[prev]
 
 
 ## 把一节车厢从一列车挂到另一列车上（可跨线路）。
@@ -764,6 +865,10 @@ func _reset_gesture() -> void:
 	_fleet_dragging = false
 	_fleet_target_line = null
 	_fleet_target_train = null
+	_stock_kind = ""
+	_stock_hover_line = null
+	_stock_hover_station = null
+	_stock_hover_train = null
 	_hover_dwell = 0.0
 	_dwell_station = null
 	_gesture_dirty = false
@@ -798,6 +903,8 @@ func _draw() -> void:
 		_draw_train_drag_preview()
 	if state == State.CARRIAGE and _fleet_dragging:
 		_draw_carriage_drag_preview()
+	if state == State.STOCK:
+		_draw_stock_preview()
 
 
 func _draw_draft_preview() -> void:
@@ -844,9 +951,9 @@ func _draw_segment_preview() -> void:
 
 func _draw_train_drag_preview() -> void:
 	var color: Color = _fleet_line.color if _fleet_line != null else Color("#555555")
-	var body := Vector2(46.0, 24.0)
+	var body := Vector2(66.0, 34.0)
 	draw_rect(Rect2(cursor - body * 0.5, body), Color(1.0, 1.0, 1.0, 0.55))
-	draw_rect(Rect2(cursor - body * 0.5, body), Color(color, 0.85), false, 2.0)
+	draw_rect(Rect2(cursor - body * 0.5, body), Color(color, 0.85), false, 2.5)
 	if _fleet_target_line != null and _fleet_target_line.geometry.is_drawable():
 		var offset := _fleet_target_line.geometry.nearest_distance(cursor)
 		var point := _fleet_target_line.geometry.sample(offset).origin
@@ -855,9 +962,9 @@ func _draw_train_drag_preview() -> void:
 
 func _draw_carriage_drag_preview() -> void:
 	var color: Color = _fleet_line.color if _fleet_line != null else Color("#555555")
-	var rect := Rect2(cursor - Vector2(7.0, 7.0), Vector2(14.0, 14.0))
+	var rect := Rect2(cursor - Vector2(10.0, 11.0), Vector2(20.0, 22.0))
 	draw_rect(rect, Color(1.0, 1.0, 1.0, 0.6))
-	draw_rect(rect, Color(color, 0.9), false, 2.0)
+	draw_rect(rect, Color(color, 0.9), false, 2.5)
 	if _fleet_target_train != null:
 		for line in network.lines:
 			if line.geometry.is_drawable() and line.trains.has(_fleet_target_train):

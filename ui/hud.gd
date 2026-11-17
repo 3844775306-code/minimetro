@@ -24,7 +24,11 @@ var best_score := 0
 ## 游戏内时钟（1 现实秒 = 1 游戏小时）
 var clock_hours := 7.0
 var is_night := false
+var weekday := ""
+## 库存（可拖到地图上的资源）
+var stock_counts := {"train": 0, "carriage": 0, "interchange": 0}
 var _speed_rects: Array[Rect2] = []
+var _stock_rects := {}
 
 var game_over := false
 var final_score := 0
@@ -32,8 +36,6 @@ var final_score := 0
 var week_modal := false
 var week_cards: Array = []
 var _card_rects: Array[Rect2] = []
-
-var station_pick := false
 
 var mode_menu := false
 var mode_bests := {}
@@ -99,12 +101,10 @@ func hide_week() -> void:
 
 
 func show_station_pick() -> void:
-	station_pick = true
 	queue_redraw()
 
 
 func hide_station_pick() -> void:
-	station_pick = false
 	queue_redraw()
 
 
@@ -173,8 +173,6 @@ func _draw() -> void:
 	var vp := get_viewport_rect().size
 	if not mode_menu:
 		_draw_game_hud(vp)
-	if station_pick:
-		_draw_station_pick(vp)
 	if week_modal:
 		_draw_week(vp)
 	if settings_menu:
@@ -205,10 +203,10 @@ func _draw_game_hud(vp: Vector2) -> void:
 	], vp.x - 72.0, 276.0, 16, Color(MUTED, 0.6))
 	_draw_resource_slots(vp)
 	_text_centered(Loc.t(
-		"拖拽连线 · 拖端点延伸 · 拖中途站换序 · 拖线段插站 · 轻点线路翻折 · 拖动列车/车厢换线 · Ctrl+Z 撤销 · Esc 设置",
-		"Drag to draw · drag endpoint to extend · drag a stop to reorder · drag a segment to insert · tap a line to flip · drag trains/carriages between lines · Ctrl+Z undo · Esc settings"
+		"拖拽连线 · 拖端点延伸 · 拖线段插站 · 轻点线路翻折 · 拖左上角图标放列车/车厢/换乘中心 · 拖动列车/车厢换线 · Ctrl+Z 撤销 · Esc 设置",
+		"Drag to draw · drag endpoint to extend · drag a segment to insert · tap a line to flip · drag top-left icons onto the map for trains/carriages/interchanges · drag trains/carriages between lines · Ctrl+Z undo · Esc settings"
 	), vp.x * 0.5, vp.y - 46.0, 18, Color(MUTED, 0.9))
-	if paused and not game_over and not settings_menu and not week_modal and not station_pick \
+	if paused and not game_over and not settings_menu and not week_modal \
 			and not mode_menu:
 		_text_centered(Loc.t("已暂停", "Paused"), vp.x * 0.5, vp.y * 0.5, 44, Color(INK, 0.75))
 	_draw_speed_buttons(vp)
@@ -246,7 +244,7 @@ func _draw_clock(vp: Vector2) -> void:
 		display_hour = 12
 	var minutes := int((clock_hours - floor(clock_hours)) * 60.0)
 	var suffix := Loc.t("上午", "AM") if hour < 12 else Loc.t("下午", "PM")
-	_text_centered("%02d:%02d %s" % [display_hour, mini(minutes, 59), suffix],
+	_text_centered("%s  %02d:%02d %s" % [weekday, display_hour, mini(minutes, 59), suffix],
 		center.x, center.y + radius + 22.0, 15, Color(MUTED, 0.85))
 
 
@@ -283,29 +281,84 @@ func speed_button_at(pos: Vector2) -> int:
 
 func _draw_resource_slots(vp: Vector2) -> void:
 	var used := 0 if network == null else network.lines.size()
-	_text(Loc.t("线路", "Lines"), Vector2(72.0, 107.0), 18, MUTED)
+	_text(Loc.t("线路", "Lines"), Vector2(64.0, 107.0), 18, MUTED)
 	var y := 100.0
 	for i in level.start_lines:
-		var x := 130.0 + float(i) * (CHIP_W + CHIP_GAP)
+		var x := 122.0 + float(i) * (CHIP_W + CHIP_GAP)
 		if i < used:
 			_draw_capsule(Vector2(x, y), level.line_colors[i % level.line_colors.size()], CHIP_W, CHIP_H)
 		else:
 			_draw_capsule_outline(Vector2(x, y),
 				Color(level.line_colors[i % level.line_colors.size()], 0.32), CHIP_W, CHIP_H)
-	var count_x := 130.0 + float(level.start_lines) * (CHIP_W + CHIP_GAP) + 6.0
+	var count_x := 122.0 + float(level.start_lines) * (CHIP_W + CHIP_GAP) + 6.0
 	_text("%d/%d" % [used, level.start_lines], Vector2(count_x, 107.0), 16, Color(MUTED, 0.85))
-	_text(Loc.t("列车", "Trains"), Vector2(72.0, 143.0), 18, MUTED)
-	var trains := 0 if network == null else network.train_count()
-	_text("%d/%d" % [trains, level.start_trains], Vector2(130.0, 143.0), 18, Color(INK, 0.75))
-	_text(Loc.t("车厢", "Cars"), Vector2(212.0, 143.0), 18, MUTED)
-	var carriages := 0 if network == null else network.total_carriages()
-	_text("%d" % carriages, Vector2(268.0, 143.0), 18, Color(INK, 0.75))
-	_text(Loc.t("桥梁", "Bridges"), Vector2(302.0, 143.0), 18, MUTED)
+
+	# 第二行：可拖拽的库存图标（列车 / 车厢 / 换乘中心）+ 桥梁余量
+	var row_y := 146.0
+	_stock_rects = {}
+	var slots := [
+		{"kind": "train", "x": 118.0, "label": Loc.t("列车", "Trains")},
+		{"kind": "carriage", "x": 226.0, "label": Loc.t("车厢", "Cars")},
+		{"kind": "interchange", "x": 334.0, "label": Loc.t("换乘", "Transfer")},
+	]
+	for slot in slots:
+		var kind := String(slot["kind"])
+		var center := Vector2(float(slot["x"]), row_y)
+		var count := int(stock_counts.get(kind, 0))
+		_draw_stock_icon(kind, center, count > 0)
+		_text("x%d" % count, Vector2(center.x + 24.0, row_y + 6.0), 18,
+			Color(INK, 0.8) if count > 0 else Color(MUTED, 0.5))
+		_stock_rects[kind] = Rect2(center - Vector2(17.0, 15.0), Vector2(60.0, 30.0))
+
+	# 桥梁不是库存，是预算：画桥图标 + 已用/上限
+	var bridge_center := Vector2(452.0, row_y)
+	_draw_stock_icon("bridge", bridge_center, true)
 	var bridges := 0 if network == null else network.used_bridges()
-	var bridges_label_width := font.get_string_size(Loc.t("桥梁", "Bridges"),
-		HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18).x
-	_text("%d/%d" % [bridges, level.start_bridges], Vector2(302.0 + bridges_label_width + 10.0, 143.0),
+	_text("%d/%d" % [bridges, level.start_bridges], Vector2(bridge_center.x + 24.0, row_y + 6.0),
 		18, Color(INK, 0.75))
+
+
+## 左上角库存图标：列车 / 车厢 / 换乘中心 / 桥梁。
+func _draw_stock_icon(kind: String, center: Vector2, enabled: bool) -> void:
+	var ink := Color(INK, 0.9) if enabled else Color(MUTED, 0.45)
+	var paper := Color(PAPER, 0.95) if enabled else Color(PAPER, 0.5)
+	match kind:
+		"train":
+			_draw_capsule(center, paper, 30.0, 15.0)
+			_draw_capsule_outline(center, ink, 30.0, 15.0)
+			draw_rect(Rect2(center + Vector2(5.0, -5.0), Vector2(8.0, 10.0)), Color(ink, 0.25))
+			draw_rect(Rect2(center + Vector2(7.0, -3.0), Vector2(4.0, 6.0)), ink)
+		"carriage":
+			var rect := Rect2(center - Vector2(8.0, 10.0), Vector2(16.0, 20.0))
+			draw_rect(rect, paper)
+			draw_rect(rect, ink, false, 2.0)
+			draw_rect(Rect2(rect.position + Vector2(3.5, 5.0), Vector2(9.0, 4.0)), Color(ink, 0.35))
+		"interchange":
+			draw_circle(center, 12.0, paper, true, -1.0, true)
+			draw_arc(center, 12.0, 0.0, TAU, 32, ink, 2.4, true)
+			draw_circle(center, 5.5, Color(ink, 0.18), true, -1.0, true)
+			draw_arc(center, 5.5, 0.0, TAU, 24, ink, 2.0, true)
+		"bridge":
+			draw_line(center + Vector2(-13.0, 6.0), center + Vector2(13.0, 6.0), ink, 2.6, true)
+			draw_arc(center + Vector2(0.0, 6.0), 13.0, PI, TAU, 24, ink, 2.2, true)
+			draw_line(center + Vector2(-9.0, 6.0), center + Vector2(-9.0, 12.0), ink, 2.2, true)
+			draw_line(center + Vector2(9.0, 6.0), center + Vector2(9.0, 12.0), ink, 2.2, true)
+
+
+## 点中了哪个库存图标："train" / "carriage" / "interchange" / ""。
+func stock_icon_at(pos: Vector2) -> String:
+	for kind in _stock_rects.keys():
+		if (_stock_rects[kind] as Rect2).has_point(pos):
+			return String(kind)
+	return ""
+
+
+## 库存图标中心（截图姿态 / 拖拽起点用）。
+func stock_icon_center(kind: String) -> Vector2:
+	if _stock_rects.has(kind):
+		var rect: Rect2 = _stock_rects[kind]
+		return rect.position + Vector2(17.0, rect.size.y * 0.5)
+	return Vector2(118.0, 146.0)
 
 
 # ---------------------------------------------------------------------------
@@ -336,29 +389,6 @@ func _draw_week(vp: Vector2) -> void:
 			Color(MUTED, 0.8))
 	_text_centered(Loc.t("点击卡片，或按 1 / 2", "Click a card, or press 1 / 2"),
 		vp.x * 0.5, vp.y * 0.5 + 178.0, 18, Color(1.0, 1.0, 1.0, 0.7))
-
-
-func _draw_station_pick(vp: Vector2) -> void:
-	if network == null:
-		return
-	_text_centered(Loc.t("选择一座车站升级为换乘站", "Pick a station to become an interchange"),
-		vp.x * 0.5, 126.0, 30, Color(INK, 0.92))
-	_text_centered(Loc.t("容量 6 → 12 · 右键 / Esc 取消（自动选最拥挤站）",
-		"Capacity 6 → 12 · right click / Esc cancels (auto-picks the busiest)"),
-		vp.x * 0.5, 160.0, 18, Color(MUTED, 0.9))
-	var mouse := get_global_mouse_position()
-	for st in network.stations:
-		if st.capacity > 6:
-			continue
-		var hovered := mouse.distance_to(st.pos) <= 46.0
-		if hovered:
-			draw_arc(st.pos, Shape.STATION_RADIUS + 24.0, 0.0, TAU, 48,
-				Color(0.84, 0.27, 0.27, 0.85), 2.5, true)
-			draw_arc(st.pos, Shape.STATION_RADIUS + 15.0, 0.0, TAU, 48,
-				Color(0.16, 0.17, 0.19, 0.9), 3.0, true)
-		else:
-			draw_arc(st.pos, Shape.STATION_RADIUS + 15.0, 0.0, TAU, 48,
-				Color(0.16, 0.17, 0.19, 0.32), 2.5, true)
 
 
 # ---------------------------------------------------------------------------

@@ -13,6 +13,7 @@ static func run(h: TestHarness) -> void:
 	_test_tap_flip(h)
 	_test_drag_insert(h)
 	_test_dwell_remove(h)
+	_test_dwell_remove_endpoint(h)
 	_test_loop(h)
 
 
@@ -264,6 +265,33 @@ static func _test_dwell_remove(h: TestHarness) -> void:
 	h.check(not line.has_station(a), "被移出的是指针下的站")
 	h.check(line.stops[0] == b and line.stops[1] == c, "其余站序保持")
 	editor.end_gesture(a.pos)
+	editor.free()
+
+
+## 端点站同样可以被停留 1.5s 移出（从末端手柄延长时，指针下的就是末端站）。
+static func _test_dwell_remove_endpoint(h: TestHarness) -> void:
+	h.section("editor/dwell_remove_endpoint")
+	var level := LevelData.new()
+	var made := _make(level)
+	var network: MetroNetwork = made[0]
+	var editor: LineEditor = made[1]
+	var a := network.add_station(Vector2(200, 200), Shape.Kind.CIRCLE)
+	var b := network.add_station(Vector2(500, 200), Shape.Kind.TRIANGLE)
+	var c := network.add_station(Vector2(800, 200), Shape.Kind.SQUARE)
+	var line := network.create_line()
+	line.add_stop(a)
+	line.add_stop(b)
+	line.add_stop(c)
+	network.touch()
+
+	var handle := line.geometry.handle_position(false)
+	h.eq(editor.begin_gesture(handle), true, "抓住末端手柄延长")
+	editor.move_gesture(c.pos)
+	h.eq(line.stops.size(), 3, "停在末端站上不会立即删除")
+	editor.advance(LineEditor.DWELL_REMOVE_TIME + 0.1)
+	h.eq(line.stops.size(), 2, "停留 1.5s 后末端站被移出")
+	h.check(not line.has_station(c), "末端站已移出线路")
+	editor.end_gesture(c.pos)
 	editor.free()
 
 

@@ -1,18 +1,18 @@
 class_name TrainView
 extends Node2D
-## 列车表现：纸色描边的圆角胶囊车身 + 车内乘客图标 + 尾部车厢。
-## 纸色描边让列车从同色线路里"抠"出来，始终可辨认。
+## 列车表现：纸色描边的圆角胶囊车身 + 车头（驾驶室/挡风玻璃）+ 车内乘客图标 + 尾部车厢。
+## 车身放大 1.5 倍便于拖动；车厢永远挂在车尾（按行进方向翻转朝向）。
 
-const BODY := Vector2(46.0, 22.0)
-const OUTLINE := 3.0
+const BODY := Vector2(69.0, 33.0)
+const OUTLINE := 4.5
 const PAPER := Color("#F3EFE6")
 const INK := Color("#2B2B2B")
 const MAX_RIDER_ICONS := 6
-const SEAT_RADIUS := 3.6
-## 车厢从车尾开始排：中心偏移 -(30 + 13*i)
-const CARRIAGE_FIRST_OFFSET := 30.0
-const CARRIAGE_SPACING := 13.0
-const CARRIAGE_SIZE := Vector2(12.0, 14.0)
+const SEAT_RADIUS := 5.0
+## 车厢从车尾开始排：中心偏移 -(45 + 19.5*i)
+const CARRIAGE_FIRST_OFFSET := 45.0
+const CARRIAGE_SPACING := 19.5
+const CARRIAGE_SIZE := Vector2(18.0, 21.0)
 
 var _line_color := Color.WHITE
 var _drawn_color := Color.TRANSPARENT
@@ -24,7 +24,11 @@ var _carriages := 0
 func update_from(train: Train, line: MetroLine) -> void:
 	var xf := line.geometry.sample(train.dist)
 	position = xf.origin
-	rotation = xf.x.angle()
+	# 车头朝向行进方向：反向行驶时整体转 180°，车厢才始终在车尾
+	var angle := xf.x.angle()
+	if train.dir < 0:
+		angle += PI
+	rotation = angle
 	_riders = train.riders
 	_carriages = train.carriages
 	var signature := _make_rider_signature(train)
@@ -45,10 +49,26 @@ func _make_rider_signature(train: Train) -> int:
 func _draw() -> void:
 	_capsule(Vector2.ZERO, BODY + Vector2(OUTLINE * 2.0, OUTLINE * 2.0), PAPER)
 	_capsule(Vector2.ZERO, BODY, _drawn_color)
-	# 车顶浅色带：提示车头朝向
-	draw_line(Vector2(-11.0, -4.5), Vector2(9.0, -4.5), Color(1.0, 1.0, 1.0, 0.30), 3.0, true)
+	_draw_cab()
 	_draw_riders()
 	_draw_carriages()
+
+
+## 车头：纸色鼻锥 + 深色驾驶室 + 挡风玻璃 + 车灯，能明显看出行进方向。
+func _draw_cab() -> void:
+	var half := BODY * 0.5
+	var nose := PackedVector2Array([
+		Vector2(half.x - 7.0, -half.y + 3.0),
+		Vector2(half.x + 3.0, 0.0),
+		Vector2(half.x - 7.0, half.y - 3.0),
+	])
+	draw_colored_polygon(nose, PAPER)
+	draw_polyline(DrawUtil.closed(nose), Color(0.10, 0.11, 0.12, 0.25), 1.2, true)
+	var cab := _drawn_color.darkened(0.30)
+	draw_rect(Rect2(Vector2(half.x - 23.0, -half.y + 4.0), Vector2(14.0, BODY.y - 8.0)), cab)
+	draw_rect(Rect2(Vector2(half.x - 20.0, -7.5), Vector2(8.0, 15.0)),
+		Color(1.0, 1.0, 1.0, 0.85))
+	draw_circle(Vector2(half.x - 6.0, 0.0), 3.2, Color(1.0, 1.0, 0.86, 0.95))
 
 
 ## 车厢：挂在车尾的小方块，跨越线路拖动时也用它做命中区域。
@@ -56,10 +76,10 @@ func _draw_carriages() -> void:
 	for i in _carriages:
 		var center := Vector2(-(CARRIAGE_FIRST_OFFSET + CARRIAGE_SPACING * float(i)), 0.0)
 		var rect := Rect2(center - CARRIAGE_SIZE * 0.5, CARRIAGE_SIZE)
-		draw_rect(Rect2(rect.position - Vector2(2.0, 2.0), rect.size + Vector2(4.0, 4.0)), PAPER)
+		draw_rect(Rect2(rect.position - Vector2(2.5, 2.5), rect.size + Vector2(5.0, 5.0)), PAPER)
 		draw_rect(rect, _drawn_color)
-		draw_rect(Rect2(rect.position + Vector2(2.0, 3.0), Vector2(rect.size.x - 4.0, 3.0)),
-			Color(1.0, 1.0, 1.0, 0.28))
+		draw_rect(Rect2(rect.position + Vector2(3.0, 4.0), Vector2(rect.size.x - 6.0, 4.5)),
+			Color(1.0, 1.0, 1.0, 0.30))
 
 
 ## 车内乘客：最多画 6 个（两排三列），用小图标表示目的地形状。
@@ -72,25 +92,25 @@ func _draw_riders() -> void:
 ## 座位布局：1~3 人排一行居中；4~6 人排两行三列。
 func _seat_position(index: int, count: int) -> Vector2:
 	if count <= 3:
-		var x := (float(index) - (float(count) - 1.0) * 0.5) * 12.0
+		var x := (float(index) - (float(count) - 1.0) * 0.5) * 18.0
 		return Vector2(x, 0.0)
 	var row := index / 3
 	var col := index % 3
-	return Vector2((float(col) - 1.0) * 12.0, -5.5 if row == 0 else 5.5)
+	return Vector2((float(col) - 1.0) * 18.0, -8.0 if row == 0 else 8.0)
 
 
 func _draw_rider_icon(pos: Vector2, shape_kind: int) -> void:
 	if shape_kind == Shape.Kind.CIRCLE:
 		draw_circle(pos, SEAT_RADIUS, PAPER, true, -1.0, true)
-		draw_arc(pos, SEAT_RADIUS, 0.0, TAU, 12, INK, 1.0, true)
+		draw_arc(pos, SEAT_RADIUS, 0.0, TAU, 14, INK, 1.4, true)
 		return
-	var poly := Shape.polygon(shape_kind, SEAT_RADIUS * 1.35)
+	var poly := Shape.polygon(shape_kind, SEAT_RADIUS * 1.45)
 	if poly.is_empty():
 		draw_circle(pos, SEAT_RADIUS, PAPER, true, -1.0, true)
 		return
 	var shifted := DrawUtil.offset(poly, pos)
 	draw_colored_polygon(shifted, PAPER)
-	draw_polyline(DrawUtil.closed(shifted), INK, 1.0, true)
+	draw_polyline(DrawUtil.closed(shifted), INK, 1.4, true)
 
 
 func _capsule(center: Vector2, size: Vector2, color: Color) -> void:
