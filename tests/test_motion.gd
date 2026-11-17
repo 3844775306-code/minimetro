@@ -138,9 +138,23 @@ static func _test_curve_limit(h: TestHarness) -> void:
 	var factor45 := 1.0
 	for entry in line45.geometry.curve_entries:
 		factor45 = minf(factor45, float(entry.y))
-	h.check(factor90 < 1.0, "90° 弯道有限速（%.2f）" % factor90)
-	h.check(factor45 < 1.0, "45° 弯道有限速（%.2f）" % factor45)
-	h.check(factor45 < factor90, "角度越小减速越大：45° 限速低于 90°")
+	# 135° 弯：先向东，再拐向西南
+	var g := net.add_station(Vector2(300, 800), Shape.Kind.CIRCLE)
+	var h_station := net.add_station(Vector2(700, 800), Shape.Kind.SQUARE)
+	var i_station := net.add_station(Vector2(300, 400), Shape.Kind.TRIANGLE)
+	var line135 := net.create_line()
+	line135.add_stop(g)
+	line135.add_stop(h_station)
+	line135.add_stop(i_station)
+	net.touch()
+	var factor135 := 1.0
+	for entry in line135.geometry.curve_entries:
+		factor135 = minf(factor135, float(entry.y))
+	h.near(factor45, 0.45, 0.001, "45° 弯限速 0.45")
+	h.near(factor90, 0.65, 0.001, "90° 弯限速 0.65")
+	h.near(factor135, 0.85, 0.001, "135° 弯限速 0.85")
+	h.check(factor45 < factor90 and factor90 < factor135,
+		"角度越小减速越大：45° < 90° < 135°")
 	var ahead := line90.geometry.curve_entries_ahead(0.0, 1, 2000.0)
 	h.check(not ahead.is_empty(), "弯道限速点能被前方查询找到")
 

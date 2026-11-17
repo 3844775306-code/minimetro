@@ -5,12 +5,11 @@ extends Node2D
 ## 空心中继标记，并用虚线连到该站，避免玩家误以为这个站已经接上了。
 
 const NEAR_DISTANCE := 20.0
-const LINE_HALF_LENGTH := 15.0
-const LINE_OFFSET := 8.0
-const DOT_RADIUS := 2.8
+const LINE_HALF_LENGTH := 34.0
+const LINE_OFFSET := 10.0
 const STATION_CLEARANCE := 14.0
 const WHITE := Color("#FFFFFF")
-const WHITE_SHADOW := Color(0.32, 0.32, 0.32, 0.35)
+const WHITE_SHADOW := Color(0.28, 0.28, 0.28, 0.55)
 
 var network: MetroNetwork = null
 var _version := -1
@@ -81,9 +80,5 @@ func _draw() -> void:
 			var a: Vector2 = center - tangent * LINE_HALF_LENGTH
 			var b: Vector2 = center + tangent * LINE_HALF_LENGTH
 			# 先画一层浅灰阴影，白线在纸色背景上也看得清
-			draw_line(a, b, WHITE_SHADOW, 3.4, true)
-			draw_line(a, b, WHITE, 2.0, true)
-			draw_circle(a, DOT_RADIUS + 1.2, WHITE_SHADOW, true, -1.0, true)
-			draw_circle(a, DOT_RADIUS, WHITE, true, -1.0, true)
-			draw_circle(b, DOT_RADIUS + 1.2, WHITE_SHADOW, true, -1.0, true)
-			draw_circle(b, DOT_RADIUS, WHITE, true, -1.0, true)
+			draw_line(a, b, WHITE_SHADOW, 4.6, true)
+			draw_line(a, b, WHITE, 2.6, true)

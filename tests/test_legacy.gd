@@ -4,6 +4,7 @@ extends RefCounted
 static func run(h: TestHarness) -> void:
 	_test_place_train_facing(h)
 	_test_legacy_line(h)
+	_test_legacy_unchanged(h)
 
 
 static func _make_level(trains: int = 2) -> LevelData:
@@ -65,9 +66,56 @@ static func _test_place_train_facing(h: TestHarness) -> void:
 	h.eq(train2.target_index, 1, "目标站是 B")
 
 
-## 手动编辑线路后：列车沿旧几何行驶完，旧线信息保留到该列车结束。
+## 手动编辑线路后：只有变化段上的列车沿旧几何行驶完；未变化段的车直接重映射。
 static func _test_legacy_line(h: TestHarness) -> void:
 	h.section("legacy/old_line")
+	var level := _make_level(1)
+	var made := _make_line(level)
+	var net: MetroNetwork = made[0]
+	var line: MetroLine = made[1]
+	# 加一个末端站，让"变化段"前后都有未变化的站
+	line.add_stop(net.add_station(Vector2(1200, 1500), Shape.Kind.DIAMOND))
+	net.touch()
+	var sim := _make_sim(net, level)
+	sim.tick(Simulation.STEP)
+	var train: Train = line.trains[0]
+
+	# 先跑一段，让车离开起点，落在 A-B 之间
+	for i in 120:
+		sim.tick(Simulation.STEP)
+	h.check(train.dist > 0.0 and train.dist < line.geometry.stop_offsets[1],
+		"列车位于 A-B 之间（变化段内）")
+
+	# 删除中间站 B：变化段 = A..C，列车在变化段上
+	var editor := LineEditor.new()
+	editor.setup(net, level, null)
+	editor._push_undo()
+	line.remove_stop_at(1)
+	net.touch()
+	sim.tick(Simulation.STEP)
+	h.check(train.legacy_active, "变化段上的列车切换到旧线收尾")
+	h.check(train.legacy_geometry != null, "旧几何被保留")
+	h.eq(train.legacy_stops.size(), 4, "旧站序是编辑前的四站")
+	h.check(line.edit_legacy_valid, "线路记录了编辑前的几何")
+	h.check(train.legacy_range_end > train.legacy_range_start, "记录了旧线变化区间")
+	h.check(train.legacy_range_end - train.legacy_range_start < line.geometry.total_length,
+		"浅色只覆盖变化段，不是整条线")
+
+	var finished := false
+	for i in 2400:
+		sim.tick(Simulation.STEP)
+		if not train.legacy_active:
+			finished = true
+			break
+	h.check(finished, "列车跑完变化段后结束旧线状态")
+	h.check(train.legacy_geometry == null, "结束后释放旧几何")
+	h.eq(train.line_version, line.version, "列车切换回当前线路版本")
+	editor.free()
+
+
+## 列车在没变化的那一段上时，编辑后直接重映射，不做旧线收尾。
+static func _test_legacy_unchanged(h: TestHarness) -> void:
+	h.section("legacy/unchanged")
 	var level := _make_level(1)
 	var made := _make_line(level)
 	var net: MetroNetwork = made[0]
@@ -75,33 +123,15 @@ static func _test_legacy_line(h: TestHarness) -> void:
 	var sim := _make_sim(net, level)
 	sim.tick(Simulation.STEP)
 	var train: Train = line.trains[0]
-
-	# 先跑一段，让车离开起点
-	for i in 120:
+	for i in 60:
 		sim.tick(Simulation.STEP)
-	h.check(train.dist > 0.0, "列车已经开出")
-
-	# 模拟一次手动编辑：编辑器记录旧几何，然后真正改线
 	var editor := LineEditor.new()
 	editor.setup(net, level, null)
 	editor._push_undo()
-	var extra := net.add_station(Vector2(700, 800), Shape.Kind.DIAMOND)
-	line.add_stop(extra)
+	# 删掉最后一个站 C：变化段是 B..C，但列车还在 A 附近
+	line.remove_stop_at(2)
 	net.touch()
 	sim.tick(Simulation.STEP)
-	h.check(train.legacy_active, "编辑后列车切换到旧线行驶")
-	h.check(train.legacy_geometry != null, "旧几何被保留（供浅色旧线与继续行驶）")
-	h.eq(train.legacy_stops.size(), 3, "旧站序是编辑前的三站")
-	h.check(line.edit_legacy_valid, "线路记录了编辑前的几何")
-
-	# 沿旧线跑到终点后，列车回到新线继续服务
-	var finished := false
-	for i in 2400:
-		sim.tick(Simulation.STEP)
-		if not train.legacy_active:
-			finished = true
-			break
-	h.check(finished, "列车跑完旧线后结束旧线状态")
-	h.check(train.legacy_geometry == null, "结束后释放旧几何")
-	h.eq(train.line_version, line.version, "列车切换回当前线路版本")
+	h.check(not train.legacy_active, "未变化段上的列车不做旧线收尾")
+	h.eq(train.line_version, line.version, "直接切到新线版本")
 	editor.free()

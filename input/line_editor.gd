@@ -41,6 +41,8 @@ const DWELL_REMOVE_TIME := 1.5
 var network: MetroNetwork = null
 var level: LevelData = null
 var station_layer: StationLayer = null
+## 主场景注入：拖车换线时由模拟层负责"先下客再移动"的收尾流程
+var simulation: Simulation = null
 
 var state: int = State.IDLE
 var cursor := Vector2.ZERO
@@ -231,7 +233,7 @@ func move_gesture(pos: Vector2) -> void:
 		State.TRAIN:
 			if cursor.distance_to(_press_pos) >= 8.0:
 				_fleet_dragging = true
-			_fleet_target_line = _target_line(pos, _fleet_line)
+			_fleet_target_line = _target_line(pos, null)
 		State.CARRIAGE:
 			if cursor.distance_to(_press_pos) >= 8.0:
 				_fleet_dragging = true
@@ -712,12 +714,22 @@ func _least_carriage_train(line: MetroLine) -> Train:
 	return best
 
 
-## 把列车整列移到另一条线（乘客留在车上，路由会自动重算）。
+## 把列车拖到别处：先停靠当前线路最近站下客，再移动到目标位置。
+## 有模拟层时交给 Simulation 做收尾；没有（纯编辑器测试）时直接落位。
 func _move_train(train: Train, from_line: MetroLine, to_line: MetroLine) -> void:
-	if train == null or from_line == null or to_line == null or from_line == to_line:
+	if train == null or from_line == null or to_line == null:
 		return
 	if to_line.stops.size() < 2 or not to_line.geometry.is_drawable():
 		return
+	if from_line == to_line and absf(to_line.geometry.nearest_distance(cursor) - train.dist) < 20.0:
+		return
+	if simulation != null:
+		simulation.request_train_relocation(train, from_line, to_line, cursor)
+		return
+	_apply_train_move_instant(train, from_line, to_line)
+
+
+func _apply_train_move_instant(train: Train, from_line: MetroLine, to_line: MetroLine) -> void:
 	from_line.trains.erase(train)
 	to_line.trains.append(train)
 	train.line_id = to_line.id
@@ -869,7 +881,7 @@ func _refresh_hover(pos: Vector2) -> void:
 func _push_undo() -> void:
 	# 记录"本次编辑前"的线路几何：沿旧线路行驶的列车与浅色旧线都要用它
 	for line in network.lines:
-		line.edit_legacy_geometry = line.geometry
+		line.edit_legacy_geometry = line.geometry.clone()
 		line.edit_legacy_stops = line.stops.duplicate()
 		line.edit_legacy_valid = line.stops.size() >= 2 and not line.geometry.points.is_empty()
 	_undo.append(_snapshot())

@@ -21,6 +21,7 @@ var line_layer: LineLayer = null
 var legacy_line_layer: LegacyLineLayer = null
 var bridge_layer: BridgeLayer = null
 var river_dash_layer: RiverDashLayer = null
+var relocation_ghost_layer: RelocationGhostLayer = null
 var near_line_layer: NearLineMarkerLayer = null
 var train_layer: TrainLayer = null
 var station_layer: StationLayer = null
@@ -470,6 +471,11 @@ func _build_world() -> void:
 	river_dash_layer.z_index = 105
 	world.add_child(river_dash_layer)
 
+	relocation_ghost_layer = RelocationGhostLayer.new()
+	relocation_ghost_layer.name = "RelocationGhostLayer"
+	relocation_ghost_layer.z_index = 140
+	world.add_child(relocation_ghost_layer)
+
 	near_line_layer = NearLineMarkerLayer.new()
 	near_line_layer.name = "NearLineMarkerLayer"
 	near_line_layer.z_index = 210
@@ -508,6 +514,7 @@ func _build_world() -> void:
 	legacy_line_layer.setup(network)
 	bridge_layer.setup(network)
 	river_dash_layer.setup(network)
+	relocation_ghost_layer.setup(network)
 	near_line_layer.setup(network)
 	train_layer.setup(network)
 	station_layer.setup(network)
@@ -565,6 +572,8 @@ func _start_session() -> void:
 	if _pose == "night":
 		level.start_hour = 19.0
 	simulation = Simulation.new(network, level, Game.rng)
+	if editor != null:
+		editor.simulation = simulation
 	simulation.game_over.connect(_on_game_over)
 	simulation.week_completed.connect(_on_week_completed)
 	simulation.passengers_delivered.connect(_on_passengers_delivered)
@@ -717,6 +726,15 @@ func _apply_pose() -> void:
 				var normal := xf.x.rotated(PI * 0.5)
 				network.add_station(xf.origin + normal * 12.0, Shape.Kind.STAR)
 				_advance_sim(2)
+		"relocate":
+			# 演示：拖车换线时，车先靠站下客，目标位置显示浅色车
+			if network.lines.size() >= 2 and not network.lines[0].trains.is_empty():
+				var from_line: MetroLine = network.lines[0]
+				var to_line: MetroLine = network.lines[1]
+				var train: Train = from_line.trains[0]
+				var target := to_line.geometry.sample(to_line.geometry.total_length * 0.5).origin
+				simulation.request_train_relocation(train, from_line, to_line, target)
+				_advance_sim(40)
 		"train-drag":
 			if network.lines.size() >= 2 and not network.lines[0].trains.is_empty():
 				var source_line: MetroLine = network.lines[0]

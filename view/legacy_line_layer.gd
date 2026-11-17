@@ -25,11 +25,14 @@ func _draw() -> void:
 			if train.legacy_geometry == null:
 				continue
 			var geometry := train.legacy_geometry
-			var key := geometry.get_instance_id()
+			# 只画"和改后线路不一样"的那一段旧线
+			var key := "%s:%.1f:%.1f" % [
+				str(geometry.get_instance_id()), train.legacy_range_start, train.legacy_range_end,
+			]
 			if drawn.has(key):
 				continue
 			drawn[key] = true
-			var points := geometry.points
+			var points := geometry.points_between(train.legacy_range_start, train.legacy_range_end)
 			if points.size() < 2:
 				continue
 			draw_polyline(points, Color(line.color, 0.38), 12.0, true)

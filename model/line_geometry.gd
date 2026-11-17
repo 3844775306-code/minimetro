@@ -66,10 +66,23 @@ func _build_curve_entries(raw: PackedVector2Array, loop: bool) -> void:
 				curve_entries.append(Vector2(0.0, _angle_to_factor(angle)))
 
 
-## 按要求：转角越小，减速幅度越大（45° 角比 90° 角更慢）。
-## 系数从 0.35 起随转角线性升到 1.0；八向线路只有 45°/90° 两种主要转角。
+## 按要求：转角越小，减速幅度越大。八向线路实际会出现 45° / 90° / 135° 三种弯，
+## 分别用三档固定限速系数（45° 最慢、135° 最快）。
+const CURVE_FACTORS := {
+	45.0: 0.45,
+	90.0: 0.65,
+	135.0: 0.85,
+}
+
+
 static func _angle_to_factor(angle: float) -> float:
-	return clampf(0.35 + 0.65 * angle / PI, 0.35, 1.0)
+	var degrees := rad_to_deg(angle)
+	var bucket := 45.0
+	if degrees >= 112.5:
+		bucket = 135.0
+	elif degrees >= 67.5:
+		bucket = 90.0
+	return float(CURVE_FACTORS[bucket])
 
 ## 沿行进方向前方 distance 内的弯道限速点，返回 Vector2(距离, 限速系数)。
 func curve_entries_ahead(offset: float, dir: int, distance: float) -> Array[Vector2]:
@@ -231,6 +244,34 @@ func handle_position(at_start: bool, out_distance: float = 30.0) -> Vector2:
 	var xf: Transform2D = sample(0.0) if at_start else sample(total_length)
 	var outward: Vector2 = -xf.x if at_start else xf.x
 	return xf.origin + outward.normalized() * out_distance
+
+
+## 取 [start_offset, end_offset] 之间的采样点（用于只画"变化过的那段旧线"）。
+func points_between(start_offset: float, end_offset: float) -> PackedVector2Array:
+	if points.size() < 2:
+		return PackedVector2Array()
+	var from := clampf(minf(start_offset, end_offset), 0.0, total_length)
+	var to := clampf(maxf(start_offset, end_offset), 0.0, total_length)
+	var result := PackedVector2Array()
+	result.append(sample(from).origin)
+	for i in points.size():
+		var offset := cumulative[i]
+		if offset > from and offset < to:
+			result.append(points[i])
+	result.append(sample(to).origin)
+	return result
+
+
+## 深拷贝（编辑前保存旧几何用；MetroLine.rebuild 会原地重建，不能只存引用）。
+func clone() -> LineGeometry:
+	var copy := LineGeometry.new()
+	copy.points = points.duplicate()
+	copy.cumulative = cumulative.duplicate()
+	copy.stop_offsets = stop_offsets.duplicate()
+	copy.total_length = total_length
+	copy.curve_entries = curve_entries.duplicate()
+	copy.is_loop_geometry = is_loop_geometry
+	return copy
 
 
 func _rebuild_lengths() -> void:

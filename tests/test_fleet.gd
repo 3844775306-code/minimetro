@@ -93,9 +93,16 @@ static func _test_train_drag(h: TestHarness) -> void:
 	var net: MetroNetwork = made[0]
 	var l1: MetroLine = made[1]
 	var l2: MetroLine = made[2]
+	var a: Station = made[3]
 	var train := _make_train(l1)
+	train.riders.append(Passenger.new(Shape.Kind.TRIANGLE))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4
+	var sim := Simulation.new(net, level, rng)
+	sim.auto_spawn = false
 	var editor := LineEditor.new()
 	editor.setup(net, level, null)
+	editor.simulation = sim
 
 	var start_pos := l1.geometry.sample(train.dist).origin
 	h.eq(editor.begin_gesture(start_pos), true, "按住列车开始拖动")
@@ -103,9 +110,22 @@ static func _test_train_drag(h: TestHarness) -> void:
 	var target_pos := l2.geometry.sample(l2.geometry.total_length * 0.5).origin
 	editor.move_gesture(target_pos)
 	editor.end_gesture(target_pos)
-	h.eq(train.line_id, l2.id, "列车换到 2 号线")
+	h.check(train.relocating, "松手后进入'先下客再移动'的收尾流程")
+	h.eq(train.line_id, l1.id, "收尾完成前仍属于原线路")
+	h.eq(train.relocate_line_id, l2.id, "记录了目标线路")
+	h.check(train.relocate_pos.distance_to(target_pos) < 1.0, "记录了目标位置（浅色车画在这里）")
+
+	var finished := false
+	for i in 1200:
+		sim.tick(Simulation.STEP)
+		if not train.relocating:
+			finished = true
+			break
+	h.check(finished, "收尾流程结束")
+	h.eq(train.line_id, l2.id, "列车最终换到 2 号线")
 	h.eq(l1.trains.size(), 0, "1 号线已没有该列车")
 	h.eq(l2.trains.size(), 1, "2 号线接管列车")
+	h.eq(a.waiting.size(), 1, "车上的乘客在最近站下车等待")
 	h.eq(editor.state, LineEditor.State.IDLE, "拖动结束回到 IDLE")
 	editor.free()
 

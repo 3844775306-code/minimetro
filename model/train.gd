@@ -46,6 +46,15 @@ var legacy_stops: Array[Station] = []
 var legacy_active := false
 var legacy_finishing := false
 var legacy_lap_remaining := 0
+## 旧线里"和改后线路不一样"的那一段（旧几何弧长范围），只有这段要收尾/画浅色
+var legacy_range_start := 0.0
+var legacy_range_end := 0.0
+
+## 拖到别处时的"回库"过程：先停靠最近站放客，再移动到目标位置
+var relocating := false
+var relocate_line_id := 0
+var relocate_pos := Vector2.ZERO
+var relocate_docked := false
 
 
 func refresh_capacity() -> void:
