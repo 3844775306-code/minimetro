@@ -7,7 +7,7 @@ extends Node2D
 ##   · 拖回上一站 → 回退一段
 ##   · 按住线路端点的小圆手柄 → 从该端继续延伸
 ##   · 按住线路中间的车站拖动 → 调整站序
-##   · 拖拽中在"已在本线上的非相邻站"停留 1.5s → 把该站移出线路（画线橡皮擦）
+##   · 拖拽中在"已在本线上的非相邻站"停留 0.8s → 把该站移出线路（画线橡皮擦）
 ##   · 轻点线路（按下即抬起、几乎不移动）→ 翻转该段 45° 折线的弯曲方向
 ##   · 从一段线路中间拖到别的车站 → 把该站插入这两站之间
 ##   · 右键 / Esc → 取消本次手势；Ctrl+Z → 撤销（整次手势为单位）
@@ -36,11 +36,13 @@ const UNDO_LIMIT := 40
 const LINE_HIT_RADIUS := 13.0
 const TAP_MAX_MOVE := 7.0
 ## 画线时在已在本线上的站点停留多久触发"移出线路"。
-const DWELL_REMOVE_TIME := 1.5
+const DWELL_REMOVE_TIME := 0.8
 
 var network: MetroNetwork = null
 var level: LevelData = null
 var station_layer: StationLayer = null
+## 撤销站台（停留移出）的悬停时间，设置里可调，默认 0.8 秒。
+var dwell_remove_time := DWELL_REMOVE_TIME
 ## 主场景注入：拖车换线时由模拟层负责"先下客再移动"的收尾流程
 var simulation: Simulation = null
 
@@ -353,7 +355,7 @@ func _draft_update() -> void:
 	if hover_station == _draft_line.stops[tip_index]:
 		return
 	if _draft_line.has_station(hover_station):
-		# 已在本线上的站：交给"停留 1.5s 移出"逻辑处理
+		# 已在本线上的站：交给"停留 0.8s 移出"逻辑处理
 		return
 	_extend_with(hover_station)
 
@@ -436,7 +438,7 @@ func _update_dwell(delta: float) -> void:
 			_dwell_station = hover_station
 			_hover_dwell = 0.0
 		_hover_dwell += delta
-		if _hover_dwell >= DWELL_REMOVE_TIME:
+		if _hover_dwell >= dwell_remove_time:
 			_remove_dwelled_station()
 		return
 	# 拖线段时只认这一段的两个端点站；按光标距离判断，避免 hover 状态抖动导致计时被重置
@@ -457,7 +459,7 @@ func _update_dwell(delta: float) -> void:
 		_dwell_station = target
 		_hover_dwell = 0.0
 	_hover_dwell += delta
-	if _hover_dwell >= DWELL_REMOVE_TIME:
+	if _hover_dwell >= dwell_remove_time:
 		_remove_segment_endpoint()
 
 
@@ -484,7 +486,7 @@ func _remove_dwelled_station() -> void:
 		_reset_gesture()
 
 
-## 拖线段时，在段两端的车站上停留 1.5s 也能把该站移出线路。
+## 拖线段时，在段两端的车站上停留 0.8s 也能把该站移出线路。
 func _remove_segment_endpoint() -> void:
 	var target := _dwell_station
 	_reset_dwell()
@@ -1102,7 +1104,7 @@ func _draw_draft_preview() -> void:
 		draw_arc(opposite.pos, Shape.STATION_RADIUS + 20.0, 0.0, TAU, 48,
 			Color(_draft_line.color, 0.9), 3.0, true)
 	if _dwell_station != null and _hover_dwell > 0.0:
-		var t: float = clampf(_hover_dwell / DWELL_REMOVE_TIME, 0.0, 1.0)
+		var t: float = clampf(_hover_dwell / dwell_remove_time, 0.0, 1.0)
 		draw_arc(_dwell_station.pos, Shape.STATION_RADIUS + 19.0, -PI * 0.5,
 			-PI * 0.5 + TAU * t, 48, Color(0.84, 0.27, 0.27, 0.95), 4.0, true)
 

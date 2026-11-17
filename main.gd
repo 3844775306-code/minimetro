@@ -549,7 +549,13 @@ func _sync_settings_values() -> void:
 		"fullscreen": bool(Save.get_setting("fullscreen", false)),
 		"language": String(Save.get_setting("language", "zh")),
 		"player_name": String(Save.get_setting("player_name", "玩家")),
+		"station_remove_time": float(Save.get_setting("station_remove_time", 0.8)),
 	}
+
+
+func _apply_editor_settings() -> void:
+	if editor != null and Save != null:
+		editor.dwell_remove_time = float(Save.get_setting("station_remove_time", 0.8))
 
 
 func _on_player_name_submitted(player_name: String) -> void:
@@ -568,25 +574,25 @@ func _handle_settings_input(event: InputEvent) -> void:
 		var pos: Vector2 = (event as InputEventMouseButton).position
 		var vp := get_viewport_rect().size
 		var row_width := 820.0
-		var step := 86.0
+		var step := 80.0
 		var start_x := (vp.x - row_width) * 0.5
-		var start_y := vp.y * 0.5 - 350.0
+		var start_y := vp.y * 0.5 - 360.0
 		var index := int(floor((pos.y - start_y) / step))
 		if index >= 0 and index < hud.settings_row_count():
-			var row := Rect2(start_x, start_y + float(index) * step, row_width, 78.0)
+			var row := Rect2(start_x, start_y + float(index) * step, row_width, 72.0)
 			if row.has_point(pos):
 				var minus_row := hud.settings_minus_at(pos)
 				if minus_row >= 0:
-					hud.settings_index = minus_row + 1
-					_adjust_setting(minus_row + 1, -1)
+					hud.settings_index = minus_row
+					_adjust_setting(minus_row, -1)
 					return
 				var plus_row := hud.settings_plus_at(pos)
 				if plus_row >= 0:
-					hud.settings_index = plus_row + 1
-					_adjust_setting(plus_row + 1, 1)
+					hud.settings_index = plus_row
+					_adjust_setting(plus_row, 1)
 					return
 				hud.settings_index = index
-				if index in [0, 3, 4, 5, 6, 7]:
+				if index in [0, 3, 4, 5, 6, 7, 8]:
 					_activate_setting(index)
 				else:
 					_adjust_setting(index, 1)
@@ -623,6 +629,11 @@ func _adjust_setting(index: int, direction: int) -> void:
 			Save.set_setting("fullscreen", not bool(Save.get_setting("fullscreen", false)))
 		4:
 			_toggle_language()
+		5:
+			var remove_time := clampf(
+				float(Save.get_setting("station_remove_time", 0.8)) + 0.1 * direction, 0.4, 2.0)
+			Save.set_setting("station_remove_time", remove_time)
+			_apply_editor_settings()
 	_sync_settings_values()
 
 
@@ -635,11 +646,13 @@ func _activate_setting(index: int) -> void:
 		4:
 			_toggle_language()
 		5:
-			hud.show_name_editor(String(Save.get_setting("player_name", "玩家")))
+			_adjust_setting(5, 1)
 		6:
+			hud.show_name_editor(String(Save.get_setting("player_name", "玩家")))
+		7:
 			_close_settings()
 			_restart()
-		7:
+		8:
 			_close_settings()
 			_back_to_menu()
 	if index in [3, 4]:
@@ -844,6 +857,7 @@ func _build_world() -> void:
 	station_layer.setup(network)
 	passenger_layer.setup(network)
 	editor.setup(network, level, station_layer)
+	_apply_editor_settings()
 
 
 func _build_ui() -> void:

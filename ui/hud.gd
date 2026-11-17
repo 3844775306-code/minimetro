@@ -86,6 +86,8 @@ var settings_index := 0
 var settings_values := {}
 var _settings_minus_rects: Array[Rect2] = []
 var _settings_plus_rects: Array[Rect2] = []
+var _settings_minus_rows: Array[int] = []
+var _settings_plus_rows: Array[int] = []
 
 var toast_text := ""
 var toast_left := 0.0
@@ -217,21 +219,21 @@ func hide_settings() -> void:
 
 
 func settings_row_count() -> int:
-	return 8
+	return 9
 
 
-## 音量行的触屏 - / + 按钮命中（返回行号，-1 表示没点中）。
+## 音量 / 移站时间的触屏 - / + 按钮命中（返回行号，-1 表示没点中）。
 func settings_minus_at(pos: Vector2) -> int:
 	for i in _settings_minus_rects.size():
 		if _settings_minus_rects[i].has_point(pos):
-			return i
+			return _settings_minus_rows[i]
 	return -1
 
 
 func settings_plus_at(pos: Vector2) -> int:
 	for i in _settings_plus_rects.size():
 		if _settings_plus_rects[i].has_point(pos):
-			return i
+			return _settings_plus_rows[i]
 	return -1
 
 
@@ -305,18 +307,18 @@ func _draw_game_hud(vp: Vector2) -> void:
 	# 减负版 HUD：左上只留线色/库存，右上不再画面板（避免挡地图）
 	_draw_panel(Rect2(34.0, 46.0, 720.0, 156.0))
 	if map_name != "":
-		_text_centered(map_name, vp.x * 0.5, 58.0, 28, Color(MUTED, 0.85))
+		_text_centered(map_name, vp.x * 0.5, 60.0, 32, Color(MUTED, 0.85))
 	_draw_clock(vp)
 	if endless_mode:
 		# 无尽模式的评价主指标：最近 30 秒送达量（人 / 30 秒）
 		_text_right(Loc.t("平均每30秒 %.0f 人", "%.0f per 30s") % throughput,
-			vp.x - 40.0, 152.0, 28, INK)
+			vp.x - 40.0, 160.0, 28, INK)
 		_text_right(Loc.t("已送达 %d", "Delivered %d") % score,
-			vp.x - 40.0, 186.0, 20, Color(MUTED, 0.9))
+			vp.x - 40.0, 196.0, 20, Color(MUTED, 0.9))
 	else:
-		_text_right(Loc.t("已送达 %d", "Delivered %d") % score, vp.x - 40.0, 152.0, 32, INK)
+		_text_right(Loc.t("已送达 %d", "Delivered %d") % score, vp.x - 40.0, 162.0, 32, INK)
 	if stage_label != "":
-		_text_right(stage_label, vp.x - 40.0, 212.0, 18, Color(MUTED, 0.75))
+		_text_right(stage_label, vp.x - 40.0, 222.0, 20, Color(MUTED, 0.78))
 	_draw_resource_slots(vp)
 	var show_hint := hint_left > 0.0 or (network != null and network.lines.is_empty())
 	if show_hint:
@@ -326,7 +328,7 @@ func _draw_game_hud(vp: Vector2) -> void:
 		_text_centered(Loc.t(
 			"拖拽画线 · 拖端点延伸 · 拖线段插站 · 轻点翻折 · 拖左上角图标放车 · Ctrl+Z 撤销 · Esc 设置",
 			"Drag to draw · drag endpoint to extend · drag a segment to insert · tap to flip · drag top-left icons for vehicles · Ctrl+Z undo · Esc settings"
-		), vp.x * 0.5, vp.y - 46.0, 20, Color(MUTED, 0.9 * hint_alpha))
+		), vp.x * 0.5, vp.y - 46.0, 22, Color(MUTED, 0.9 * hint_alpha))
 	if paused and not game_over and not settings_menu and not week_modal \
 			and not mode_menu:
 		_text_centered(Loc.t("已暂停", "Paused"), vp.x * 0.5, vp.y * 0.5, 44, Color(INK, 0.75))
@@ -358,7 +360,7 @@ func _draw_panel(rect: Rect2) -> void:
 
 ## 12 小时制时钟：12 点在上、6 点在下；到了夜晚整块表盘变黑、指针变白。
 func _draw_clock(vp: Vector2) -> void:
-	var center := Vector2(vp.x - 80.0, 66.0)
+	var center := Vector2(vp.x - 88.0, 62.0)
 	var radius := 34.0
 	var strength := Simulation.night_strength(clock_hours)
 	var face := Color("#FBF8F1").lerp(Color("#1C1C1E"), strength)
@@ -386,7 +388,7 @@ func _draw_clock(vp: Vector2) -> void:
 	var minutes := int((clock_hours - floor(clock_hours)) * 60.0)
 	var suffix := Loc.t("上午", "AM") if hour < 12 else Loc.t("下午", "PM")
 	_text_centered("%s  %02d:%02d %s" % [weekday, display_hour, mini(minutes, 59), suffix],
-		center.x, center.y + radius + 20.0, 18, Color(MUTED, 0.9))
+		center.x, center.y + radius + 18.0, 20, Color(MUTED, 0.9))
 
 
 func _draw_speed_buttons(vp: Vector2) -> void:
@@ -952,6 +954,7 @@ func _draw_settings(vp: Vector2) -> void:
 		Loc.t("音乐音量", "Music volume"),
 		Loc.t("全屏", "Fullscreen"),
 		Loc.t("语言", "Language"),
+		Loc.t("长按移站", "Hold to remove"),
 		Loc.t("玩家名", "Player name"),
 		Loc.t("重新开始", "Restart"),
 		Loc.t("返回模式选择", "Mode menu"),
@@ -961,28 +964,33 @@ func _draw_settings(vp: Vector2) -> void:
 		_percent(float(settings_values.get("music_volume", 0.7))),
 		Loc.t("开", "On") if bool(settings_values.get("fullscreen", false)) else Loc.t("关", "Off"),
 		"中文" if String(settings_values.get("language", "zh")) == "zh" else "English",
+		"%.1fs" % float(settings_values.get("station_remove_time", 0.8)),
 		String(settings_values.get("player_name", "玩家")),
 		"", "",
 	]
 	var row_width := 820.0
-	var row_height := 78.0
-	var step := 86.0
+	var row_height := 72.0
+	var step := 80.0
 	var start_x := (vp.x - row_width) * 0.5
-	var start_y := vp.y * 0.5 - 350.0
-	_settings_minus_rects = [Rect2(), Rect2()]
-	_settings_plus_rects = [Rect2(), Rect2()]
+	var start_y := vp.y * 0.5 - 360.0
+	_settings_minus_rects = []
+	_settings_plus_rects = []
+	_settings_minus_rows = []
+	_settings_plus_rows = []
 	for i in labels.size():
 		var row := Rect2(start_x, start_y + float(i) * step, row_width, row_height)
 		if i == settings_index:
 			var poly := DrawUtil.rounded_rect(row, 12.0, 6)
 			draw_colored_polygon(poly, Color(1.0, 1.0, 1.0, 0.16))
-		_text(String(labels[i]), Vector2(row.position.x + 40.0, row.position.y + 51.0), 34,
+		_text(String(labels[i]), Vector2(row.position.x + 40.0, row.position.y + 47.0), 34,
 			Color(1.0, 1.0, 1.0, 0.94 if i == settings_index else 0.78))
-		if i in [1, 2]:
-			var minus_rect := Rect2(row.end.x - 290.0, row.position.y + 12.0, 54.0, 54.0)
-			var plus_rect := Rect2(row.end.x - 220.0, row.position.y + 12.0, 54.0, 54.0)
-			_settings_minus_rects[i - 1] = minus_rect
-			_settings_plus_rects[i - 1] = plus_rect
+		if i in [1, 2, 5]:
+			var minus_rect := Rect2(row.end.x - 290.0, row.position.y + 9.0, 54.0, 54.0)
+			var plus_rect := Rect2(row.end.x - 220.0, row.position.y + 9.0, 54.0, 54.0)
+			_settings_minus_rects.append(minus_rect)
+			_settings_plus_rects.append(plus_rect)
+			_settings_minus_rows.append(i)
+			_settings_plus_rows.append(i)
 			for pair in [{"rect": minus_rect, "text": "−"}, {"rect": plus_rect, "text": "+"}]:
 				var br: Rect2 = pair["rect"]
 				var bp := DrawUtil.rounded_rect(br, 12.0, 6)
@@ -993,10 +1001,10 @@ func _draw_settings(vp: Vector2) -> void:
 		if values[i] != "":
 			var text := String(values[i])
 			var width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 32).x
-			_text(text, Vector2(row.position.x + row.size.x - 40.0 - width, row.position.y + 51.0),
+			_text(text, Vector2(row.position.x + row.size.x - 40.0 - width, row.position.y + 47.0),
 				32, Color(1.0, 1.0, 1.0, 0.88))
-	_text_centered(Loc.t("点击行切换/确认 · 音量行可点 − / + · Esc 返回",
-		"Tap a row to toggle/confirm · tap − / + for volume · Esc back"),
+	_text_centered(Loc.t("点击行切换/确认 · 音量与移站时间可点 − / + · Esc 返回",
+		"Tap a row · use − / + for volume or remove time · Esc back"),
 		vp.x * 0.5, vp.y * 0.5 + 382.0, 20, Color(1.0, 1.0, 1.0, 0.65))
 
 

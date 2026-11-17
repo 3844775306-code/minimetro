@@ -28,11 +28,21 @@ func add_station(pos: Vector2, shape_kind: int) -> Station:
 	return st
 
 
-## 新建空线路（颜色按创建顺序分配）。是否允许由调用方用 available_lines() 判断。
+## 新建空线路（选择尚未被占用的调色板颜色；全部占用时才回到顺序分配）。
 func create_line() -> MetroLine:
 	var color: Color = Color("#555555")
 	if level != null and not level.line_colors.is_empty():
-		color = level.line_colors[lines.size() % level.line_colors.size()]
+		var used := {}
+		for existing in lines:
+			used[existing.color] = true
+		var picked := false
+		for candidate in level.line_colors:
+			if not used.has(candidate):
+				color = candidate
+				picked = true
+				break
+		if not picked:
+			color = level.line_colors[lines.size() % level.line_colors.size()]
 	var line := MetroLine.new(next_line_id, color)
 	next_line_id += 1
 	lines.append(line)

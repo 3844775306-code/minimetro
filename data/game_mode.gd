@@ -38,14 +38,14 @@ static func title(kind: int) -> String:
 static func description(kind: int) -> String:
 	match kind:
 		Kind.ENDLESS:
-			return Loc.t("每 30 秒客运量 · 每 +10 人升级",
-				"Per-30s throughput · upgrade every +10")
+			return Loc.t("每30秒客运量 · 每+10升级",
+				"Per-30s throughput · +10 upgrade")
 		Kind.DAILY:
-			return Loc.t("每日随机地图 · 每天 1 次 · 云端榜",
-				"Random daily map · one try/day · cloud board")
+			return Loc.t("每日随机地图 · 每天1次 · 云端榜",
+				"Random daily map · 1/day · cloud")
 		Kind.MANAGER:
-			return Loc.t("40 站 · 7 线 5 隧道 · 固定视角",
-				"40 stations · 7 lines · 5 tunnels · fixed camera")
+			return Loc.t("40站 · 7线5隧道 · 固定视角",
+				"40 stations · 7 lines · fixed camera")
 		_:
 			return Loc.t("拥堵失控即结束", "Overcrowding ends the run")
 

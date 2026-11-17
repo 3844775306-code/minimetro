@@ -51,6 +51,21 @@ static func _test_line_lifecycle(h: TestHarness) -> void:
 	h.eq(net.available_lines(), level.start_lines, "删除后资源返还")
 	h.eq(s1.line_ids.size(), 0, "站点缓存被清理")
 
+	# 删除中间一条线后，新建线路应复用空出的颜色，不能和已有线重色
+	var l1 := net.create_line()
+	l1.add_stop(s0)
+	l1.add_stop(s1)
+	var l2 := net.create_line()
+	l2.add_stop(s1)
+	l2.add_stop(s2)
+	var l3 := net.create_line()
+	net.remove_line(l2)
+	var l4 := net.create_line()
+	var colors := {}
+	for each in net.lines:
+		colors[each.color] = true
+	h.eq(colors.size(), net.lines.size(), "清除线路后新建线路颜色不与已有线路重合")
+
 
 static func _test_station_cache(h: TestHarness) -> void:
 	h.section("network/station_cache")
