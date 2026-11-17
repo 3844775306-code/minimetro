@@ -38,6 +38,12 @@ var delivered: int = 0
 var week_index: int = 1
 var week_pending: bool = false
 var pending_cards: Array[Dictionary] = []
+## 本周/本次奖励的标题（无尽模式显示里程碑而不是"第 N 周"）
+var pending_reward_title := ""
+## 无尽模式：每 30 秒客运量里程碑（每 +10 人触发一次奖励）
+const ENDLESS_MILESTONE_STEP := 10.0
+var endless_next_milestone := ENDLESS_MILESTONE_STEP
+var endless_best_per_30s := 0.0
 
 ## 可用库存（从图标拖到地图上使用）
 var inventory_trains: int = 0
@@ -222,15 +228,18 @@ func camera_zoom_target() -> float:
 	return lerpf(2.0, 1.0, camera_progress())
 
 
-## 无尽模式指标：近 30 秒的送达量换算成"平均每 5 秒多少名乘客"。
-func recent_throughput_per_5s() -> float:
+## 无尽模式指标：最近 30 秒送达的乘客总量（人 / 30 秒）。
+func recent_throughput_per_30s() -> float:
 	var cutoff := elapsed - 30.0
 	var count := 0
 	for t in _delivery_times:
 		if t >= cutoff:
 			count += 1
-	var window := minf(30.0, maxf(elapsed, 5.0))
-	return float(count) * 5.0 / maxf(window, 0.001)
+	return float(count)
+
+
+func endless_best() -> int:
+	return int(floor(endless_best_per_30s))
 
 
 ## 当前相机可见的世界范围（用于只生成屏幕内的新车站）。
@@ -437,9 +446,13 @@ func total_interchanges_owned() -> int:
 # ---------------------------------------------------------------------------
 
 func _update_week() -> void:
+	if level.endless:
+		_update_endless_milestones()
+		return
 	if elapsed < _week_end_hour:
 		return
 	_week_end_hour += level.week_seconds
+	pending_reward_title = ""
 	var cards := _roll_cards()
 	if cards.is_empty():
 		# 所有资源都满了：跳过这一周
@@ -450,6 +463,27 @@ func _update_week() -> void:
 	for card in cards:
 		pending_cards.append(card)
 	week_completed.emit(pending_cards, week_index)
+
+
+## 无尽模式：不再按日期/周结算，达到每 30 秒客运量里程碑时给一次升级。
+func _update_endless_milestones() -> void:
+	var metric := recent_throughput_per_30s()
+	endless_best_per_30s = maxf(endless_best_per_30s, metric)
+	if metric + 0.001 < endless_next_milestone:
+		return
+	var hit := int(endless_next_milestone)
+	while endless_next_milestone <= metric + 0.001:
+		endless_next_milestone += ENDLESS_MILESTONE_STEP
+	var cards := _roll_cards()
+	if cards.is_empty():
+		return
+	pending_reward_title = Loc.t("每 30 秒 %d 人里程碑 · 选择升级",
+		"%d per 30s milestone · choose an upgrade") % hit
+	week_pending = true
+	pending_cards.clear()
+	for card in cards:
+		pending_cards.append(card)
+	week_completed.emit(pending_cards, hit)
 
 
 ## 选择本周末的升级卡（暂停状态下由 UI 调用）。
@@ -468,6 +502,7 @@ func choose_upgrade(index: int) -> void:
 func _finish_week() -> void:
 	week_pending = false
 	pending_cards = []
+	pending_reward_title = ""
 	week_index += 1
 	_accum = 0.0
 

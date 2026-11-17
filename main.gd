@@ -69,7 +69,7 @@ func _process(delta: float) -> void:
 		hud.paused = Game.paused
 		hud.speed = Game.speed
 		hud.score = 0 if simulation == null else simulation.score
-		hud.throughput = 0.0 if simulation == null else simulation.recent_throughput_per_5s()
+		hud.throughput = 0.0 if simulation == null else simulation.recent_throughput_per_30s()
 		hud.endless_mode = Game.is_endless()
 		hud.week = 1 if simulation == null else simulation.week_index
 		hud.best_score = _best_for_mode()
@@ -178,12 +178,19 @@ func _cycle_city(direction: int) -> void:
 	Audio.play("click")
 
 
+func _record_endless_best() -> void:
+	if simulation != null and Game.is_endless() and Save != null:
+		Save.record_run("endless", simulation.endless_best())
+
+
 func _restart() -> void:
+	_record_endless_best()
 	Game.pending_mode = Game.mode
 	get_tree().reload_current_scene()
 
 
 func _back_to_menu() -> void:
+	_record_endless_best()
 	Game.pending_mode = -1
 	get_tree().reload_current_scene()
 
@@ -411,7 +418,8 @@ func _handle_week_input(event: InputEvent) -> void:
 
 func _on_week_completed(cards: Array, week_number: int) -> void:
 	if hud != null:
-		hud.show_week(cards, week_number)
+		hud.show_week(cards, week_number,
+			simulation.pending_reward_title if simulation != null else "")
 	Audio.play("upgrade")
 	if editor != null:
 		editor.set_process_unhandled_input(false)

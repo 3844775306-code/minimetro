@@ -38,8 +38,8 @@ static func title(kind: int) -> String:
 static func description(kind: int) -> String:
 	match kind:
 		Kind.ENDLESS:
-			return Loc.t("不会失败；评价指标为近 30 秒平均每 5 秒客运量",
-				"No failure; metric: average passengers per 5s over the last 30s")
+			return Loc.t("不会失败；评价指标与升级奖励都基于每 30 秒客运量",
+				"No failure; metric and milestone upgrades use passengers per 30s")
 		Kind.DAILY:
 			return Loc.t("每天同一张地图，冲本地最高分", "Same map for everyone today")
 		Kind.MANAGER:

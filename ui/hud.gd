@@ -46,6 +46,7 @@ var game_over := false
 var final_score := 0
 
 var week_modal := false
+var reward_title := ""
 var week_cards: Array = []
 var _card_rects: Array[Rect2] = []
 
@@ -99,15 +100,17 @@ func show_game_over(final: int, best: int) -> void:
 	queue_redraw()
 
 
-func show_week(cards: Array, week_number: int) -> void:
+func show_week(cards: Array, week_number: int, title_text: String = "") -> void:
 	week_cards = cards
 	week = week_number
+	reward_title = title_text
 	week_modal = true
 	queue_redraw()
 
 
 func hide_week() -> void:
 	week_modal = false
+	reward_title = ""
 	week_cards = []
 	_card_rects = []
 	queue_redraw()
@@ -209,8 +212,8 @@ func _draw_game_hud(vp: Vector2) -> void:
 		_text_centered(map_name, vp.x * 0.5, 54.0, 22, Color(MUTED, 0.8))
 	_draw_clock(vp)
 	if endless_mode:
-		# 无尽模式的评价主指标：近 30 秒平均每 5 秒客运量
-		_text_right(Loc.t("近30s · 每5s %.1f 人", "Last 30s · %.1f per 5s") % throughput,
+		# 无尽模式的评价主指标：最近 30 秒送达量（人 / 30 秒）
+		_text_right(Loc.t("平均每30秒 %.0f 人", "%.0f per 30s") % throughput,
 			vp.x - 40.0, 152.0, 22, INK)
 		_text_right(Loc.t("已送达 %d", "Delivered %d") % score,
 			vp.x - 40.0, 182.0, 16, Color(MUTED, 0.9))
@@ -446,8 +449,9 @@ func stock_icon_center(kind: String) -> Vector2:
 
 func _draw_week(vp: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.10, 0.10, 0.11, 0.52))
-	_text_centered(Loc.t("第 %d 周 · 选择升级", "Week %d · Choose an upgrade") % week,
-		vp.x * 0.5, vp.y * 0.5 - 168.0, 40, Color(1.0, 1.0, 1.0, 0.96))
+	var title := reward_title if reward_title != "" else \
+		Loc.t("第 %d 周 · 选择升级", "Week %d · Choose an upgrade") % week
+	_text_centered(title, vp.x * 0.5, vp.y * 0.5 - 168.0, 40, Color(1.0, 1.0, 1.0, 0.96))
 	_card_rects = _compute_card_rects(vp, week_cards.size(), 400.0, 220.0, 44.0)
 	var mouse := get_global_mouse_position()
 	for i in _card_rects.size():

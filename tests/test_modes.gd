@@ -97,8 +97,25 @@ static func _test_throughput(h: TestHarness) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 2
 	var sim := Simulation.new(net, level, rng)
-	h.near(sim.recent_throughput_per_5s(), 0.0, 0.001, "没有送达时指标为 0")
+	h.near(sim.recent_throughput_per_30s(), 0.0, 0.001, "没有送达时指标为 0")
 	sim.elapsed = 40.0
 	sim._delivery_times = [0.0, 10.0, 20.0, 40.0]
-	h.near(sim.recent_throughput_per_5s(), 3.0 * 5.0 / 30.0, 0.001,
-		"近 30 秒 3 人送达 = 每 5 秒 0.5 人")
+	h.near(sim.recent_throughput_per_30s(), 3.0, 0.001,
+		"最近 30 秒内 3 人送达 = 平均每 30 秒 3 人")
+
+	# 每 30 秒客运量达到 10 的里程碑时，给一次升级而不是等周结算
+	var endless_level := LevelData.new()
+	endless_level.endless = true
+	endless_level.start_lines = 3
+	endless_level.start_bridges = 2
+	var endless_net := MetroNetwork.new(endless_level)
+	var endless_sim := Simulation.new(endless_net, endless_level, rng)
+	endless_sim.elapsed = 30.0
+	for i in 12:
+		endless_sim._delivery_times.append(10.0)
+	endless_sim._update_endless_milestones()
+	h.check(endless_sim.week_pending, "达到客运量里程碑会弹出升级选择")
+	h.near(endless_sim.endless_next_milestone, 20.0, 0.001, "里程碑推进到下一档 20")
+	h.check(endless_sim.pending_reward_title.contains("30"),
+		"里程碑弹窗标题使用每 30 秒客运量")
+	h.near(endless_sim.endless_best_per_30s, 12.0, 0.001, "记录本局最高 30 秒客运量")
