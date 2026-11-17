@@ -14,6 +14,15 @@ const DESK := Color("#D8D0C1")
 var level: LevelData = null
 var _land := PackedVector2Array()
 var _water: Array[PackedVector2Array] = []
+## 0 = 白天，1 = 夜晚。只改变地面/水面/桌面颜色，不盖全屏暗色滤镜。
+var _night := 0.0
+
+
+func set_night_strength(value: float) -> void:
+	var next := clampf(value, 0.0, 1.0)
+	if not is_equal_approx(next, _night):
+		_night = next
+		queue_redraw()
 
 
 func setup(p_level: LevelData) -> void:
@@ -27,21 +36,28 @@ func setup(p_level: LevelData) -> void:
 func _draw() -> void:
 	if level == null or _land.is_empty():
 		return
+	# 昼夜只改变地面色调：HUD、列车、线路保持原色，不做整屏压暗。
+	var land_color := PAPER.lerp(Color("#C9CFD2"), _night)
+	var water_color := WATER.lerp(Color("#A8C1CC"), _night)
+	var desk_color := DESK.lerp(Color("#BBB7AE"), _night)
+	var edge_color := PAPER_EDGE.lerp(Color("#B9BFC4"), _night)
+	var river_edge := RIVER_EDGE.lerp(Color("#8FAEBB"), _night)
+	var shadow := Color(0.10, 0.12, 0.14, lerpf(0.07, 0.11, _night))
 	# 相机拉远时看到世界外圈：是桌面/地图外框，不是水
 	draw_rect(Rect2(Vector2(-1600.0, -1600.0),
-		level.world_size + Vector2(3200.0, 3200.0)), DESK)
-	draw_rect(Rect2(Vector2.ZERO, level.world_size), WATER)
-	draw_colored_polygon(DrawUtil.offset(_land, Vector2(9, 11)), PAPER_SHADOW)
-	draw_colored_polygon(_land, PAPER)
-	draw_polyline(DrawUtil.closed(_land), PAPER_EDGE, 3.0, true)
+		level.world_size + Vector2(3200.0, 3200.0)), desk_color)
+	draw_rect(Rect2(Vector2.ZERO, level.world_size), water_color)
+	draw_colored_polygon(DrawUtil.offset(_land, Vector2(9, 11)), shadow)
+	draw_colored_polygon(_land, land_color)
+	draw_polyline(DrawUtil.closed(_land), edge_color, 3.0, true)
 	# 河道：先统一填充，再只描并集的外轮廓（岛/河心岛会作为反向多边形描边）
 	for river in level.rivers:
 		if river.size() < 3:
 			continue
-		draw_colored_polygon(river, WATER)
+		draw_colored_polygon(river, water_color)
 	for polygon in _water:
 		if polygon.size() >= 3:
-			draw_polyline(DrawUtil.closed(polygon), RIVER_EDGE, 2.5, true)
+			draw_polyline(DrawUtil.closed(polygon), river_edge, 2.5, true)
 
 
 ## 把多条河道多边形合并成水面并集；重叠或汇流处不会留下内部边界。

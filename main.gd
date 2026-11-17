@@ -30,8 +30,6 @@ var fx_layer: FxLayer = null
 var editor: LineEditor = null
 var hud: Hud = null
 var camera: Camera2D = null
-var _night_filter: ColorRect = null
-
 var _shot_path := ""
 var _shot_delay := 0.45
 var _demo := false
@@ -112,9 +110,9 @@ func _process(delta: float) -> void:
 				hud.hover_landmark = ""
 		else:
 			hud.hover_landmark = ""
-		if _night_filter != null:
+		if map_view != null:
 			var strength := 0.0 if simulation == null else Simulation.night_strength(simulation.hour_of_day())
-			_night_filter.color = Color(0.03, 0.06, 0.16, 0.36 * strength)
+			map_view.set_night_strength(strength)
 		if hud.settings_menu:
 			_sync_settings_values()
 	if simulation != null and not Game.paused:
@@ -878,20 +876,7 @@ func _build_ui() -> void:
 	grain.material = mat
 	grain_layer.add_child(grain)
 
-	# 夜色滤镜：盖在世界之上、UI 之下，白天透明度 0，入夜渐深
-	var night_layer := CanvasLayer.new()
-	night_layer.name = "Night"
-	night_layer.layer = 6
-	add_child(night_layer)
-	_night_filter = ColorRect.new()
-	_night_filter.name = "NightFilter"
-	_night_filter.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_night_filter.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_night_filter.color = Color(0.03, 0.06, 0.16, 0.0)
-	night_layer.add_child(_night_filter)
-
-
-# ---------------------------------------------------------------------------
+	# ---------------------------------------------------------------------------
 # 开局内容 / 演示姿态
 # ---------------------------------------------------------------------------
 

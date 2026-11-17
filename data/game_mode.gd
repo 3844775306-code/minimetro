@@ -38,16 +38,16 @@ static func title(kind: int) -> String:
 static func description(kind: int) -> String:
 	match kind:
 		Kind.ENDLESS:
-			return Loc.t("不会失败；评价指标与升级奖励都基于每 30 秒客运量",
-				"No failure; metric and milestone upgrades use passengers per 30s")
+			return Loc.t("每 30 秒客运量 · 每 +10 人升级",
+				"Per-30s throughput · upgrade every +10")
 		Kind.DAILY:
-			return Loc.t("每天随机一张地图，每人每天 1 次机会，成绩上传云端榜",
-				"Random map each day; one attempt per player; cloud leaderboard")
+			return Loc.t("每日随机地图 · 每天 1 次 · 云端榜",
+				"Random daily map · one try/day · cloud board")
 		Kind.MANAGER:
-			return Loc.t("40 站开局、7 线 5 隧道、固定 1x 视角，不再生成新车站",
-				"Start with 40 stations, 7 lines, 5 tunnels; fixed 1x camera; no new stations")
+			return Loc.t("40 站 · 7 线 5 隧道 · 固定视角",
+				"40 stations · 7 lines · 5 tunnels · fixed camera")
 		_:
-			return Loc.t("标准规则：拥堵失控即结束", "Overcrowding ends the run")
+			return Loc.t("拥堵失控即结束", "Overcrowding ends the run")
 
 
 ## 每日挑战种子：由日期字符串决定，同一天所有人一致。

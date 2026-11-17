@@ -270,9 +270,9 @@ func _draw() -> void:
 	# 工具栏
 	_buttons.clear()
 	var cx := vp.x * 0.5
-	_text_centered("地图编辑器 · 拖拽自由绘制河流", cx, 56.0, 30, INK)
+	_text_centered("地图编辑器 · 拖拽自由绘制河流", cx, 56.0, 34, INK)
 	_text_centered("保存后会出现在模式选择的城市列表里；分享码通过剪贴板交换",
-		cx, 90.0, 16, MUTED)
+		cx, 94.0, 20, MUTED)
 	var labels := [
 		{"action": "new", "text": "新建"},
 		{"action": "undo", "text": "撤销"},
@@ -301,11 +301,11 @@ func _draw() -> void:
 		draw_colored_polygon(poly, Color(PAPER, 0.96) if hovered else Color(PAPER, 0.82))
 		draw_polyline(DrawUtil.closed(poly), Color(0.55, 0.52, 0.47, 0.7), 1.5, true)
 		_text_centered(String(labels[i]["text"]), rect.position.x + rect.size.x * 0.5,
-			rect.position.y + 45.0, 23, INK)
+			rect.position.y + 46.0, 26, INK)
 	_text_centered("河宽 %d px · 已画 %d 条河" % [int(width), rivers.size()],
-		cx, vp.y - 34.0, 16, MUTED)
+		cx, vp.y - 34.0, 20, MUTED)
 	if _toast != "":
-		_text_centered(_toast, cx, vp.y - 72.0, 18, Color(INK, 0.9))
+		_text_centered(_toast, cx, vp.y - 76.0, 22, Color(INK, 0.9))
 
 
 func _text_centered(text: String, center_x: float, baseline_y: float, size: int,

@@ -109,7 +109,7 @@ func _ready() -> void:
 	name_edit.visible = false
 	name_edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	name_edit.max_length = 16
-	name_edit.add_theme_font_size_override("font_size", 26)
+	name_edit.add_theme_font_size_override("font_size", 32)
 	name_edit.text_submitted.connect(_on_name_edit_submitted)
 	add_child(name_edit)
 	set_process(true)
@@ -305,18 +305,18 @@ func _draw_game_hud(vp: Vector2) -> void:
 	# 减负版 HUD：左上只留线色/库存，右上不再画面板（避免挡地图）
 	_draw_panel(Rect2(34.0, 46.0, 720.0, 156.0))
 	if map_name != "":
-		_text_centered(map_name, vp.x * 0.5, 54.0, 22, Color(MUTED, 0.8))
+		_text_centered(map_name, vp.x * 0.5, 58.0, 28, Color(MUTED, 0.85))
 	_draw_clock(vp)
 	if endless_mode:
 		# 无尽模式的评价主指标：最近 30 秒送达量（人 / 30 秒）
 		_text_right(Loc.t("平均每30秒 %.0f 人", "%.0f per 30s") % throughput,
-			vp.x - 40.0, 152.0, 22, INK)
+			vp.x - 40.0, 152.0, 28, INK)
 		_text_right(Loc.t("已送达 %d", "Delivered %d") % score,
-			vp.x - 40.0, 182.0, 16, Color(MUTED, 0.9))
+			vp.x - 40.0, 186.0, 20, Color(MUTED, 0.9))
 	else:
-		_text_right(Loc.t("已送达 %d", "Delivered %d") % score, vp.x - 40.0, 152.0, 24, INK)
+		_text_right(Loc.t("已送达 %d", "Delivered %d") % score, vp.x - 40.0, 152.0, 32, INK)
 	if stage_label != "":
-		_text_right(stage_label, vp.x - 40.0, 206.0, 13, Color(MUTED, 0.75))
+		_text_right(stage_label, vp.x - 40.0, 212.0, 18, Color(MUTED, 0.75))
 	_draw_resource_slots(vp)
 	var show_hint := hint_left > 0.0 or (network != null and network.lines.is_empty())
 	if show_hint:
@@ -326,16 +326,16 @@ func _draw_game_hud(vp: Vector2) -> void:
 		_text_centered(Loc.t(
 			"拖拽画线 · 拖端点延伸 · 拖线段插站 · 轻点翻折 · 拖左上角图标放车 · Ctrl+Z 撤销 · Esc 设置",
 			"Drag to draw · drag endpoint to extend · drag a segment to insert · tap to flip · drag top-left icons for vehicles · Ctrl+Z undo · Esc settings"
-		), vp.x * 0.5, vp.y - 46.0, 16, Color(MUTED, 0.9 * hint_alpha))
+		), vp.x * 0.5, vp.y - 46.0, 20, Color(MUTED, 0.9 * hint_alpha))
 	if paused and not game_over and not settings_menu and not week_modal \
 			and not mode_menu:
 		_text_centered(Loc.t("已暂停", "Paused"), vp.x * 0.5, vp.y * 0.5, 44, Color(INK, 0.75))
 		_text_centered(Loc.t("可继续修改线路、调动车厢", "You can still edit lines and move carriages"),
-			vp.x * 0.5, vp.y * 0.5 + 36.0, 18, Color(MUTED, 0.75))
+			vp.x * 0.5, vp.y * 0.5 + 40.0, 22, Color(MUTED, 0.75))
 	_draw_speed_buttons(vp)
 	if toast_left > 0.0:
 		var alpha: float = clampf(toast_left / 0.5, 0.0, 1.0)
-		_text_centered(toast_text, vp.x * 0.5, vp.y - 120.0, 22, Color(INK, alpha))
+		_text_centered(toast_text, vp.x * 0.5, vp.y - 120.0, 26, Color(INK, alpha))
 	# 悬停车站：显示这个形状代表的地标
 	if hover_landmark != "":
 		var text_size := font.get_string_size(hover_landmark, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 15)
@@ -346,7 +346,7 @@ func _draw_game_hud(vp: Vector2) -> void:
 		var poly := DrawUtil.rounded_rect(rect, 9.0, 6)
 		draw_colored_polygon(poly, Color("#FBF8F1", 0.96))
 		draw_polyline(DrawUtil.closed(poly), Color(0.55, 0.52, 0.47), 1.6, true)
-		_text(hover_landmark, rect.position + Vector2(11.0, 20.0), 15, INK)
+		_text(hover_landmark, rect.position + Vector2(11.0, 21.0), 18, INK)
 
 
 ## HUD 半透明纸面板：地图变丰富后保证左上/右上文字可读
@@ -358,8 +358,8 @@ func _draw_panel(rect: Rect2) -> void:
 
 ## 12 小时制时钟：12 点在上、6 点在下；到了夜晚整块表盘变黑、指针变白。
 func _draw_clock(vp: Vector2) -> void:
-	var center := Vector2(vp.x - 70.0, 64.0)
-	var radius := 30.0
+	var center := Vector2(vp.x - 80.0, 66.0)
+	var radius := 34.0
 	var strength := Simulation.night_strength(clock_hours)
 	var face := Color("#FBF8F1").lerp(Color("#1C1C1E"), strength)
 	draw_circle(center, radius, face)
@@ -386,7 +386,7 @@ func _draw_clock(vp: Vector2) -> void:
 	var minutes := int((clock_hours - floor(clock_hours)) * 60.0)
 	var suffix := Loc.t("上午", "AM") if hour < 12 else Loc.t("下午", "PM")
 	_text_centered("%s  %02d:%02d %s" % [weekday, display_hour, mini(minutes, 59), suffix],
-		center.x, center.y + radius + 18.0, 14, Color(MUTED, 0.9))
+		center.x, center.y + radius + 20.0, 18, Color(MUTED, 0.9))
 
 
 func _draw_speed_buttons(vp: Vector2) -> void:
@@ -462,23 +462,31 @@ func speed_button_at(pos: Vector2) -> int:
 
 func _draw_resource_slots(vp: Vector2) -> void:
 	var used := 0 if network == null else network.lines.size()
-	var y := 88.0
+	var mouse := get_global_mouse_position()
+	_text("资源 · 拖动图标到地图", Vector2(64.0, 72.0), 20, Color(INK, 0.65))
+	var y := 92.0
 	_line_chips = []
 	for i in level.start_lines:
 		var x := 64.0 + float(i) * (CHIP_W + CHIP_GAP)
+		var chip_button := Rect2(x - 6.0, y - 12.0, 58.0, 34.0)
 		if i < used:
 			var line: MetroLine = network.lines[i]
+			var hovered := chip_button.has_point(mouse)
+			var chip_poly := DrawUtil.rounded_rect(chip_button, 9.0, 6)
+			draw_colored_polygon(chip_poly, Color(1.0, 1.0, 1.0, 0.45 if hovered else 0.20))
+			draw_polyline(DrawUtil.closed(chip_poly), Color(INK, 0.28), 1.2, true)
 			_draw_capsule(Vector2(x, y), line.color, CHIP_W, CHIP_H)
+			_text_centered("×", x + 47.0, y + 6.0, 14, Color(INK, 0.62))
 			# 放大的点击区：点颜色条弹出取消线路的叉按钮
 			_line_chips.append({
 				"id": line.id,
-				"rect": Rect2(x - 6.0, y - 30.0, 58.0, 60.0),
+				"rect": Rect2(x - 6.0, y - 30.0, 58.0, 40.0),
 			})
 		else:
 			_draw_capsule_outline(Vector2(x, y),
 				Color(level.line_colors[i % level.line_colors.size()], 0.32), CHIP_W, CHIP_H)
 
-	# 第二行：可拖拽的库存图标（列车 / 车厢 / 换乘中心 / 新干线）+ 桥梁余量
+	# 第二行：可拖拽的资源卡片（列车 / 车厢 / 换乘中心 / 新干线）+ 桥梁余量
 	var row_y := 140.0
 	_stock_rects = {}
 	var slots := [
@@ -491,17 +499,33 @@ func _draw_resource_slots(vp: Vector2) -> void:
 		var kind := String(slot["kind"])
 		var center := Vector2(float(slot["x"]), row_y)
 		var count := int(stock_counts.get(kind, 0))
-		_draw_stock_icon(kind, center, count > 0)
-		_text("x%d" % count, Vector2(center.x + 34.0, row_y + 8.0), 22,
+		var card := Rect2(center - Vector2(60.0, 36.0), Vector2(120.0, 88.0))
+		var hovered := card.has_point(mouse)
+		var card_poly := DrawUtil.rounded_rect(card, 14.0, 8)
+		draw_colored_polygon(card_poly, Color(1.0, 1.0, 1.0, 0.78 if hovered else 0.48))
+		draw_polyline(DrawUtil.closed(card_poly), Color(INK, 0.38), 1.5, true)
+		_draw_stock_icon(kind, Vector2(center.x, row_y - 8.0), count > 0)
+		_text("x%d" % count, Vector2(center.x + 24.0, row_y - 14.0), 24,
 			Color(INK, 0.85) if count > 0 else Color(MUTED, 0.5))
-		_stock_rects[kind] = Rect2(center - Vector2(56.0, 48.0), Vector2(120.0, 96.0))
+		_text_centered(String(slot["label"]), center.x, row_y + 36.0, 18,
+			Color(INK, 0.78) if count > 0 else Color(MUTED, 0.5))
+		# 右上角拖动握把：提示这个卡片可以拖
+		for dot in 3:
+			draw_circle(Vector2(card.end.x - 16.0, card.position.y + 14.0 + dot * 5.0),
+				1.7, Color(INK, 0.38), true, -1.0, true)
+		_stock_rects[kind] = card
 
 	# 桥梁不是库存，是预算：画桥图标 + 已用/上限
 	var bridge_center := Vector2(690.0, row_y)
-	_draw_stock_icon("bridge", bridge_center, true)
+	var bridge_card := Rect2(bridge_center - Vector2(60.0, 36.0), Vector2(120.0, 88.0))
+	var bridge_poly := DrawUtil.rounded_rect(bridge_card, 14.0, 8)
+	draw_colored_polygon(bridge_poly, Color(1.0, 1.0, 1.0, 0.35))
+	draw_polyline(DrawUtil.closed(bridge_poly), Color(INK, 0.28), 1.5, true)
+	_draw_stock_icon("bridge", Vector2(bridge_center.x, row_y - 8.0), true)
 	var bridges := 0 if network == null else network.used_bridges()
-	_text("%d/%d" % [bridges, level.start_bridges], Vector2(bridge_center.x + 34.0, row_y + 8.0),
-		22, Color(INK, 0.75))
+	_text("%d/%d" % [bridges, level.start_bridges], Vector2(bridge_center.x + 16.0, row_y - 14.0),
+		24, Color(INK, 0.75))
+	_text_centered(Loc.t("桥梁", "Bridges"), bridge_center.x, row_y + 36.0, 18, Color(INK, 0.65))
 
 
 ## 左上角库存图标：列车 / 车厢 / 换乘中心 / 新干线 / 桥梁。
@@ -559,7 +583,7 @@ func stock_icon_at(pos: Vector2) -> String:
 func stock_icon_center(kind: String) -> Vector2:
 	if _stock_rects.has(kind):
 		var rect: Rect2 = _stock_rects[kind]
-		return rect.position + Vector2(17.0, rect.size.y * 0.5)
+		return rect.get_center()
 	return Vector2(118.0, 146.0)
 
 
@@ -583,15 +607,15 @@ func _draw_week(vp: Vector2) -> void:
 		if i < week_cards.size():
 			var card: Dictionary = week_cards[i]
 			_text_centered(String(card["title"]),
-				rect.position.x + rect.size.x * 0.5, rect.position.y + 94.0, 32, INK)
+				rect.position.x + rect.size.x * 0.5, rect.position.y + 92.0, 34, INK)
 			_text_wrapped(String(card["desc"]),
-				rect.position.x + rect.size.x * 0.5, rect.position.y + 148.0, 18,
+				rect.position.x + rect.size.x * 0.5, rect.position.y + 146.0, 21,
 				rect.size.x - 48.0, MUTED)
 		_text_centered(Loc.t("按 %d", "Press %d") % (i + 1),
-			rect.position.x + rect.size.x * 0.5, rect.position.y + rect.size.y - 26.0, 16,
+			rect.position.x + rect.size.x * 0.5, rect.position.y + rect.size.y - 24.0, 18,
 			Color(MUTED, 0.8))
 	_text_centered(Loc.t("点击卡片，或按 1 / 2", "Click a card, or press 1 / 2"),
-		vp.x * 0.5, vp.y * 0.5 + 178.0, 18, Color(1.0, 1.0, 1.0, 0.7))
+		vp.x * 0.5, vp.y * 0.5 + 178.0, 21, Color(1.0, 1.0, 1.0, 0.75))
 
 
 # ---------------------------------------------------------------------------
@@ -604,12 +628,12 @@ func _draw_mode_menu(vp: Vector2) -> void:
 	var cy := vp.y * 0.5
 	_text_centered("MINI METRO", cx, cy - 290.0, 54, Color(1.0, 1.0, 1.0, 0.97))
 	_text_centered(Loc.t("极简地铁调度 · 选择模式与城市", "Minimal metro puzzle · pick a mode and a city"),
-		cx, cy - 254.0, 20, Color(1.0, 1.0, 1.0, 0.72))
+		cx, cy - 250.0, 24, Color(1.0, 1.0, 1.0, 0.78))
 	_draw_city_selector(vp)
 	_draw_mode_cards(vp)
 	_text_centered(Loc.t("← → 切换城市 · 点击卡片或按 1 / 2 / 3 / 4 开始",
 		"Left / Right city · click a card or press 1 / 2 / 3 / 4"),
-		cx, cy + 350.0, 18, Color(1.0, 1.0, 1.0, 0.7))
+		cx, cy + 350.0, 21, Color(1.0, 1.0, 1.0, 0.75))
 	# 底部入口：每日榜 / 地图大厅 / 地图排行 / 地图编辑器
 	var menu_buttons := [
 		{"rect": _daily_board_rect, "text": Loc.t("每日排行榜", "Daily board"),
@@ -727,12 +751,12 @@ func _draw_leaderboard(vp: Vector2) -> void:
 	draw_colored_polygon(poly, Color(0.99, 0.97, 0.92, 0.98))
 	draw_polyline(DrawUtil.closed(poly), Color(0.55, 0.52, 0.47), 2.0, true)
 	_text_centered(leaderboard_title, panel.position.x + panel.size.x * 0.5,
-		panel.position.y + 68.0, 36, INK)
+		panel.position.y + 68.0, 40, INK)
 	_text_centered(leaderboard_subtitle, panel.position.x + panel.size.x * 0.5,
-		panel.position.y + 106.0, 18, MUTED)
-	var y := panel.position.y + 156.0
+		panel.position.y + 108.0, 22, MUTED)
+	var y := panel.position.y + 158.0
 	for line in leaderboard_lines:
-		_text(line, Vector2(panel.position.x + 70.0, y), 21, INK)
+		_text(line, Vector2(panel.position.x + 70.0, y), 24, INK)
 		y += 40.0
 		if y > panel.end.y - 110.0:
 			break
@@ -755,9 +779,9 @@ func _draw_line_cancel(vp: Vector2) -> void:
 	draw_polyline(DrawUtil.closed(poly), Color(0.55, 0.52, 0.47), 2.0, true)
 	_draw_capsule(Vector2(vp.x * 0.5, panel.position.y + 70.0), line.color, 150.0, 26.0)
 	_text_centered(Loc.t("取消整条线路？", "Cancel this line?"), vp.x * 0.5,
-		panel.position.y + 132.0, 34, INK)
+		panel.position.y + 132.0, 38, INK)
 	_text_centered(Loc.t("线路上的列车和车厢会退回库存", "Trains and carriages return to inventory"),
-		vp.x * 0.5, panel.position.y + 170.0, 18, MUTED)
+		vp.x * 0.5, panel.position.y + 172.0, 22, MUTED)
 	_line_cancel_rect = Rect2(Vector2(vp.x * 0.5 - 72.0, panel.position.y + 200.0),
 		Vector2(144.0, 144.0))
 	var center := _line_cancel_rect.get_center()
@@ -771,7 +795,7 @@ func _draw_line_cancel(vp: Vector2) -> void:
 	]), Color.WHITE, 11.0, true)
 	_text_centered(Loc.t("点击 × 确认 · 点其他位置关闭",
 		"Tap × to confirm · tap elsewhere to close"),
-		vp.x * 0.5, panel.end.y - 26.0, 16, MUTED)
+		vp.x * 0.5, panel.end.y - 26.0, 20, MUTED)
 
 
 func _draw_name_modal(vp: Vector2) -> void:
@@ -781,9 +805,9 @@ func _draw_name_modal(vp: Vector2) -> void:
 	draw_colored_polygon(poly, Color(0.12, 0.12, 0.13, 0.96))
 	draw_polyline(DrawUtil.closed(poly), Color(1.0, 1.0, 1.0, 0.18), 2.0, true)
 	_text_centered(Loc.t("玩家名", "Player name"), vp.x * 0.5,
-		vp.y * 0.5 - 98.0, 30, Color(1.0, 1.0, 1.0, 0.96))
+		vp.y * 0.5 - 98.0, 36, Color(1.0, 1.0, 1.0, 0.96))
 	_text_centered(Loc.t("输入后按 Enter 保存 · Esc 取消", "Enter to save · Esc to cancel"),
-		vp.x * 0.5, vp.y * 0.5 + 70.0, 16, Color(1.0, 1.0, 1.0, 0.58))
+		vp.x * 0.5, vp.y * 0.5 + 70.0, 20, Color(1.0, 1.0, 1.0, 0.58))
 
 
 func _draw_map_hall(vp: Vector2) -> void:
@@ -795,10 +819,10 @@ func _draw_map_hall(vp: Vector2) -> void:
 	draw_colored_polygon(poly, Color(0.99, 0.97, 0.92, 0.98))
 	draw_polyline(DrawUtil.closed(poly), Color(0.55, 0.52, 0.47), 2.0, true)
 	_text_centered(Loc.t("地图大厅", "Map Hall"), panel.position.x + panel.size.x * 0.5,
-		panel.position.y + 64.0, 36, INK)
+		panel.position.y + 64.0, 40, INK)
 	_text_centered(Loc.t("点击地图行即可下载到本地，随后会出现在城市列表",
 		"Click a map row to download it; it appears in the city list"),
-		panel.position.x + panel.size.x * 0.5, panel.position.y + 102.0, 17, MUTED)
+		panel.position.x + panel.size.x * 0.5, panel.position.y + 104.0, 21, MUTED)
 	_map_hall_row_rects = []
 	var y := panel.position.y + 140.0
 	var row_w := panel.size.x - 120.0
@@ -812,12 +836,12 @@ func _draw_map_hall(vp: Vector2) -> void:
 		draw_colored_polygon(row_poly, Color(INK, 0.06 if hovered else 0.03))
 		draw_polyline(DrawUtil.closed(row_poly), Color(0.72, 0.69, 0.62), 1.2, true)
 		_text(String(entry.get("name_zh", entry.get("name_en", "未命名"))),
-			row.position + Vector2(28.0, 34.0), 24, INK)
+			row.position + Vector2(28.0, 36.0), 28, INK)
 		_text(Loc.t("作者 %s · 下载 %d", "by %s · %d downloads") % [
 			String(entry.get("author", "?")), int(entry.get("downloads", 0)),
-		], row.position + Vector2(28.0, 64.0), 17, MUTED)
+		], row.position + Vector2(28.0, 66.0), 20, MUTED)
 		_text_centered(Loc.t("下载", "Download"), row.end.x - 100.0,
-			row.position.y + 48.0, 22, Color(INK, 0.75))
+			row.position.y + 50.0, 26, Color(INK, 0.8))
 		y += 96.0
 		if y > panel.end.y - 110.0:
 			break
@@ -836,7 +860,7 @@ func _draw_city_selector(vp: Vector2) -> void:
 		city_index = clampi(city_index, 0, menu_cities.size() - 1)
 		city = menu_cities[city_index]
 	if city != null:
-		_text_centered(city.display_name(), cx, cy - 216.0, 30, Color(1.0, 1.0, 1.0, 0.95))
+		_text_centered(city.display_name(), cx, cy - 216.0, 34, Color(1.0, 1.0, 1.0, 0.95))
 	_draw_city_preview(Rect2(cx - 180.0, cy - 204.0, 360.0, 176.0), city)
 	_city_arrow_rects = [
 		Rect2(cx - 292.0, cy - 160.0, 90.0, 90.0),
@@ -890,16 +914,16 @@ func _draw_mode_cards(vp: Vector2) -> void:
 		draw_colored_polygon(poly, Color("#FFFFFF") if hovered else PAPER)
 		draw_polyline(DrawUtil.closed(poly), Color(0.72, 0.69, 0.62), 2.5, true)
 		_text_centered(GameMode.title(kind), rect.position.x + rect.size.x * 0.5,
-			rect.position.y + 60.0, 32, INK)
+			rect.position.y + 58.0, 34, INK)
 		_text_wrapped(GameMode.description(kind), rect.position.x + rect.size.x * 0.5,
-			rect.position.y + 102.0, 16, rect.size.x - 44.0, MUTED)
+			rect.position.y + 100.0, 19, rect.size.x - 44.0, MUTED)
 		var mode_key := GameMode.key(kind)
 		var best := int(mode_bests.get(mode_key, 0))
 		_text_centered(Loc.t("最高 %d", "Best %d") % best,
-			rect.position.x + rect.size.x * 0.5, rect.position.y + 142.0, 17, Color(MUTED, 0.85))
+			rect.position.x + rect.size.x * 0.5, rect.position.y + 148.0, 20, Color(MUTED, 0.9))
 		_text_centered(Loc.t("按 %d", "Press %d") % (i + 1),
-			rect.position.x + rect.size.x * 0.5, rect.position.y + rect.size.y - 20.0, 15,
-			Color(MUTED, 0.7))
+			rect.position.x + rect.size.x * 0.5, rect.position.y + rect.size.y - 16.0, 17,
+			Color(MUTED, 0.72))
 
 
 func _mode_kind_at(index: int) -> int:
@@ -921,7 +945,7 @@ func _draw_settings(vp: Vector2) -> void:
 	draw_colored_polygon(panel_poly, Color(0.12, 0.12, 0.13, 0.72))
 	draw_polyline(DrawUtil.closed(panel_poly), Color(1.0, 1.0, 1.0, 0.12), 2.0, true)
 	_text_centered(Loc.t("暂停 · 设置", "Paused · Settings"), vp.x * 0.5,
-		vp.y * 0.5 - 365.0, 34, Color(1.0, 1.0, 1.0, 0.96))
+		vp.y * 0.5 - 365.0, 38, Color(1.0, 1.0, 1.0, 0.96))
 	var labels := [
 		Loc.t("继续", "Resume"),
 		Loc.t("主音量", "Master volume"),
@@ -952,8 +976,8 @@ func _draw_settings(vp: Vector2) -> void:
 		if i == settings_index:
 			var poly := DrawUtil.rounded_rect(row, 12.0, 6)
 			draw_colored_polygon(poly, Color(1.0, 1.0, 1.0, 0.16))
-		_text(String(labels[i]), Vector2(row.position.x + 40.0, row.position.y + 50.0), 30,
-			Color(1.0, 1.0, 1.0, 0.94 if i == settings_index else 0.72))
+		_text(String(labels[i]), Vector2(row.position.x + 40.0, row.position.y + 51.0), 34,
+			Color(1.0, 1.0, 1.0, 0.94 if i == settings_index else 0.78))
 		if i in [1, 2]:
 			var minus_rect := Rect2(row.end.x - 290.0, row.position.y + 12.0, 54.0, 54.0)
 			var plus_rect := Rect2(row.end.x - 220.0, row.position.y + 12.0, 54.0, 54.0)
@@ -965,15 +989,15 @@ func _draw_settings(vp: Vector2) -> void:
 				draw_colored_polygon(bp, Color(1.0, 1.0, 1.0, 0.14))
 				draw_polyline(DrawUtil.closed(bp), Color(1.0, 1.0, 1.0, 0.35), 1.5, true)
 				_text_centered(String(pair["text"]), br.position.x + 27.0,
-					br.position.y + 38.0, 30, Color(1.0, 1.0, 1.0, 0.9))
+					br.position.y + 39.0, 34, Color(1.0, 1.0, 1.0, 0.9))
 		if values[i] != "":
 			var text := String(values[i])
-			var width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 28).x
-			_text(text, Vector2(row.position.x + row.size.x - 40.0 - width, row.position.y + 50.0),
-				28, Color(1.0, 1.0, 1.0, 0.85))
+			var width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 32).x
+			_text(text, Vector2(row.position.x + row.size.x - 40.0 - width, row.position.y + 51.0),
+				32, Color(1.0, 1.0, 1.0, 0.88))
 	_text_centered(Loc.t("点击行切换/确认 · 音量行可点 − / + · Esc 返回",
 		"Tap a row to toggle/confirm · tap − / + for volume · Esc back"),
-		vp.x * 0.5, vp.y * 0.5 + 382.0, 18, Color(1.0, 1.0, 1.0, 0.6))
+		vp.x * 0.5, vp.y * 0.5 + 382.0, 20, Color(1.0, 1.0, 1.0, 0.65))
 
 
 func _draw_game_over(vp: Vector2) -> void:
@@ -984,7 +1008,7 @@ func _draw_game_over(vp: Vector2) -> void:
 		Color(1.0, 1.0, 1.0, 0.96))
 	_text_centered(Loc.t("送达 %d 名乘客 · 最高 %d", "Delivered %d · Best %d") % [
 		final_score, best_score,
-	], cx, cy + 20.0, 26, Color(1.0, 1.0, 1.0, 0.9))
+	], cx, cy + 22.0, 32, Color(1.0, 1.0, 1.0, 0.92))
 	var button_size := Vector2(340.0, 96.0)
 	var gap := 40.0
 	if game_over_can_restart:
@@ -1000,7 +1024,7 @@ func _draw_game_over(vp: Vector2) -> void:
 	_draw_touch_button(_game_over_menu_rect,
 		Loc.t("返回模式选择", "Mode menu"), _game_over_menu_rect.has_point(get_global_mouse_position()))
 	_text_centered(Loc.t("也可按 R 重新开始 · M 返回模式选择",
-		"Keyboard: R restart · M mode menu"), cx, cy + 208.0, 18,
+		"Keyboard: R restart · M mode menu"), cx, cy + 208.0, 20,
 		Color(1.0, 1.0, 1.0, 0.55))
 
 
@@ -1011,7 +1035,7 @@ func _draw_touch_button(rect: Rect2, label: String, hovered: bool) -> void:
 	var poly := DrawUtil.rounded_rect(rect, 16.0, 10)
 	draw_colored_polygon(poly, Color(1.0, 1.0, 1.0, 0.92 if hovered else 0.80))
 	draw_polyline(DrawUtil.closed(poly), Color(0.42, 0.39, 0.35), 2.0, true)
-	_text_centered(label, rect.get_center().x, rect.position.y + 58.0, 28, INK)
+	_text_centered(label, rect.get_center().x, rect.position.y + 59.0, 30, INK)
 
 
 # ---------------------------------------------------------------------------
