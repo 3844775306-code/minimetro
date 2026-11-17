@@ -157,6 +157,10 @@ func _refresh_mode_bests() -> void:
 	}
 
 
+func _open_map_editor() -> void:
+	get_tree().change_scene_to_file("res://map_editor/map_editor.tscn")
+
+
 func _choose_mode(kind: int) -> void:
 	if hud != null and not hud.menu_cities.is_empty():
 		var city: CityMap = hud.menu_cities[hud.city_index]
@@ -263,6 +267,8 @@ func _handle_mode_menu_input(event: InputEvent) -> void:
 				_choose_mode(GameMode.Kind.DAILY)
 			KEY_4:
 				_choose_mode(GameMode.Kind.MANAGER)
+			KEY_E:
+				_open_map_editor()
 			KEY_LEFT:
 				_cycle_city(-1)
 			KEY_RIGHT:
@@ -270,6 +276,9 @@ func _handle_mode_menu_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		var pos: Vector2 = (event as InputEventMouseButton).position
+		if hud.editor_button_at(pos):
+			_open_map_editor()
+			return
 		var index := hud.mode_card_at(pos)
 		if index >= 0:
 			_choose_mode(hud._mode_kind_at(index))

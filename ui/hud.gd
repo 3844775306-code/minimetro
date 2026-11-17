@@ -52,6 +52,7 @@ var _card_rects: Array[Rect2] = []
 var mode_menu := false
 var mode_bests := {}
 var _mode_rects: Array[Rect2] = []
+var _editor_button_rect := Rect2()
 ## 模式菜单里的城市选择
 var menu_cities: Array = []
 var city_index := 0
@@ -484,7 +485,20 @@ func _draw_mode_menu(vp: Vector2) -> void:
 	_draw_mode_cards(vp)
 	_text_centered(Loc.t("← → 切换城市 · 点击卡片或按 1 / 2 / 3 / 4 开始",
 		"Left / Right city · click a card or press 1 / 2 / 3 / 4"),
-		cx, cy + 246.0, 18, Color(1.0, 1.0, 1.0, 0.7))
+		cx, cy + 300.0, 18, Color(1.0, 1.0, 1.0, 0.7))
+	# 地图编辑器入口
+	_editor_button_rect = Rect2(Vector2(cx - 150.0, cy + 212.0), Vector2(300.0, 46.0))
+	var mouse := get_global_mouse_position()
+	var editor_hovered := _editor_button_rect.has_point(mouse)
+	var editor_poly := DrawUtil.rounded_rect(_editor_button_rect, 14.0, 8)
+	draw_colored_polygon(editor_poly, Color(1.0, 1.0, 1.0, 0.16 if editor_hovered else 0.08))
+	draw_polyline(DrawUtil.closed(editor_poly), Color(1.0, 1.0, 1.0, 0.35), 1.5, true)
+	_text_centered(Loc.t("地图编辑器（E）", "Map Editor (E)"), cx,
+		_editor_button_rect.position.y + 30.0, 20, Color(1.0, 1.0, 1.0, 0.9))
+
+
+func editor_button_at(pos: Vector2) -> bool:
+	return _editor_button_rect.has_point(pos)
 
 
 ## 城市切换：左右箭头 + 城市名 + 迷你河道预览。

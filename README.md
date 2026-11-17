@@ -162,6 +162,24 @@
 
 ![管理模式](docs/images/manager.png)
 
+## 地图编辑器
+
+模式菜单底部「地图编辑器（E）」进入：
+
+- 在地图上**拖拽自由绘制河流**，支持河宽 `- / +`、撤销、清空
+- 「保存」写入 `user://custom_maps.json`，自定义地图会立刻出现在模式菜单的城市列表里
+- 「分享码」把整张图（河流多边形 + 名称）编码成 Base64 复制到剪贴板；别人进入编辑器点「导入」即可从剪贴板还原
+- 自定义地图和官方地图一样可被选择、游玩，并参与当前模式/分数流程
+
+![地图编辑器](docs/images/editor.png)
+
+## 手机版（Android）
+
+- 项目已配置 Android 导出预设 `Android`（`export_presets.cfg`），横屏、`gl_compatibility` 移动渲染、ETC2/ASTC 纹理、触摸模拟鼠标
+- 已生成调试签名 APK：`build/MiniMetro.apk`（可直接安装测试；应用 id `com.minimetro.paper`）
+- 安装：`adb install -r build/MiniMetro.apk`，或把 APK 传到手机点击安装
+- 正式上架需要自己的 release keystore：在 `export_presets.cfg` 的 Android 预设里填 `keystore/release` 与密码，再用 `godot --export-release "Android" build/MiniMetro-release.apk`
+
 ### 暂停 / 设置
 
 暂停时模拟停止，但线路编辑与列车/车厢调动仍然可用：
@@ -276,13 +294,13 @@ $godot = "D:\Downloads\06_游戏与Flash资源\Godot_v4.7.2-stable_win64.exe\God
 ```powershell
 $godot = "D:\Downloads\06_游戏与Flash资源\Godot_v4.7.2-stable_win64.exe\Godot_v4.7.2-stable_win64_console.exe"
 & $godot --headless --path . --script res://tests/run_tests.gd
-# 期望输出：TESTS PASSED (699 checks)
+# 期望输出：TESTS PASSED (707 checks)
 ```
 
 覆盖：八向几何与弯曲翻转、弧长采样、网络增删、画线/撤销/重排/翻转/插站/停留移除手势、换乘寻路、
 自动配车、送达计分、换乘、溢出失败、周循环抽卡与资源/车厢/桥梁/换乘站生效、换乘站点选流程（含取消兜底）、
 河道检测与桥隧预算、站点避水、形状权重、程序化音频格式/长度/循环点、玩家档案与 JSON 持久化、
-模式键/每日种子稳定性、无尽模式不判负与近 30 秒客运量指标、管理模式 40 站/不生成新站/固定 1x、城市地图注册表/河道几何/每张图可生成站点、
+模式键/每日种子稳定性、无尽模式不判负与近 30 秒客运量指标、管理模式 40 站/不生成新站/固定 1x、地图编辑器河道描边/分享码往返、城市地图注册表/河道几何/每张图可生成站点、
 真实经纬度投影（宽高比/方向）、水域并集合并（重叠河面面积）、游戏内时间换算、
 列车/车厢跨线路拖动、环线几何/寻路/列车单向循环、环线首末手柄分开并可打开环线、
 库存列车/车厢/换乘中心的自动配车与拖放、新干线（最高速 2×）、换乘枢纽 0.3s 上下客、列车加速度上限/无人上下车直接驶过/停站时长=0.5s×人数且逐个上下/弯道限速四档（45/90/135/180）/近线未接入标记、
@@ -321,6 +339,8 @@ Start-Process -FilePath $godot -ArgumentList '--path',$PWD.Path,'--',
 |---|---|
 | 模式菜单：`←` / `→` 或点箭头 | 切换城市 |
 | 模式菜单：`1` `2` `3` `4` 或点卡片 | 选择模式并开始 |
+| 模式菜单：`E` 或点「地图编辑器」 | 进入地图编辑器（绘制/保存/分享河流） |
+| 地图编辑器：拖拽 | 绘制河流中心线 |
 | 拖动列车到其它线路/位置 | 先停靠最近站让乘客全部下车，再移动到目标位置（目标处显示浅色车） |
 | 按住车厢拖动 | 把车厢挂到另一列车 / 线路 |
 | 点击右下角 `1x` `2x` `3x` | 倍速 |
@@ -388,7 +408,7 @@ view/                     表现层（Node2D，只读模型）
 input/line_editor.gd      画线手势状态机（IDLE / DRAFT / REORDER / SEGMENT）+ Esc 设置信号
 ui/hud.gd                 资源/分数、周抽卡、换乘点选、模式菜单、暂停设置、结束遮罩（双语）
 tools/demo_setup.gd       截图用确定性布局
-tests/                    headless 测试（699 checks）
+tests/                    headless 测试（707 checks）
 export_presets.cfg        Windows Desktop 导出预设
 art/shaders/paper_grain.gdshader  极轻纸纹
 docs/设计方案.md           完整实现方案（机制拆解 / 架构 / 里程碑）

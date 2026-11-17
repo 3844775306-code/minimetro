@@ -15,6 +15,7 @@ const TEST_SCRIPTS := [
 	"res://tests/test_profile.gd",
 	"res://tests/test_modes.gd",
 	"res://tests/test_cities.gd",
+	"res://tests/test_map_editor.gd",
 	"res://tests/test_fleet.gd",
 	"res://tests/test_stock.gd",
 	"res://tests/test_loops.gd",

@@ -15,7 +15,21 @@ static var _cache: Array[CityMap] = []
 static func all() -> Array[CityMap]:
 	if _cache.is_empty():
 		_cache = _build_all()
+		# 玩家自定义地图排在官方地图之后；同一 id 以官方为准
+		for custom in CustomMapStore.load_cities():
+			var duplicate := false
+			for city in _cache:
+				if city.id == custom.id:
+					duplicate = true
+					break
+			if not duplicate:
+				_cache.append(custom)
 	return _cache
+
+
+## 编辑器保存后清缓存，让模式菜单立刻看到新地图。
+static func reload() -> void:
+	_cache.clear()
 
 
 static func get_city(city_id: String) -> CityMap:
@@ -143,6 +157,27 @@ static func _signed_area(poly: PackedVector2Array) -> float:
 		var q := poly[(i + 1) % poly.size()]
 		total += p.x * q.y - q.x * p.y
 	return total * 0.5
+
+
+## 编辑器用的河道多边形：只做轻微平滑 + 等宽描边，不叠加随机曲流，
+## 这样玩家画成什么样，河里就是什么样。
+static func editor_band(centerline: PackedVector2Array, width: float) -> PackedVector2Array:
+	if centerline.size() < 2 or width <= 0.0:
+		return PackedVector2Array()
+	var center := smooth_centerline(centerline, 3)
+	var offset: Array[PackedVector2Array] = Geometry2D.offset_polyline(
+		center, width * 0.5, Geometry2D.JOIN_ROUND
+	)
+	if offset.is_empty():
+		return _raw_band(centerline, width)
+	var best: PackedVector2Array = offset[0]
+	var best_area := absf(_signed_area(best))
+	for i in range(1, offset.size()):
+		var area := absf(_signed_area(offset[i]))
+		if area > best_area:
+			best = offset[i]
+			best_area = area
+	return best
 
 
 ## 把经纬度 bbox 按真实宽高比（含纬度余弦修正）拟合到 MAP_AREA。
