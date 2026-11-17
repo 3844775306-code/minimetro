@@ -116,7 +116,7 @@ func total_waiting() -> int:
 func total_carriages() -> int:
 	var total := 0
 	for line in lines:
-		total += line.carriages
+		total += line.carriages()
 	return total
 
 

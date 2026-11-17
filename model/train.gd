@@ -1,10 +1,12 @@
 class_name Train
 extends RefCounted
-## 列车：在所属线路的弧长域上往返。
+## 列车：在所属线路的弧长域上往返；车厢挂在单列车上（每节 +6 容量）。
 ## 只存 line_id 不存 line 引用 —— 否则 MetroLine.trains 与 Train.line 会成环。
 
 const SPEED := 170.0
 const DWELL_TIME := 0.45
+const BASE_CAPACITY := 6
+const CARRIAGE_CAPACITY := 6
 
 enum State { MOVING, DWELL }
 
@@ -23,11 +25,17 @@ var stop_index: int = 0
 var target_index: int = 0
 var target_dist: float = 0.0
 
-var capacity: int = 6
+## 挂在这列车上的车厢数（每节 +6 容量）。
+var carriages: int = 0
+var capacity: int = BASE_CAPACITY
 var riders: Array[Passenger] = []
 
 ## 用于线路被编辑后重映射（几何版本号）。
 var line_version: int = -1
+
+
+func refresh_capacity() -> void:
+	capacity = BASE_CAPACITY + CARRIAGE_CAPACITY * carriages
 
 
 func is_full() -> bool:

@@ -12,9 +12,8 @@ signal passengers_delivered(station: Station, count: int)
 signal overload_started(station: Station)
 
 const STEP := 1.0 / 60.0
-
-const TRAIN_BASE_CAPACITY := 6
-const CARRIAGE_CAPACITY := 6
+## 时间换算：1 现实秒 = 1 游戏小时。
+const HOURS_PER_DAY := 24.0
 
 var network: MetroNetwork
 var level: LevelData
@@ -22,6 +21,7 @@ var spawner: StationSpawner
 var routing := Routing.new()
 var rng: RandomNumberGenerator
 
+## 已过去的游戏小时（= 现实秒数）。
 var elapsed: float = 0.0
 var paused: bool = false
 var auto_spawn: bool = true
@@ -40,7 +40,8 @@ var interchange_pending: bool = false
 var _accum: float = 0.0
 var _station_spawn_timer: float = 0.0
 var _passenger_spawn_timer: float = 0.0
-var _week_timer: float = 0.0
+## 下一次周结算对应的游戏小时。
+var _week_end_hour: float = 0.0
 var _train_id: int = 0
 
 
@@ -51,7 +52,7 @@ func _init(p_network: MetroNetwork, p_level: LevelData, p_rng: RandomNumberGener
 	spawner = StationSpawner.new(level, rng)
 	_station_spawn_timer = level.station_spawn_interval
 	_passenger_spawn_timer = level.passenger_spawn_start
-	_week_timer = level.week_seconds
+	_week_end_hour = level.week_seconds
 
 
 ## 由主循环每帧调用；speed 为倍速（倍速 = 多跑 tick，而不是放大 delta）。
@@ -79,21 +80,35 @@ func tick(dt: float) -> void:
 	_update_stations(dt)
 	if is_over:
 		return
-	_update_week(dt)
+	_update_week()
+
+
+## 当前游戏时刻（0~24 小时）。
+func hour_of_day() -> float:
+	return fmod(level.start_hour + elapsed, HOURS_PER_DAY)
+
+
+## 白天 06:00~18:00；其余为夜晚（给 HUD 的时钟用）。
+func is_night() -> bool:
+	var hour := hour_of_day()
+	return hour < 6.0 or hour >= 18.0
+
+
+func day_index() -> int:
+	return int(floor(elapsed / HOURS_PER_DAY + 0.0001))
 
 
 # ---------------------------------------------------------------------------
 # 周循环 / 升级
 # ---------------------------------------------------------------------------
 
-func _update_week(dt: float) -> void:
-	_week_timer -= dt
-	if _week_timer > 0.0:
+func _update_week() -> void:
+	if elapsed < _week_end_hour:
 		return
+	_week_end_hour += level.week_seconds
 	var cards := _roll_cards()
 	if cards.is_empty():
 		# 所有资源都满了：跳过这一周
-		_week_timer = level.week_seconds
 		week_index += 1
 		return
 	week_pending = true
@@ -147,7 +162,6 @@ func _finish_week() -> void:
 	week_pending = false
 	pending_cards = []
 	week_index += 1
-	_week_timer = level.week_seconds
 	_accum = 0.0
 
 
@@ -189,24 +203,22 @@ func _apply_interchange() -> void:
 
 
 func _apply_carriage() -> void:
-	var line := _carriage_line()
-	if line == null:
+	var train := _carriage_train()
+	if train == null:
 		return
-	line.carriages += 1
-	for train in line.trains:
-		train.capacity = TRAIN_BASE_CAPACITY + CARRIAGE_CAPACITY * line.carriages
+	train.carriages += 1
+	train.refresh_capacity()
 
 
-## 可以加挂车厢的线路：至少 2 站、未到车厢上限、当前车厢最少。
-func _carriage_line() -> MetroLine:
-	var best: MetroLine = null
+## 可以加挂车厢的列车：未到单车车厢上限、当前车厢最少。
+func _carriage_train() -> Train:
+	var best: Train = null
 	for line in network.lines:
-		if line.stops.size() < 2:
-			continue
-		if line.carriages >= level.max_carriages:
-			continue
-		if best == null or line.carriages < best.carriages:
-			best = line
+		for train in line.trains:
+			if train.carriages >= level.max_carriages:
+				continue
+			if best == null or train.carriages < best.carriages:
+				best = train
 	return best
 
 
@@ -216,7 +228,7 @@ func _roll_cards() -> Array[Dictionary]:
 		pool.append(UpgradeCards.get_card("line"))
 	if network.train_count() < level.max_trains:
 		pool.append(UpgradeCards.get_card("train"))
-	if _carriage_line() != null:
+	if _carriage_train() != null:
 		pool.append(UpgradeCards.get_card("carriage"))
 	if level.start_bridges < level.max_bridges:
 		pool.append(UpgradeCards.get_card("bridge"))
@@ -355,7 +367,8 @@ func _spawn_train(line: MetroLine) -> void:
 	train.state = Train.State.DWELL
 	train.dwell_left = 0.6
 	train.line_version = line.version
-	train.capacity = TRAIN_BASE_CAPACITY + CARRIAGE_CAPACITY * line.carriages
+	train.carriages = 0
+	train.refresh_capacity()
 	line.trains.append(train)
 	_on_station(train, line, line.stops[stop_index])
 

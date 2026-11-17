@@ -48,8 +48,10 @@ extends Resource
 @export var start_bridges: int = 2
 
 @export_group("资源上限与周循环")
-## 每周时长（秒）。周结算时暂停并让玩家从两张升级卡里选一张。
-@export var week_seconds: float = 60.0
+## 每周时长（游戏小时）。1 现实秒 = 1 游戏小时，所以 168 小时 = 168 秒/周。
+@export var week_seconds: float = 168.0
+## 一局从几点开始（游戏小时，0~24）。
+@export var start_hour: float = 7.0
 @export var max_lines: int = 7
 @export var max_trains: int = 6
 @export var max_carriages: int = 3

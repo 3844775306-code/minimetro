@@ -10,10 +10,7 @@ var stops: Array[Station] = []
 ## 每条线段是否翻转弯曲方向（key = LineGeometry.segment_key(起点 id, 终点 id)）。
 var bend_flips := {}
 
-## 挂在这条线上的车厢数：每节车厢给该线所有列车 +6 容量。
-var carriages: int = 0
-
-## 这条线上的列车（由 Simulation 负责投放 / 回收）。
+## 这条线上的列车（由 Simulation 负责投放 / 回收，也可被玩家拖动换线）。
 var trains: Array[Train] = []
 
 var geometry := LineGeometry.new()
@@ -117,6 +114,21 @@ func is_middle(st: Station) -> bool:
 
 func length() -> int:
 	return stops.size()
+
+
+## 本线所有列车上的车厢总数（车厢现在挂在单列车上）。
+func carriages() -> int:
+	var total := 0
+	for train in trains:
+		total += train.carriages
+	return total
+
+
+func total_capacity() -> int:
+	var total := 0
+	for train in trains:
+		total += train.capacity
+	return total
 
 
 func handle_position(at_start: bool) -> Vector2:

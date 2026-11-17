@@ -93,7 +93,7 @@ static func _test_choose_card(h: TestHarness) -> void:
 	h.check(not sim.week_pending, "选择后恢复模拟")
 	h.eq(sim.week_index, 2, "周数递增")
 	h.eq(sim.pending_cards.size(), 0, "卡池清空")
-	h.check(sim._week_timer > 0.0, "进入下一周计时")
+	h.check(sim._week_end_hour > sim.elapsed, "下一次结算在未来")
 	h.check(ids.size() == 2, "选择前有两张卡")
 
 
@@ -130,23 +130,17 @@ static func _test_apply_carriage(h: TestHarness) -> void:
 	sim.tick(Simulation.STEP)
 	sim.apply_upgrade("carriage")
 	h.eq(net.total_carriages(), 1, "一节车厢")
-	var expected := Simulation.TRAIN_BASE_CAPACITY + Simulation.CARRIAGE_CAPACITY
+	var expected := Train.BASE_CAPACITY + Train.CARRIAGE_CAPACITY
 	var found := false
 	for line in net.lines:
-		if line.carriages <= 0:
-			continue
-		found = true
 		for train in line.trains:
-			h.eq(train.capacity, expected, "挂车厢的线路列车容量 +6")
-	h.check(found, "车厢挂到了某条线路上")
+			if train.carriages > 0:
+				found = true
+				h.eq(train.capacity, expected, "挂车厢的列车容量 +6")
+	h.check(found, "车厢挂到了某列车上（车厢现在按列车挂）")
 
 	sim.apply_upgrade("carriage")
-	h.eq(net.total_carriages(), 2, "第二节点到另一条线路")
-	var capacities: Array[int] = []
-	for line in net.lines:
-		if line.carriages > 0 and not line.trains.is_empty():
-			capacities.append(line.trains[0].capacity)
-	h.check(capacities.size() == 2, "两条线路各有一节车厢")
+	h.eq(net.total_carriages(), 2, "第二节点到另一列车")
 
 
 static func _test_apply_bridge(h: TestHarness) -> void:

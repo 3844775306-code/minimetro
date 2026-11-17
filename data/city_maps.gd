@@ -116,7 +116,7 @@ static func _build_all() -> Array[CityMap]:
 				Vector2(1380, 800), Vector2(1336, 1120),
 			]), 120.0),
 		],
-		"lines": 4,
+		"lines": 3,
 		"trains": 4,
 		"bridges": 3,
 	}))
@@ -171,7 +171,7 @@ static func _build_all() -> Array[CityMap]:
 				Vector2(820, 460), Vector2(1160, 470),
 			]), 70.0),
 		],
-		"lines": 4,
+		"lines": 3,
 		"trains": 4,
 		"bridges": 3,
 	}))

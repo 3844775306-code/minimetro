@@ -62,7 +62,6 @@ static func build_adaptive(network: MetroNetwork, level: LevelData, seed_value: 
 	level.start_trains = maxi(level.start_trains, 3)
 	level.start_station_count = network.stations.size()
 
-
 ## 从 start 出发，每次接最近且本线未用过的站。
 static func _nearest_chain(stations: Array, start: Station, length: int) -> Array[Station]:
 	var chain: Array[Station] = [start]

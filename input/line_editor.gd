@@ -19,7 +19,7 @@ signal toast_requested(message: String)
 ## 没有手势在进行时按 Esc：交给外层打开暂停/设置菜单。
 signal settings_requested
 
-enum State { IDLE, DRAFT, REORDER, SEGMENT }
+enum State { IDLE, DRAFT, REORDER, SEGMENT, TRAIN, CARRIAGE }
 
 const SNAP_RADIUS := 32.0
 const HANDLE_HIT_RADIUS := 24.0
@@ -57,6 +57,13 @@ var _swap_cooldown := 0.0
 var _segment_line: MetroLine = null
 var _segment_index := -1
 var _segment_dragging := false
+
+## 拖动列车 / 车厢换线
+var _fleet_line: MetroLine = null
+var _fleet_train: Train = null
+var _fleet_dragging := false
+var _fleet_target_line: MetroLine = null
+var _fleet_target_train: Train = null
 
 var _hover_dwell := 0.0
 var _dwell_station: Station = null
@@ -128,7 +135,22 @@ func begin_gesture(pos: Vector2) -> bool:
 	_segment_line = null
 	_segment_index = -1
 	_segment_dragging = false
+	_fleet_line = null
+	_fleet_train = null
+	_fleet_dragging = false
+	_fleet_target_line = null
+	_fleet_target_train = null
 	_refresh_hover(pos)
+
+	# 车厢 / 列车优先：拖动它们换线
+	var carriage_hit := _carriage_at(pos)
+	if not carriage_hit.is_empty():
+		_begin_fleet_drag(carriage_hit, true)
+		return true
+	var train_hit := _train_at(pos)
+	if not train_hit.is_empty():
+		_begin_fleet_drag(train_hit, false)
+		return true
 
 	var handle_line := _handle_at(pos)
 	if handle_line != null:
@@ -170,6 +192,14 @@ func move_gesture(pos: Vector2) -> void:
 		State.SEGMENT:
 			if cursor.distance_to(_press_pos) >= TAP_MAX_MOVE:
 				_segment_dragging = true
+		State.TRAIN:
+			if cursor.distance_to(_press_pos) >= 8.0:
+				_fleet_dragging = true
+			_fleet_target_line = _target_line(pos, _fleet_line)
+		State.CARRIAGE:
+			if cursor.distance_to(_press_pos) >= 8.0:
+				_fleet_dragging = true
+			_fleet_target_train = _target_train(pos, _fleet_train)
 	_request_redraw()
 
 
@@ -191,6 +221,12 @@ func end_gesture(pos: Vector2) -> void:
 				_apply_segment_tap()
 			elif hover_station != null:
 				_apply_segment_insert()
+		State.TRAIN:
+			if _fleet_dragging and _fleet_train != null and _fleet_target_line != null:
+				_move_train(_fleet_train, _fleet_line, _fleet_target_line)
+		State.CARRIAGE:
+			if _fleet_dragging and _fleet_train != null:
+				_move_carriage(_fleet_train, _fleet_target_train)
 	_reset_gesture()
 	_request_redraw()
 
@@ -421,6 +457,133 @@ func _segment_at_offset(line: MetroLine, offset: float) -> int:
 
 
 # ---------------------------------------------------------------------------
+# 拖动列车 / 车厢换线
+# ---------------------------------------------------------------------------
+
+func _begin_fleet_drag(hit: Dictionary, is_carriage: bool) -> void:
+	_fleet_line = hit["line"]
+	_fleet_train = hit["train"]
+	_fleet_dragging = false
+	_fleet_target_line = null
+	_fleet_target_train = null
+	state = State.CARRIAGE if is_carriage else State.TRAIN
+
+
+## 光标下的列车（靠近车身中心）。
+func _train_at(pos: Vector2) -> Dictionary:
+	for line in network.lines:
+		if not line.geometry.is_drawable():
+			continue
+		for train in line.trains:
+			var point := line.geometry.sample(train.dist).origin
+			if point.distance_to(pos) <= 15.0:
+				return {"line": line, "train": train}
+	return {}
+
+
+## 光标下的车厢（车厢画在列车尾部，与 TrainView 使用同一套偏移）。
+func _carriage_at(pos: Vector2) -> Dictionary:
+	for line in network.lines:
+		if not line.geometry.is_drawable():
+			continue
+		for train in line.trains:
+			for i in train.carriages:
+				if _carriage_position(line, train, i).distance_to(pos) <= 10.0:
+					return {"line": line, "train": train, "index": i}
+	return {}
+
+
+func _carriage_position(line: MetroLine, train: Train, index: int) -> Vector2:
+	var xf := line.geometry.sample(train.dist)
+	return xf.origin + xf.x.normalized() * -(30.0 + 13.0 * float(index))
+
+
+## 拖动目标是哪条线（排除源线路）：优先线路本体，其次站内线路。
+func _target_line(pos: Vector2, exclude: MetroLine) -> MetroLine:
+	var best: MetroLine = null
+	var best_dist := LINE_HIT_RADIUS + 5.0
+	for line in network.lines:
+		if line == exclude or line.stops.size() < 2 or not line.geometry.is_drawable():
+			continue
+		var offset := line.geometry.nearest_distance(pos)
+		var nearest := line.geometry.sample(offset).origin
+		var distance := nearest.distance_to(pos)
+		if distance < best_dist:
+			best_dist = distance
+			best = line
+	if best != null:
+		return best
+	var station := network.station_at(pos, 40.0)
+	if station != null:
+		for line in network.lines:
+			if line != exclude and line.stops.size() >= 2 and line.has_station(station):
+				return line
+	return null
+
+
+## 车厢的落点列车：优先光标附近的列车，其次目标线路上车厢最少的列车。
+func _target_train(pos: Vector2, exclude: Train) -> Train:
+	var best: Train = null
+	var best_dist := 46.0
+	for line in network.lines:
+		if not line.geometry.is_drawable():
+			continue
+		for train in line.trains:
+			if train == exclude:
+				continue
+			var distance := line.geometry.sample(train.dist).origin.distance_to(pos)
+			if distance < best_dist:
+				best_dist = distance
+				best = train
+	if best != null:
+		return best
+	var line := _target_line(pos, null)
+	if line == null:
+		return null
+	return _least_carriage_train(line)
+
+
+func _least_carriage_train(line: MetroLine) -> Train:
+	var best: Train = null
+	for train in line.trains:
+		if best == null or train.carriages < best.carriages:
+			best = train
+	return best
+
+
+## 把列车整列移到另一条线（乘客留在车上，路由会自动重算）。
+func _move_train(train: Train, from_line: MetroLine, to_line: MetroLine) -> void:
+	if train == null or from_line == null or to_line == null or from_line == to_line:
+		return
+	if to_line.stops.size() < 2 or not to_line.geometry.is_drawable():
+		return
+	from_line.trains.erase(train)
+	to_line.trains.append(train)
+	train.line_id = to_line.id
+	train.line_version = -1
+	train.dir = 1
+	train.state = Train.State.DWELL
+	train.dwell_left = 0.5
+	train.stop_index = 0
+	train.target_index = 0
+	train.dist = to_line.geometry.stop_offsets[0]
+	train.target_dist = train.dist
+	network.touch()
+
+
+## 把一节车厢从一列车挂到另一列车上（可跨线路）。
+func _move_carriage(source: Train, target: Train) -> void:
+	if source == null or target == null or source == target:
+		return
+	if source.carriages <= 0:
+		return
+	source.carriages -= 1
+	source.refresh_capacity()
+	target.carriages += 1
+	target.refresh_capacity()
+
+
+# ---------------------------------------------------------------------------
 # 重排
 # ---------------------------------------------------------------------------
 
@@ -520,7 +683,6 @@ func _snapshot() -> Dictionary:
 			"color": line.color,
 			"stops": ids,
 			"flips": line.bend_flips.duplicate(),
-			"carriages": line.carriages,
 		})
 	return {"lines": lines_data, "next_line_id": network.next_line_id}
 
@@ -549,7 +711,6 @@ func _apply_snapshot(snap: Dictionary) -> void:
 				line.stops.append(st)
 		var flips: Dictionary = entry.get("flips", {})
 		line.bend_flips = flips
-		line.carriages = int(entry.get("carriages", 0))
 		line.rebuild()
 		network.lines.append(line)
 	network.next_line_id = int(snap["next_line_id"])
@@ -568,6 +729,11 @@ func _reset_gesture() -> void:
 	_segment_line = null
 	_segment_index = -1
 	_segment_dragging = false
+	_fleet_line = null
+	_fleet_train = null
+	_fleet_dragging = false
+	_fleet_target_line = null
+	_fleet_target_train = null
 	_hover_dwell = 0.0
 	_dwell_station = null
 	_gesture_dirty = false
@@ -598,6 +764,10 @@ func _draw() -> void:
 			Color(0.16, 0.17, 0.19, 0.5), 3.0, true)
 	if state == State.SEGMENT:
 		_draw_segment_preview()
+	if state == State.TRAIN and _fleet_dragging and _fleet_train != null:
+		_draw_train_drag_preview()
+	if state == State.CARRIAGE and _fleet_dragging:
+		_draw_carriage_drag_preview()
 
 
 func _draw_draft_preview() -> void:
@@ -634,8 +804,31 @@ func _draw_segment_preview() -> void:
 			Color(0.24, 0.55, 0.35, 0.85), 3.0, true)
 
 
-func _draw_endpoint_handles() -> void:
-	for line in network.lines:
+func _draw_train_drag_preview() -> void:
+	var color: Color = _fleet_line.color if _fleet_line != null else Color("#555555")
+	var body := Vector2(46.0, 24.0)
+	draw_rect(Rect2(cursor - body * 0.5, body), Color(1.0, 1.0, 1.0, 0.55))
+	draw_rect(Rect2(cursor - body * 0.5, body), Color(color, 0.85), false, 2.0)
+	if _fleet_target_line != null and _fleet_target_line.geometry.is_drawable():
+		var offset := _fleet_target_line.geometry.nearest_distance(cursor)
+		var point := _fleet_target_line.geometry.sample(offset).origin
+		draw_arc(point, 26.0, 0.0, TAU, 40, Color(_fleet_target_line.color, 0.65), 3.0, true)
+
+
+func _draw_carriage_drag_preview() -> void:
+	var color: Color = _fleet_line.color if _fleet_line != null else Color("#555555")
+	var rect := Rect2(cursor - Vector2(7.0, 7.0), Vector2(14.0, 14.0))
+	draw_rect(rect, Color(1.0, 1.0, 1.0, 0.6))
+	draw_rect(rect, Color(color, 0.9), false, 2.0)
+	if _fleet_target_train != null:
+		for line in network.lines:
+			if line.geometry.is_drawable() and line.trains.has(_fleet_target_train):
+				var point := line.geometry.sample(_fleet_target_train.dist).origin
+				draw_arc(point, 24.0, 0.0, TAU, 40, Color(line.color, 0.7), 3.0, true)
+				break
+
+
+func _draw_endpoint_handles() -> void:	for line in network.lines:
 		if line.stops.size() < 2:
 			continue
 		for at_start in [true, false]:

@@ -66,6 +66,8 @@ func _process(delta: float) -> void:
 		hud.week = 1 if simulation == null else simulation.week_index
 		hud.mode_title = _mode_label()
 		hud.best_score = _best_for_mode()
+		hud.clock_hours = 7.0 if simulation == null else simulation.hour_of_day()
+		hud.is_night = false if simulation == null else simulation.is_night()
 		if hud.settings_menu:
 			_sync_settings_values()
 	if simulation != null and not Game.paused:
@@ -154,6 +156,20 @@ func _back_to_menu() -> void:
 # ---------------------------------------------------------------------------
 # 输入
 # ---------------------------------------------------------------------------
+
+## 倍速按钮走 _input（早于 _unhandled_input），这样线编辑不会把点击吞掉。
+func _input(event: InputEvent) -> void:
+	if hud == null:
+		return
+	if hud.mode_menu or hud.settings_menu or hud.week_modal or hud.station_pick or hud.game_over:
+		return
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		var speed := hud.speed_button_at(get_global_mouse_position())
+		if speed > 0:
+			Game.speed = float(speed)
+			Audio.play("click")
+			get_viewport().set_input_as_handled()
+
 
 func _unhandled_input(event: InputEvent) -> void:
 	if hud != null and hud.mode_menu:
@@ -497,6 +513,8 @@ func _build_ui() -> void:
 func _start_session() -> void:
 	if _pose == "week":
 		level.week_seconds = 7.0
+	if _pose == "night":
+		level.start_hour = 19.0
 	simulation = Simulation.new(network, level, Game.rng)
 	simulation.game_over.connect(_on_game_over)
 	simulation.week_completed.connect(_on_week_completed)
@@ -585,6 +603,22 @@ func _apply_pose() -> void:
 			hud.show_settings()
 			_sync_settings_values()
 			editor.set_process_unhandled_input(false)
+		"carriages":
+			simulation.apply_upgrade("carriage")
+			simulation.apply_upgrade("carriage")
+			_advance_sim(60)
+		"train-drag":
+			if network.lines.size() >= 2 and not network.lines[0].trains.is_empty():
+				var source_line: MetroLine = network.lines[0]
+				var train: Train = source_line.trains[0]
+				editor.begin_gesture(source_line.geometry.sample(train.dist).origin)
+				var target_line: MetroLine = network.lines[network.lines.size() - 1]
+				editor.move_gesture(
+					target_line.geometry.sample(target_line.geometry.total_length * 0.5).origin
+				)
+				editor.set_process_unhandled_input(false)
+		"night":
+			_advance_sim(60)
 		_:
 			pass
 

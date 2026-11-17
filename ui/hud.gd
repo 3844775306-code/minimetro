@@ -21,6 +21,10 @@ var score := 0
 var week := 1
 var mode_title := ""
 var best_score := 0
+## 游戏内时钟（1 现实秒 = 1 游戏小时）
+var clock_hours := 7.0
+var is_night := false
+var _speed_rects: Array[Rect2] = []
 
 var game_over := false
 var final_score := 0
@@ -188,29 +192,97 @@ func _draw() -> void:
 func _draw_game_hud(vp: Vector2) -> void:
 	_text_centered("MINI METRO", vp.x * 0.5, 72.0, 18, Color(MUTED, 0.8))
 	_text_centered(mode_title, vp.x * 0.5, 98.0, 15, Color(MUTED, 0.65))
-	_text_right(Loc.t("已送达 %d", "Delivered %d") % score, vp.x - 72.0, 116.0, 28, INK)
-	_text_right(Loc.t("最高 %d", "Best %d") % best_score, vp.x - 72.0, 146.0, 16,
+	_draw_clock(vp)
+	_text_right(Loc.t("已送达 %d", "Delivered %d") % score, vp.x - 72.0, 200.0, 26, INK)
+	_text_right(Loc.t("最高 %d", "Best %d") % best_score, vp.x - 72.0, 228.0, 16,
 		Color(MUTED, 0.85))
 	_text_right(Loc.t("车站 %d · 列车 %d", "Stations %d · Trains %d") % [
 		0 if network == null else network.stations.size(),
 		0 if network == null else network.train_count(),
-	], vp.x - 72.0, 172.0, 16, Color(MUTED, 0.7))
+	], vp.x - 72.0, 252.0, 16, Color(MUTED, 0.7))
 	_text_right(Loc.t("第 %d 周 · 车厢 %d", "Week %d · Carriages %d") % [
 		week, 0 if network == null else network.total_carriages(),
-	], vp.x - 72.0, 196.0, 16, Color(MUTED, 0.6))
+	], vp.x - 72.0, 276.0, 16, Color(MUTED, 0.6))
 	_draw_resource_slots(vp)
 	_text_centered(Loc.t(
-		"拖拽连线 · 拖端点延伸 · 拖中途站换序 · 拖线段插站 · 轻点线路翻折 · Ctrl+Z 撤销 · Esc 设置",
-		"Drag to draw · drag endpoint to extend · drag a stop to reorder · drag a segment to insert · tap a line to flip · Ctrl+Z undo · Esc settings"
+		"拖拽连线 · 拖端点延伸 · 拖中途站换序 · 拖线段插站 · 轻点线路翻折 · 拖动列车/车厢换线 · Ctrl+Z 撤销 · Esc 设置",
+		"Drag to draw · drag endpoint to extend · drag a stop to reorder · drag a segment to insert · tap a line to flip · drag trains/carriages between lines · Ctrl+Z undo · Esc settings"
 	), vp.x * 0.5, vp.y - 46.0, 18, Color(MUTED, 0.9))
 	if paused and not game_over and not settings_menu and not week_modal and not station_pick \
 			and not mode_menu:
 		_text_centered(Loc.t("已暂停", "Paused"), vp.x * 0.5, vp.y * 0.5, 44, Color(INK, 0.75))
-	_text_right(Loc.t("%s 倍速", "%sx speed") % _speed_label(), vp.x - 72.0, vp.y - 46.0, 16,
-		Color(MUTED, 0.7))
+	_draw_speed_buttons(vp)
 	if toast_left > 0.0:
 		var alpha: float = clampf(toast_left / 0.5, 0.0, 1.0)
 		_text_centered(toast_text, vp.x * 0.5, vp.y - 120.0, 22, Color(INK, alpha))
+
+
+## 24 小时制时钟：0 点在上、12 点在下；夜晚半圈涂黑，指针颜色随昼夜反转。
+func _draw_clock(vp: Vector2) -> void:
+	var center := Vector2(vp.x - 94.0, 100.0)
+	var radius := 42.0
+	draw_circle(center, radius, Color("#FBF8F1"))
+	# 夜半球：18:00 → 06:00（经过 0 点，即上半圈）
+	var night := PackedVector2Array()
+	night.append(center)
+	var steps := 30
+	var start_angle := TAU * 18.0 / 24.0
+	for i in range(steps + 1):
+		var a := start_angle + TAU * 0.5 * float(i) / float(steps)
+		night.append(center + Vector2(sin(a), -cos(a)) * radius)
+	draw_colored_polygon(night, Color("#2B2B2B"))
+	# 24 个刻度：夜侧用浅色、昼侧用深色
+	for i in 24:
+		var a := TAU * float(i) / 24.0
+		var dir := Vector2(sin(a), -cos(a))
+		var night_tick := i >= 18 or i < 6
+		var tick_color := Color(1.0, 1.0, 1.0, 0.55) if night_tick else Color(0.16, 0.17, 0.19, 0.5)
+		var inner := radius - (11.0 if i % 6 == 0 else 6.0)
+		draw_line(center + dir * inner, center + dir * (radius - 2.0), tick_color, 1.6, true)
+	# 时针
+	var hours := fmod(clock_hours, 24.0)
+	var hand_angle := TAU * hours / 24.0
+	var hand_dir := Vector2(sin(hand_angle), -cos(hand_angle))
+	var on_night := is_night
+	var hand_color := Color(1.0, 1.0, 1.0, 0.95) if on_night else Color(0.12, 0.13, 0.15, 0.95)
+	draw_line(center, center + hand_dir * (radius - 9.0), hand_color, 3.5, true)
+	draw_circle(center, 4.0, hand_color, true, -1.0, true)
+	draw_arc(center, radius, 0.0, TAU, 48, Color(0.16, 0.17, 0.19, 0.7), 2.5, true)
+	# 数字时间
+	var minutes := int((hours - floor(hours)) * 60.0)
+	_text_centered("%02d:%02d" % [int(hours), mini(minutes, 59)], center.x,
+		center.y + radius + 22.0, 15, Color(MUTED, 0.85))
+
+
+func _draw_speed_buttons(vp: Vector2) -> void:
+	var labels := ["1x", "2x", "3x"]
+	var size := Vector2(54.0, 34.0)
+	var gap := 8.0
+	var total := size.x * 3.0 + gap * 2.0
+	var start := Vector2(vp.x - 72.0 - total, vp.y - 118.0)
+	_speed_rects = []
+	var mouse := get_global_mouse_position()
+	for i in 3:
+		var rect := Rect2(start + Vector2(float(i) * (size.x + gap), 0.0), size)
+		_speed_rects.append(rect)
+		var active := is_equal_approx(speed, float(i + 1))
+		var hovered := rect.has_point(mouse)
+		var poly := DrawUtil.rounded_rect(rect, 8.0, 6)
+		if active:
+			draw_colored_polygon(poly, Color(INK, 0.85))
+		else:
+			draw_colored_polygon(poly, Color(1.0, 1.0, 1.0, 0.55 if hovered else 0.35))
+		draw_polyline(DrawUtil.closed(poly), Color(INK, 0.4), 1.5, true)
+		_text_centered(String(labels[i]), rect.position.x + rect.size.x * 0.5,
+			rect.position.y + 23.0, 17, Color(1.0, 1.0, 1.0, 0.95) if active else INK)
+
+
+## 点击倍速按钮：返回 1/2/3，0 = 没点中。
+func speed_button_at(pos: Vector2) -> int:
+	for i in _speed_rects.size():
+		if _speed_rects[i].has_point(pos):
+			return i + 1
+	return 0
 
 
 func _draw_resource_slots(vp: Vector2) -> void:

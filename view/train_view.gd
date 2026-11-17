@@ -1,6 +1,6 @@
 class_name TrainView
 extends Node2D
-## 列车表现：纸色描边的圆角胶囊车身 + 车内乘客小图标。
+## 列车表现：纸色描边的圆角胶囊车身 + 车内乘客图标 + 尾部车厢。
 ## 纸色描边让列车从同色线路里"抠"出来，始终可辨认。
 
 const BODY := Vector2(46.0, 22.0)
@@ -9,11 +9,16 @@ const PAPER := Color("#F3EFE6")
 const INK := Color("#2B2B2B")
 const MAX_RIDER_ICONS := 6
 const SEAT_RADIUS := 3.6
+## 车厢从车尾开始排：中心偏移 -(30 + 13*i)
+const CARRIAGE_FIRST_OFFSET := 30.0
+const CARRIAGE_SPACING := 13.0
+const CARRIAGE_SIZE := Vector2(12.0, 14.0)
 
 var _line_color := Color.WHITE
 var _drawn_color := Color.TRANSPARENT
 var _riders: Array[Passenger] = []
 var _rider_signature := -1
+var _carriages := 0
 
 
 func update_from(train: Train, line: MetroLine) -> void:
@@ -21,6 +26,7 @@ func update_from(train: Train, line: MetroLine) -> void:
 	position = xf.origin
 	rotation = xf.x.angle()
 	_riders = train.riders
+	_carriages = train.carriages
 	var signature := _make_rider_signature(train)
 	if line.color != _drawn_color or signature != _rider_signature:
 		_drawn_color = line.color
@@ -30,7 +36,7 @@ func update_from(train: Train, line: MetroLine) -> void:
 
 func _make_rider_signature(train: Train) -> int:
 	var count := mini(train.riders.size(), MAX_RIDER_ICONS)
-	var signature := count
+	var signature := count + train.carriages * 100
 	for i in count:
 		signature = signature * 7 + train.riders[i].target_shape
 	return signature
@@ -42,6 +48,18 @@ func _draw() -> void:
 	# 车顶浅色带：提示车头朝向
 	draw_line(Vector2(-11.0, -4.5), Vector2(9.0, -4.5), Color(1.0, 1.0, 1.0, 0.30), 3.0, true)
 	_draw_riders()
+	_draw_carriages()
+
+
+## 车厢：挂在车尾的小方块，跨越线路拖动时也用它做命中区域。
+func _draw_carriages() -> void:
+	for i in _carriages:
+		var center := Vector2(-(CARRIAGE_FIRST_OFFSET + CARRIAGE_SPACING * float(i)), 0.0)
+		var rect := Rect2(center - CARRIAGE_SIZE * 0.5, CARRIAGE_SIZE)
+		draw_rect(Rect2(rect.position - Vector2(2.0, 2.0), rect.size + Vector2(4.0, 4.0)), PAPER)
+		draw_rect(rect, _drawn_color)
+		draw_rect(Rect2(rect.position + Vector2(2.0, 3.0), Vector2(rect.size.x - 4.0, 3.0)),
+			Color(1.0, 1.0, 1.0, 0.28))
 
 
 ## 车内乘客：最多画 6 个（两排三列），用小图标表示目的地形状。
