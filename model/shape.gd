@@ -17,8 +17,8 @@ enum Kind {
 	CLOVER,
 }
 
-## 站点图标的基准半径（@1920x1080 设计分辨率）。
-const STATION_RADIUS := 26.0
+## 站点图标的基准半径（@2400x1200 设计分辨率）；比初版 26px 缩小 40%。
+const STATION_RADIUS := 15.6
 
 ## 等待乘客图标的半径（M2 使用）。
 const PASSENGER_RADIUS := 7.0

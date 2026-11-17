@@ -74,7 +74,7 @@ static func _test_transfer(h: TestHarness) -> void:
 	var sim := _make_sim(net, level)
 	a.waiting.append(Passenger.new(Shape.Kind.TRIANGLE))
 
-	_run(sim, 300)
+	_run(sim, 480)
 	h.eq(net.train_count(), 2, "两条线路各配一辆车")
 	h.check(b.waiting.size() >= 1, "乘客在 B 站下车等待换乘")
 

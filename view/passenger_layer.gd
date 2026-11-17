@@ -43,11 +43,11 @@ func _draw() -> void:
 			_draw_icon(st.pos + _slot_offset(i), passenger.target_shape)
 
 
-## 固定槽位：第一圈 8 个、半径 46，往外每圈 +20，避免图标互相重叠。
+## 固定槽位：第一圈 8 个、半径 32（跟随缩小后的车站收紧），往外每圈 +18。
 func _slot_offset(index: int) -> Vector2:
 	var ring := index / RING_COUNT
 	var slot := index % RING_COUNT
-	var radius := 46.0 + float(ring) * 20.0
+	var radius := 32.0 + float(ring) * 18.0
 	var angle := -PI * 0.5 + TAU * float(slot) / float(RING_COUNT)
 	return Vector2(cos(angle), sin(angle)) * radius
 

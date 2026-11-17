@@ -6,9 +6,10 @@ extends RefCounted
 ## 运动学：带加速度/减速度的速度模型。进站前按剩余距离刹车，出站逐渐加速；
 ## 弯道按转角比例限速；无人上下车时保持速度直接驶过车站。
 
-const MAX_SPEED := 210.0
-const ACCEL := 150.0
-const DECEL := 240.0
+## 最高速度 / 加速度 / 减速度都比初版下调 40%，让行驶更慢、更易看清。
+const MAX_SPEED := 126.0
+const ACCEL := 90.0
+const DECEL := 144.0
 ## 停站时间与上下车人数成正比：每人 0.5 秒。
 const DWELL_PER_PASSENGER := 0.5
 const BASE_CAPACITY := 6

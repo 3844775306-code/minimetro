@@ -70,7 +70,6 @@ func _process(delta: float) -> void:
 		hud.speed = Game.speed
 		hud.score = 0 if simulation == null else simulation.score
 		hud.week = 1 if simulation == null else simulation.week_index
-		hud.mode_title = _mode_label()
 		hud.best_score = _best_for_mode()
 		hud.clock_hours = 7.0 if simulation == null else simulation.hour_of_day()
 		hud.is_night = false if simulation == null else simulation.is_night()
@@ -132,15 +131,6 @@ func _resolve_run() -> void:
 		_menu_mode = true
 	network = Game.network
 	level = Game.level
-
-
-func _mode_label() -> String:
-	var label := GameMode.title(Game.mode)
-	if Game.city != null:
-		label += " · " + Game.city.display_name()
-	if Game.is_daily():
-		label += " · " + Game.daily_date
-	return label
 
 
 func _best_for_mode() -> int:

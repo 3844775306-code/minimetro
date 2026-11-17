@@ -19,7 +19,6 @@ var paused := false
 var speed := 1.0
 var score := 0
 var week := 1
-var mode_title := ""
 var best_score := 0
 ## 游戏内时钟（1 现实秒 = 1 游戏小时）
 var clock_hours := 7.0
@@ -27,6 +26,8 @@ var is_night := false
 var weekday := ""
 ## 城镇发展阶段（村庄/小镇/城市/大都市 · 车站数）
 var stage_label := ""
+## 操作提示显示剩余时间；超时后隐藏，避免长期占着底部
+var hint_left := 18.0
 ## 鼠标悬停车站时显示的地标名称
 var hover_landmark := ""
 var hover_screen := Vector2.ZERO
@@ -169,6 +170,8 @@ func settings_row_count() -> int:
 func _process(delta: float) -> void:
 	if toast_left > 0.0:
 		toast_left = maxf(0.0, toast_left - delta)
+	if not mode_menu and not paused:
+		hint_left = maxf(0.0, hint_left - delta)
 	queue_redraw()
 
 
@@ -193,28 +196,23 @@ func _draw() -> void:
 # ---------------------------------------------------------------------------
 
 func _draw_game_hud(vp: Vector2) -> void:
+	# 减负版 HUD：左上只留线色/库存，右上只留时钟 + 分数 + 阶段，标题不再常驻
 	_draw_panel(Rect2(34.0, 66.0, 486.0, 104.0))
-	_draw_panel(Rect2(vp.x - 336.0, 36.0, 300.0, 300.0))
-	_text_centered("MINI METRO", vp.x * 0.5, 72.0, 18, Color(MUTED, 0.8))
-	_text_centered(mode_title, vp.x * 0.5, 98.0, 15, Color(MUTED, 0.65))
-	if stage_label != "":
-		_text_centered(stage_label, vp.x * 0.5, 122.0, 14, Color(MUTED, 0.55))
+	_draw_panel(Rect2(vp.x - 300.0, 36.0, 260.0, 214.0))
 	_draw_clock(vp)
-	_text_right(Loc.t("已送达 %d", "Delivered %d") % score, vp.x - 64.0, 212.0, 26, INK)
-	_text_right(Loc.t("最高 %d", "Best %d") % best_score, vp.x - 64.0, 240.0, 16,
-		Color(MUTED, 0.85))
-	_text_right(Loc.t("车站 %d · 列车 %d", "Stations %d · Trains %d") % [
-		0 if network == null else network.stations.size(),
-		0 if network == null else network.train_count(),
-	], vp.x - 64.0, 264.0, 16, Color(MUTED, 0.7))
-	_text_right(Loc.t("第 %d 周 · 车厢 %d", "Week %d · Carriages %d") % [
-		week, 0 if network == null else network.total_carriages(),
-	], vp.x - 64.0, 288.0, 16, Color(MUTED, 0.6))
+	_text_right(Loc.t("已送达 %d", "Delivered %d") % score, vp.x - 64.0, 198.0, 26, INK)
+	if stage_label != "":
+		_text_right(stage_label, vp.x - 64.0, 222.0, 14, Color(MUTED, 0.65))
 	_draw_resource_slots(vp)
-	_text_centered(Loc.t(
-		"拖拽连线 · 拖端点延伸 · 拖线段插站 · 轻点线路翻折 · 拖左上角图标放列车/车厢/换乘中心 · 拖动列车/车厢换线 · Ctrl+Z 撤销 · Esc 设置",
-		"Drag to draw · drag endpoint to extend · drag a segment to insert · tap a line to flip · drag top-left icons onto the map for trains/carriages/interchanges · drag trains/carriages between lines · Ctrl+Z undo · Esc settings"
-	), vp.x * 0.5, vp.y - 46.0, 18, Color(MUTED, 0.9))
+	var show_hint := hint_left > 0.0 or (network != null and network.lines.is_empty())
+	if show_hint:
+		var hint_alpha: float = 1.0
+		if hint_left > 0.0:
+			hint_alpha = clampf(hint_left / 2.0, 0.0, 1.0)
+		_text_centered(Loc.t(
+			"拖拽画线 · 拖端点延伸 · 拖线段插站 · 轻点翻折 · 拖左上角图标放车 · Ctrl+Z 撤销 · Esc 设置",
+			"Drag to draw · drag endpoint to extend · drag a segment to insert · tap to flip · drag top-left icons for vehicles · Ctrl+Z undo · Esc settings"
+		), vp.x * 0.5, vp.y - 46.0, 16, Color(MUTED, 0.9 * hint_alpha))
 	if paused and not game_over and not settings_menu and not week_modal \
 			and not mode_menu:
 		_text_centered(Loc.t("已暂停", "Paused"), vp.x * 0.5, vp.y * 0.5, 44, Color(INK, 0.75))
@@ -244,8 +242,8 @@ func _draw_panel(rect: Rect2) -> void:
 
 ## 12 小时制时钟：12 点在上、6 点在下；到了夜晚整块表盘变黑、指针变白。
 func _draw_clock(vp: Vector2) -> void:
-	var center := Vector2(vp.x - 100.0, 104.0)
-	var radius := 42.0
+	var center := Vector2(vp.x - 112.0, 96.0)
+	var radius := 36.0
 	var strength := Simulation.night_strength(clock_hours)
 	var face := Color("#FBF8F1").lerp(Color("#1C1C1E"), strength)
 	draw_circle(center, radius, face)
@@ -308,17 +306,14 @@ func speed_button_at(pos: Vector2) -> int:
 
 func _draw_resource_slots(vp: Vector2) -> void:
 	var used := 0 if network == null else network.lines.size()
-	_text(Loc.t("线路", "Lines"), Vector2(64.0, 107.0), 18, MUTED)
 	var y := 100.0
 	for i in level.start_lines:
-		var x := 122.0 + float(i) * (CHIP_W + CHIP_GAP)
+		var x := 64.0 + float(i) * (CHIP_W + CHIP_GAP)
 		if i < used:
 			_draw_capsule(Vector2(x, y), level.line_colors[i % level.line_colors.size()], CHIP_W, CHIP_H)
 		else:
 			_draw_capsule_outline(Vector2(x, y),
 				Color(level.line_colors[i % level.line_colors.size()], 0.32), CHIP_W, CHIP_H)
-	var count_x := 122.0 + float(level.start_lines) * (CHIP_W + CHIP_GAP) + 6.0
-	_text("%d/%d" % [used, level.start_lines], Vector2(count_x, 107.0), 16, Color(MUTED, 0.85))
 
 	# 第二行：可拖拽的库存图标（列车 / 车厢 / 换乘中心）+ 桥梁余量
 	var row_y := 146.0

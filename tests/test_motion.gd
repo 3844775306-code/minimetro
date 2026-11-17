@@ -3,11 +3,21 @@ extends RefCounted
 ## 加速度/刹车不突变、无人上下车直接驶过、停站时间 = 0.5s × 上下车人数、弯道按角度减速。
 
 static func run(h: TestHarness) -> void:
+	_test_scale(h)
 	_test_acceleration(h)
 	_test_pass_through(h)
 	_test_dwell_proportional(h)
 	_test_curve_limit(h)
 	_test_near_line_marker(h)
+
+
+## 车站尺寸与列车速度整体下调 40%（本轮手感调整）。
+static func _test_scale(h: TestHarness) -> void:
+	h.section("motion/scale")
+	h.near(Shape.STATION_RADIUS, 15.6, 0.01, "车站半径缩小 40%")
+	h.near(Train.MAX_SPEED, 126.0, 0.01, "最高速度降低 40%")
+	h.near(Train.ACCEL, 90.0, 0.01, "加速度同比降低 40%")
+	h.near(Train.DECEL, 144.0, 0.01, "减速度同比降低 40%")
 
 
 static func _make_level(trains: int = 1, interchanges: int = 0) -> LevelData:
