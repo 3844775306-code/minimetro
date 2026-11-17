@@ -20,6 +20,7 @@ const TEST_SCRIPTS := [
 	"res://tests/test_loops.gd",
 	"res://tests/test_motion.gd",
 	"res://tests/test_legacy.gd",
+	"res://tests/test_story.gd",
 ]
 
 

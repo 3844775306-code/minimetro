@@ -55,7 +55,7 @@ func _init(p_network: MetroNetwork, p_level: LevelData, p_rng: RandomNumberGener
 	level = p_level
 	rng = p_rng
 	spawner = StationSpawner.new(level, rng)
-	_station_spawn_timer = level.station_spawn_interval
+	_station_spawn_timer = station_interval()
 	_passenger_spawn_timer = level.passenger_spawn_start
 	_week_end_hour = level.week_seconds
 	inventory_trains = level.start_trains
@@ -133,6 +133,157 @@ func weekday_name() -> String:
 	var en := ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 	var index := day_index() % 7
 	return Loc.t(zh[index], en[index])
+
+
+func is_weekend() -> bool:
+	return (day_index() % 7) >= 5
+
+
+# ---------------------------------------------------------------------------
+# 城镇发展：车站类型解锁、数量增长、相机拉远
+# ---------------------------------------------------------------------------
+
+## 0=村庄 1=小镇 2=城市 3=大都市
+func development_stage() -> int:
+	var count := network.stations.size()
+	if count < 8:
+		return 0
+	if count < 14:
+		return 1
+	if count < 20:
+		return 2
+	return 3
+
+
+func stage_name() -> String:
+	match development_stage():
+		0:
+			return Loc.t("村庄", "Village")
+		1:
+			return Loc.t("小镇", "Town")
+		2:
+			return Loc.t("城市", "City")
+		_:
+			return Loc.t("大都市", "Metropolis")
+
+
+## 当前阶段允许出现的车站形状与权重：
+## 村庄只有居民区/车站，之后逐步解锁商务区、医院、景点、度假区。
+func station_shape_weights() -> Dictionary:
+	var stage := development_stage()
+	var weights := {
+		Shape.Kind.CIRCLE: 6.0,
+		Shape.Kind.SQUARE: 4.0,
+	}
+	if stage >= 1:
+		weights[Shape.Kind.TRIANGLE] = 3.0
+	if stage >= 2:
+		weights[Shape.Kind.PLUS] = 1.4
+		weights[Shape.Kind.STAR] = 1.0
+	if stage >= 3:
+		weights[Shape.Kind.DIAMOND] = 1.4
+	return weights
+
+
+## 城镇越大，新车站出现得越快。
+func station_interval() -> float:
+	var factors := [1.5, 1.2, 1.0, 0.8]
+	return level.station_spawn_interval * float(factors[development_stage()])
+
+
+## 相机拉远进度：0=开局，1=最远。
+func camera_progress() -> float:
+	return clampf((float(network.stations.size()) - 5.0) / 25.0, 0.0, 1.0)
+
+
+## 相机目标缩放：从 1.0 逐渐拉远到 0.78（最远值）。
+func camera_zoom_target() -> float:
+	return lerpf(1.0, 0.78, camera_progress())
+
+
+## 高斯型"时段热度"（小时, 中心, 宽度）。
+func _bell(hour: float, center: float, width: float) -> float:
+	var delta := (hour - center) / maxf(width, 0.1)
+	return exp(-delta * delta)
+
+
+## 某个地标类型的"出门/来客"活跃度（0.05~2.5），早晚高峰明显。
+func origin_activity(kind: int) -> float:
+	var h := hour_of_day()
+	var weekend := 1.0 if is_weekend() else 0.0
+	var night := 1.0 if (h < 5.5 or h >= 22.0) else 0.0
+	var morning := _bell(h, 7.5, 1.7)
+	var evening := _bell(h, 18.0, 1.9)
+	var midday := _bell(h, 13.0, 3.5)
+	var value := 0.0
+	match kind:
+		Shape.Kind.CIRCLE:
+			value = 0.55 + 1.6 * morning + 0.7 * evening - 0.25 * night
+		Shape.Kind.SQUARE:
+			value = 0.9 + 0.5 * morning + 0.5 * evening + 0.25 * midday - 0.2 * night
+		Shape.Kind.TRIANGLE:
+			value = 0.45 + 0.6 * midday + 1.5 * evening - 0.25 * night
+		Shape.Kind.PLUS:
+			value = 0.35 + 0.6 * midday + 0.3 * evening - 0.2 * night
+		Shape.Kind.DIAMOND:
+			value = 0.4 + 0.8 * midday + 1.2 * weekend - 0.2 * night
+		Shape.Kind.STAR:
+			value = 0.5 + 0.9 * midday + 1.0 * weekend - 0.2 * night
+	return maxf(value, 0.05)
+
+
+## 某地标类型的乘客"想去哪"（结合早晚高峰与周末）：
+## 居民区早高峰去商务区/车站，商务区晚高峰回居民区，周末更多去度假区/景点。
+func destination_weights(origin_shape: int) -> Dictionary:
+	var h := hour_of_day()
+	var weekend := 1.0 if is_weekend() else 0.0
+	var morning := _bell(h, 7.5, 1.8)
+	var evening := _bell(h, 18.0, 1.8)
+	var midday := _bell(h, 13.0, 3.5)
+	var w := {}
+	match origin_shape:
+		Shape.Kind.CIRCLE:
+			w[Shape.Kind.TRIANGLE] = 0.6 + 2.6 * morning + 0.4 * midday
+			w[Shape.Kind.SQUARE] = 2.4
+			w[Shape.Kind.PLUS] = 1.0
+			w[Shape.Kind.STAR] = 1.0 + 0.6 * weekend
+			w[Shape.Kind.DIAMOND] = 0.5 + 1.0 * weekend
+			w[Shape.Kind.CIRCLE] = 0.35
+		Shape.Kind.TRIANGLE:
+			w[Shape.Kind.CIRCLE] = 0.6 + 2.6 * evening + 0.4 * midday
+			w[Shape.Kind.SQUARE] = 2.2
+			w[Shape.Kind.PLUS] = 0.9
+			w[Shape.Kind.STAR] = 1.0
+			w[Shape.Kind.DIAMOND] = 0.8 + 0.8 * weekend
+			w[Shape.Kind.TRIANGLE] = 0.3
+		Shape.Kind.SQUARE:
+			w[Shape.Kind.CIRCLE] = 2.4
+			w[Shape.Kind.TRIANGLE] = 2.0
+			w[Shape.Kind.PLUS] = 1.0
+			w[Shape.Kind.STAR] = 1.0
+			w[Shape.Kind.DIAMOND] = 0.9 + 1.0 * weekend
+		Shape.Kind.PLUS:
+			w[Shape.Kind.CIRCLE] = 2.6
+			w[Shape.Kind.SQUARE] = 1.4
+			w[Shape.Kind.PLUS] = 0.3
+			w[Shape.Kind.STAR] = 0.5
+		Shape.Kind.DIAMOND:
+			w[Shape.Kind.SQUARE] = 2.5
+			w[Shape.Kind.STAR] = 1.5 + 0.8 * weekend
+			w[Shape.Kind.CIRCLE] = 1.4
+			w[Shape.Kind.TRIANGLE] = 0.7
+		Shape.Kind.STAR:
+			w[Shape.Kind.SQUARE] = 2.4
+			w[Shape.Kind.DIAMOND] = 1.3 + 0.8 * weekend
+			w[Shape.Kind.CIRCLE] = 1.6
+			w[Shape.Kind.TRIANGLE] = 1.0
+			w[Shape.Kind.PLUS] = 0.5
+	if h < 5.5 or h >= 22.0:
+		if w.has(Shape.Kind.DIAMOND):
+			w[Shape.Kind.DIAMOND] = float(w[Shape.Kind.DIAMOND]) * 0.4
+		if w.has(Shape.Kind.STAR):
+			w[Shape.Kind.STAR] = float(w[Shape.Kind.STAR]) * 0.5
+	return w
 
 
 func total_trains_owned() -> int:
@@ -380,8 +531,8 @@ func _weighted_pick(pool: Array[Dictionary]) -> int:
 func _update_spawns(dt: float) -> void:
 	_station_spawn_timer -= dt
 	if _station_spawn_timer <= 0.0:
-		_station_spawn_timer = level.station_spawn_interval
-		spawner.try_spawn(network)
+		_station_spawn_timer = station_interval()
+		spawner.try_spawn(network, station_shape_weights())
 
 	if network.stations.is_empty():
 		return
@@ -397,42 +548,60 @@ func _passenger_interval() -> float:
 	return lerpf(level.passenger_spawn_start, level.passenger_spawn_end, t)
 
 
-## 加权选站 + 按形状占比选目的地。
+## 按"地标活跃度"选起点，再按该地标类型在当前时段的出行规律选目的地：
+## 居民区早高峰去商务区/车站，商务区晚高峰回居民区，周末更多去度假区/景点。
 func _spawn_passenger() -> void:
 	var stations := network.stations
-	var total := 0
-	for st in stations:
-		total += 1 + st.line_ids.size() * 2
-	if total <= 0:
+	if stations.size() < 2:
 		return
-	var r := rng.randi_range(0, total - 1)
-	var chosen: Station = stations[0]
+	var station_weights: Array[float] = []
+	var total := 0.0
 	for st in stations:
-		r -= 1 + st.line_ids.size() * 2
-		if r < 0:
-			chosen = st
+		var weight := (1.0 + st.line_ids.size() * 2.0) * origin_activity(st.shape)
+		station_weights.append(weight)
+		total += weight
+	if total <= 0.0:
+		return
+	var r := rng.randf() * total
+	var chosen: Station = stations[0]
+	for i in stations.size():
+		r -= station_weights[i]
+		if r <= 0.0:
+			chosen = stations[i]
 			break
 
 	var counts := {}
 	for st in stations:
 		counts[st.shape] = int(counts.get(st.shape, 0)) + 1
+	var destination := destination_weights(chosen.shape)
 	var shapes: Array[int] = []
-	var weights: Array[int] = []
-	var weight_total := 0
-	var keys: Array = counts.keys()
-	for i in keys.size():
-		var shape: int = int(keys[i])
-		if shape == chosen.shape:
+	var shape_weights: Array[float] = []
+	var weight_total := 0.0
+	for raw_shape in destination.keys():
+		var shape := int(raw_shape)
+		if shape == chosen.shape or not counts.has(shape):
+			continue
+		var weight := maxf(0.0, float(destination[raw_shape]))
+		if weight <= 0.0:
 			continue
 		shapes.append(shape)
-		weights.append(int(counts[shape]))
-		weight_total += int(counts[shape])
-	if weight_total <= 0:
+		shape_weights.append(weight)
+		weight_total += weight
+	if weight_total <= 0.0:
+		# 兜底：目的地类型尚未在城镇出现时，按现有形状数量加权
+		for raw_shape in counts.keys():
+			var shape := int(raw_shape)
+			if shape == chosen.shape:
+				continue
+			shapes.append(shape)
+			shape_weights.append(float(counts[shape]))
+			weight_total += float(counts[shape])
+	if weight_total <= 0.0:
 		return
-	var pick := rng.randi_range(0, weight_total - 1)
+	var pick := rng.randf() * weight_total
 	for i in shapes.size():
-		pick -= weights[i]
-		if pick < 0:
+		pick -= shape_weights[i]
+		if pick <= 0.0:
 			chosen.waiting.append(Passenger.new(shapes[i], elapsed))
 			return
 

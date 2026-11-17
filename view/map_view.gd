@@ -26,6 +26,9 @@ func _draw() -> void:
 	if level == null or _land.is_empty():
 		return
 	draw_rect(Rect2(Vector2.ZERO, level.world_size), WATER)
+	# 相机拉远时会看到世界外圈，继续铺水色，避免露出空背景
+	draw_rect(Rect2(Vector2(-1400.0, -1400.0),
+		level.world_size + Vector2(2800.0, 2800.0)), WATER)
 	draw_colored_polygon(DrawUtil.offset(_land, Vector2(9, 11)), PAPER_SHADOW)
 	draw_colored_polygon(_land, PAPER)
 	draw_polyline(DrawUtil.closed(_land), PAPER_EDGE, 3.0, true)

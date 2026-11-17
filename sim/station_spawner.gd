@@ -12,18 +12,18 @@ func _init(p_level: LevelData, p_rng: RandomNumberGenerator) -> void:
 	rng = p_rng
 
 
-func spawn_initial(network: MetroNetwork, count: int) -> void:
+func spawn_initial(network: MetroNetwork, count: int, weights: Dictionary = {}) -> void:
 	for i in count:
-		try_spawn(network)
+		try_spawn(network, weights)
 
 
-func try_spawn(network: MetroNetwork) -> Station:
+func try_spawn(network: MetroNetwork, weights: Dictionary = {}) -> Station:
 	if network.stations.size() >= level.max_stations:
 		return null
 	var pos := _random_land_point(network)
 	if pos == Vector2.INF:
 		return null
-	return network.add_station(pos, _pick_shape())
+	return network.add_station(pos, _pick_shape(weights))
 
 
 ## 拒绝采样：随机落点，不满足约束就重试。
@@ -50,8 +50,10 @@ func _random_land_point(network: MetroNetwork) -> Vector2:
 
 
 ## 按形状权重加权随机（权重 <= 0 的形状不会被选中）。
-func _pick_shape() -> int:
-	var weights: Dictionary = level.station_shape_weights
+func _pick_shape(override_weights: Dictionary = {}) -> int:
+	var weights: Dictionary = override_weights
+	if weights.is_empty():
+		weights = level.station_shape_weights
 	if weights.is_empty():
 		return Shape.Kind.CIRCLE
 	var kinds: Array = weights.keys()

@@ -25,6 +25,11 @@ var best_score := 0
 var clock_hours := 7.0
 var is_night := false
 var weekday := ""
+## 城镇发展阶段（村庄/小镇/城市/大都市 · 车站数）
+var stage_label := ""
+## 鼠标悬停车站时显示的地标名称
+var hover_landmark := ""
+var hover_screen := Vector2.ZERO
 ## 库存（可拖到地图上的资源）
 var stock_counts := {"train": 0, "carriage": 0, "interchange": 0}
 var _speed_rects: Array[Rect2] = []
@@ -190,6 +195,8 @@ func _draw() -> void:
 func _draw_game_hud(vp: Vector2) -> void:
 	_text_centered("MINI METRO", vp.x * 0.5, 72.0, 18, Color(MUTED, 0.8))
 	_text_centered(mode_title, vp.x * 0.5, 98.0, 15, Color(MUTED, 0.65))
+	if stage_label != "":
+		_text_centered(stage_label, vp.x * 0.5, 122.0, 14, Color(MUTED, 0.55))
 	_draw_clock(vp)
 	_text_right(Loc.t("已送达 %d", "Delivered %d") % score, vp.x - 72.0, 200.0, 26, INK)
 	_text_right(Loc.t("最高 %d", "Best %d") % best_score, vp.x - 72.0, 228.0, 16,
@@ -213,6 +220,17 @@ func _draw_game_hud(vp: Vector2) -> void:
 	if toast_left > 0.0:
 		var alpha: float = clampf(toast_left / 0.5, 0.0, 1.0)
 		_text_centered(toast_text, vp.x * 0.5, vp.y - 120.0, 22, Color(INK, alpha))
+	# 悬停车站：显示这个形状代表的地标
+	if hover_landmark != "":
+		var text_size := font.get_string_size(hover_landmark, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 15)
+		var rect := Rect2(hover_screen + Vector2(20.0, -40.0),
+			Vector2(text_size.x + 22.0, 28.0))
+		rect.position.x = clampf(rect.position.x, 12.0, vp.x - rect.size.x - 12.0)
+		rect.position.y = clampf(rect.position.y, 12.0, vp.y - rect.size.y - 12.0)
+		var poly := DrawUtil.rounded_rect(rect, 9.0, 6)
+		draw_colored_polygon(poly, Color("#FBF8F1", 0.96))
+		draw_polyline(DrawUtil.closed(poly), Color(0.55, 0.52, 0.47), 1.6, true)
+		_text(hover_landmark, rect.position + Vector2(11.0, 20.0), 15, INK)
 
 
 ## 12 小时制时钟：12 点在上、6 点在下；到了夜晚整块表盘变黑、指针变白。

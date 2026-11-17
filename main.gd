@@ -29,6 +29,7 @@ var passenger_layer: PassengerLayer = null
 var fx_layer: FxLayer = null
 var editor: LineEditor = null
 var hud: Hud = null
+var camera: Camera2D = null
 var _night_filter: ColorRect = null
 
 var _shot_path := ""
@@ -79,6 +80,22 @@ func _process(delta: float) -> void:
 			"carriage": 0 if simulation == null else simulation.inventory_carriages,
 			"interchange": 0 if simulation == null else simulation.inventory_interchanges,
 		}
+		if simulation != null and not hud.mode_menu:
+			hud.stage_label = "%s · %s" % [
+				simulation.stage_name(),
+				Loc.t("车站 %d", "Stations %d") % network.stations.size(),
+			]
+		else:
+			hud.stage_label = ""
+		if editor != null and simulation != null and not hud.mode_menu \
+				and not hud.week_modal and not hud.settings_menu and not hud.game_over:
+			if editor.hover_station != null:
+				hud.hover_landmark = Shape.landmark_name(editor.hover_station.shape)
+				hud.hover_screen = get_viewport().get_canvas_transform() * editor.hover_station.pos
+			else:
+				hud.hover_landmark = ""
+		else:
+			hud.hover_landmark = ""
 		if _night_filter != null:
 			var strength := 0.0 if simulation == null else Simulation.night_strength(simulation.hour_of_day())
 			_night_filter.color = Color(0.03, 0.06, 0.16, 0.36 * strength)
@@ -86,6 +103,10 @@ func _process(delta: float) -> void:
 			_sync_settings_values()
 	if simulation != null and not Game.paused:
 		simulation.advance(delta, Game.speed)
+	if camera != null and simulation != null:
+		var target_zoom := simulation.camera_zoom_target()
+		var next_zoom := lerpf(camera.zoom.x, target_zoom, clampf(delta * 0.9, 0.0, 1.0))
+		camera.zoom = Vector2(next_zoom, next_zoom)
 
 
 # ---------------------------------------------------------------------------
@@ -441,6 +462,14 @@ func _on_station_added(_station: Station) -> void:
 
 
 func _build_world() -> void:
+	# 世界相机：固定看向地图中心，随城镇发展逐渐拉远
+	camera = Camera2D.new()
+	camera.name = "Camera"
+	camera.position = level.world_size * 0.5
+	camera.zoom = Vector2.ONE
+	camera.enabled = true
+	add_child(camera)
+
 	var world := Node2D.new()
 	world.name = "World"
 	add_child(world)
@@ -590,7 +619,8 @@ func _start_session() -> void:
 		_advance_sim(480)
 		_apply_pose()
 	else:
-		simulation.spawner.spawn_initial(network, level.start_station_count)
+		simulation.spawner.spawn_initial(network, level.start_station_count,
+			simulation.station_shape_weights())
 
 
 func _apply_pose() -> void:
@@ -755,6 +785,27 @@ func _apply_pose() -> void:
 				var target := to_line.geometry.sample(to_line.geometry.total_length * 0.5).origin
 				simulation.request_train_relocation(train, from_line, to_line, target)
 				_advance_sim(40)
+		"metropolis":
+			# 演示：城镇发展到大都市，车站变多，相机拉到最远
+			var shapes := [
+				Shape.Kind.CIRCLE, Shape.Kind.SQUARE, Shape.Kind.TRIANGLE,
+				Shape.Kind.PLUS, Shape.Kind.STAR, Shape.Kind.DIAMOND,
+			]
+			for i in 26:
+				var candidate := Vector2(260.0 + float(i % 6) * 240.0,
+					220.0 + float(i / 6) * 190.0)
+				if network.station_at(candidate, 90.0) == null \
+						and not network.is_point_in_water(candidate):
+					network.add_station(candidate, shapes[i % shapes.size()])
+			_advance_sim(30)
+			if camera != null:
+				var target_zoom := simulation.camera_zoom_target()
+				camera.zoom = Vector2(target_zoom, target_zoom)
+		"landmark":
+			# 演示：把鼠标"放"在一座车站上，显示地标名称
+			if not network.stations.is_empty():
+				editor.hover_station = network.stations[0]
+				_advance_sim(2)
 		"train-drag":
 			if network.lines.size() >= 2 and not network.lines[0].trains.is_empty():
 				var source_line: MetroLine = network.lines[0]

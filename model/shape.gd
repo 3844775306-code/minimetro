@@ -52,6 +52,30 @@ static func shape_name(kind: int) -> String:
 		_: return "未知"
 
 
+## 车站形状对应的"城镇地标"语义（故事化说明，双语）。
+static func landmark_name(kind: int) -> String:
+	match kind:
+		Kind.CIRCLE: return Loc.t("居民区", "Residential")
+		Kind.SQUARE: return Loc.t("车站", "Transit hub")
+		Kind.TRIANGLE: return Loc.t("商务区", "Business district")
+		Kind.PLUS: return Loc.t("医院", "Hospital")
+		Kind.DIAMOND: return Loc.t("度假区", "Resort")
+		Kind.STAR: return Loc.t("景点", "Landmark")
+		_: return Loc.t("未知地标", "Unknown")
+
+
+## 乘客生成用的地标角色名（用于说明/调试）。
+static func landmark_role(kind: int) -> String:
+	match kind:
+		Kind.CIRCLE: return "residential"
+		Kind.SQUARE: return "transit"
+		Kind.TRIANGLE: return "business"
+		Kind.PLUS: return "hospital"
+		Kind.DIAMOND: return "resort"
+		Kind.STAR: return "landmark"
+		_: return "unknown"
+
+
 static func _regular(sides: int, radius: float, start_angle: float) -> PackedVector2Array:
 	var pts := PackedVector2Array()
 	for i in sides:
