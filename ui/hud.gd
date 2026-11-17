@@ -196,13 +196,12 @@ func _draw() -> void:
 # ---------------------------------------------------------------------------
 
 func _draw_game_hud(vp: Vector2) -> void:
-	# 减负版 HUD：左上只留线色/库存，右上只留时钟 + 分数 + 阶段，标题不再常驻
+	# 减负版 HUD：左上只留线色/库存，右上不再画面板（避免挡地图）
 	_draw_panel(Rect2(34.0, 66.0, 486.0, 104.0))
-	_draw_panel(Rect2(vp.x - 300.0, 36.0, 260.0, 214.0))
 	_draw_clock(vp)
-	_text_right(Loc.t("已送达 %d", "Delivered %d") % score, vp.x - 64.0, 198.0, 26, INK)
+	_text_right(Loc.t("已送达 %d", "Delivered %d") % score, vp.x - 40.0, 152.0, 24, INK)
 	if stage_label != "":
-		_text_right(stage_label, vp.x - 64.0, 222.0, 14, Color(MUTED, 0.65))
+		_text_right(stage_label, vp.x - 40.0, 176.0, 13, Color(MUTED, 0.75))
 	_draw_resource_slots(vp)
 	var show_hint := hint_left > 0.0 or (network != null and network.lines.is_empty())
 	if show_hint:
@@ -242,8 +241,8 @@ func _draw_panel(rect: Rect2) -> void:
 
 ## 12 小时制时钟：12 点在上、6 点在下；到了夜晚整块表盘变黑、指针变白。
 func _draw_clock(vp: Vector2) -> void:
-	var center := Vector2(vp.x - 112.0, 96.0)
-	var radius := 36.0
+	var center := Vector2(vp.x - 70.0, 64.0)
+	var radius := 30.0
 	var strength := Simulation.night_strength(clock_hours)
 	var face := Color("#FBF8F1").lerp(Color("#1C1C1E"), strength)
 	draw_circle(center, radius, face)
@@ -270,7 +269,7 @@ func _draw_clock(vp: Vector2) -> void:
 	var minutes := int((clock_hours - floor(clock_hours)) * 60.0)
 	var suffix := Loc.t("上午", "AM") if hour < 12 else Loc.t("下午", "PM")
 	_text_centered("%s  %02d:%02d %s" % [weekday, display_hour, mini(minutes, 59), suffix],
-		center.x, center.y + radius + 22.0, 15, Color(MUTED, 0.85))
+		center.x, center.y + radius + 18.0, 14, Color(MUTED, 0.9))
 
 
 func _draw_speed_buttons(vp: Vector2) -> void:

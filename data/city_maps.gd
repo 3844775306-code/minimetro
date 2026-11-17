@@ -41,7 +41,11 @@ static func default_city_id() -> String:
 static func band(centerline: PackedVector2Array, width: float) -> PackedVector2Array:
 	if centerline.size() < 2:
 		return PackedVector2Array()
-	var center := smooth_centerline(centerline, 8)
+	# 平滑步数降低 + 叠加蜿蜒，让河道更曲折、不要一条平滑的飘带；
+	# 蜿蜒后再轻平滑一次，避免采样点处的硬折角。
+	var center := smooth_centerline(centerline, 4)
+	center = _meander(center, width)
+	center = smooth_centerline(center, 2)
 	var offset: Array[PackedVector2Array] = Geometry2D.offset_polyline(
 		center, width * 0.5, Geometry2D.JOIN_ROUND
 	)
@@ -55,6 +59,29 @@ static func band(centerline: PackedVector2Array, width: float) -> PackedVector2A
 			best = offset[i]
 			best_area = area
 	return best
+
+
+## 沿河道法线叠加正弦位移，模拟自然的曲流/河湾。
+static func _meander(center: PackedVector2Array, width: float) -> PackedVector2Array:
+	if center.size() < 3 or width <= 0.0:
+		return center
+	var amplitude := width * 0.26
+	var wavelength := maxf(width * 2.0, 80.0)
+	var phase := fmod(absf(center[0].x) * 0.021 + absf(center[0].y) * 0.017, TAU)
+	var out := PackedVector2Array()
+	var travelled := 0.0
+	for i in center.size():
+		if i > 0:
+			travelled += center[i].distance_to(center[i - 1])
+		var previous := center[maxi(i - 1, 0)]
+		var next_point := center[mini(i + 1, center.size() - 1)]
+		var direction := next_point - previous
+		var normal := Vector2(-direction.y, direction.x)
+		if normal.length() > 0.001:
+			normal = normal.normalized()
+		var offset := sin(travelled / wavelength * TAU + phase) * amplitude
+		out.append(center[i] + normal * offset)
+	return out
 
 
 ## Catmull-Rom 平滑：把折线变成每段 steps 个采样点的曲线。
@@ -187,16 +214,18 @@ static func _build_all() -> Array[CityMap]:
 		"name_en": "Paper City",
 		"rivers": [
 			band(PackedVector2Array([
-				Vector2(1540, 20), Vector2(1600, 260), Vector2(1510, 480),
-				Vector2(1590, 720), Vector2(1500, 980), Vector2(1540, 1180),
+				Vector2(1500, 20), Vector2(1610, 170), Vector2(1465, 330),
+				Vector2(1625, 500), Vector2(1480, 680), Vector2(1600, 860),
+				Vector2(1450, 1020), Vector2(1540, 1180),
 			]), 190.0),
 			band(PackedVector2Array([
-				Vector2(-40, 780), Vector2(300, 750), Vector2(620, 790),
-				Vector2(900, 760), Vector2(1220, 820), Vector2(1510, 780),
+				Vector2(-40, 760), Vector2(250, 690), Vector2(520, 820),
+				Vector2(780, 730), Vector2(1060, 860), Vector2(1300, 770),
+				Vector2(1510, 790),
 			]), 90.0),
 			band(PackedVector2Array([
-				Vector2(1800, 1220), Vector2(1930, 1010), Vector2(2090, 930),
-				Vector2(2230, 990), Vector2(2340, 1220),
+				Vector2(1800, 1220), Vector2(1880, 1050), Vector2(2020, 980),
+				Vector2(2140, 1070), Vector2(2240, 930), Vector2(2360, 1060),
 			]), 130.0),
 		],
 		"lines": 3,
