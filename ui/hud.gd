@@ -11,6 +11,7 @@ const ACCENT := Color("#D64545")
 const GOLD := Color("#E8A33D")
 const TEAL := Color("#2F8F9D")
 const DEEP := Color("#121518")
+const HUD_OCCLUSION_SHADER := preload("res://art/shaders/hud_occlusion.gdshader")
 const CHIP_W := 46.0
 const CHIP_H := 13.0
 const CHIP_GAP := 12.0
@@ -118,6 +119,69 @@ var name_edit: LineEdit = null
 var name_edit_open := false
 signal name_submitted(player_name: String)
 
+## 四角 HUD 遮挡站台时自动“隐身”，但保留很淡的轮廓；输入也会穿透到站台。
+var _hud_material: ShaderMaterial = null
+var _ghost_tl := 0.0
+var _ghost_tr := 0.0
+var _ghost_br := 0.0
+var _tl_rect := Rect2()
+var _tr_rect := Rect2()
+var _br_rect := Rect2()
+
+
+## 四角 HUD 遮挡站台时自动“隐身”，但保留很淡的轮廓；输入也会穿透到站台。
+func _update_corner_occlusion(delta: float) -> void:
+	if _hud_material == null:
+		return
+	var vp := get_viewport_rect().size
+	_tl_rect = Rect2(24.0, 36.0, 748.0, 176.0)
+	_tr_rect = Rect2(vp.x - 342.0, 18.0, 312.0, 232.0)
+	_br_rect = Rect2(vp.x - 470.0, vp.y - 140.0, 454.0, 132.0)
+	var playable := network != null and not mode_menu and not game_over \
+		and not week_modal and not settings_menu and not leaderboard_open \
+		and not map_hall_open and not startup_intro_active
+	var hit_tl := false
+	var hit_tr := false
+	var hit_br := false
+	if playable:
+		var canvas := get_viewport().get_canvas_transform()
+		for station in network.stations:
+			var screen_pos: Vector2 = canvas * station.pos
+			var margin := Shape.STATION_RADIUS + 12.0
+			if _tl_rect.grow(margin).has_point(screen_pos):
+				hit_tl = true
+			if _tr_rect.grow(margin).has_point(screen_pos):
+				hit_tr = true
+			if _br_rect.grow(margin).has_point(screen_pos):
+				hit_br = true
+	var follow := clampf(delta * 7.0, 0.0, 1.0)
+	if not playable:
+		_ghost_tl = 0.0
+		_ghost_tr = 0.0
+		_ghost_br = 0.0
+	else:
+		_ghost_tl = move_toward(_ghost_tl, 1.0 if hit_tl else 0.0, follow)
+		_ghost_tr = move_toward(_ghost_tr, 1.0 if hit_tr else 0.0, follow)
+		_ghost_br = move_toward(_ghost_br, 1.0 if hit_br else 0.0, follow)
+	_hud_material.set_shader_parameter("viewport_size", vp)
+	_hud_material.set_shader_parameter("tl_rect", _rect_to_vec4(_tl_rect))
+	_hud_material.set_shader_parameter("tr_rect", _rect_to_vec4(_tr_rect))
+	_hud_material.set_shader_parameter("br_rect", _rect_to_vec4(_br_rect))
+	_hud_material.set_shader_parameter("tl_ghost", _ghost_tl)
+	_hud_material.set_shader_parameter("tr_ghost", _ghost_tr)
+	_hud_material.set_shader_parameter("br_ghost", _ghost_br)
+
+
+static func _rect_to_vec4(rect: Rect2) -> Vector4:
+	return Vector4(rect.position.x, rect.position.y, rect.size.x, rect.size.y)
+
+
+## 这个屏幕点是否落在正在“隐身”的 HUD 角上；Main 用它让点击穿透到站台。
+func ui_ghost_at(pos: Vector2) -> bool:
+	return (_ghost_tl > 0.18 and _tl_rect.has_point(pos)) \
+		or (_ghost_tr > 0.18 and _tr_rect.has_point(pos)) \
+		or (_ghost_br > 0.18 and _br_rect.has_point(pos))
+
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -131,6 +195,9 @@ func _ready() -> void:
 	name_edit.add_theme_font_size_override("font_size", 32)
 	name_edit.text_submitted.connect(_on_name_edit_submitted)
 	add_child(name_edit)
+	_hud_material = ShaderMaterial.new()
+	_hud_material.shader = HUD_OCCLUSION_SHADER
+	material = _hud_material
 	set_process(true)
 
 
@@ -293,6 +360,7 @@ func _process(delta: float) -> void:
 			startup_intro_active = false
 	if not mode_menu and not paused:
 		hint_left = maxf(0.0, hint_left - delta)
+	_update_corner_occlusion(delta)
 	queue_redraw()
 
 

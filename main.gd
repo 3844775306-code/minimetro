@@ -409,15 +409,16 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		# HUD 在 CanvasLayer 里，必须用屏幕坐标命中；世界拖拽才用世界坐标
 		var pos: Vector2 = (event as InputEventMouseButton).position
+		var ghost_ui := hud.ui_ghost_at(pos)
 		# 左上角线路颜色条：点开"取消整条线路"的叉按钮
-		var chip_line_id := hud.line_chip_at(pos)
+		var chip_line_id := -1 if ghost_ui else hud.line_chip_at(pos)
 		if chip_line_id >= 0:
 			hud.show_line_cancel(chip_line_id)
 			Audio.play("click")
 			get_viewport().set_input_as_handled()
 			return
 		# 左上角库存图标：拖到地图上放资源
-		var stock := hud.stock_icon_at(pos)
+		var stock := "" if ghost_ui else hud.stock_icon_at(pos)
 		if stock != "" and simulation != null:
 			var count := 0
 			match stock:
@@ -429,18 +430,18 @@ func _input(event: InputEvent) -> void:
 				Audio.play("click")
 				get_viewport().set_input_as_handled()
 				return
-		var speed := hud.speed_button_at(pos)
+		var speed := 0 if ghost_ui else hud.speed_button_at(pos)
 		if speed > 0:
 			Game.speed = float(speed)
 			Audio.play("click")
 			get_viewport().set_input_as_handled()
 			return
-		if hud.settings_button_at(pos):
+		if not ghost_ui and hud.settings_button_at(pos):
 			_open_settings()
 			Audio.play("click")
 			get_viewport().set_input_as_handled()
 			return
-		if hud.pause_button_at(pos):
+		if not ghost_ui and hud.pause_button_at(pos):
 			Game.paused = not Game.paused
 			hud.paused = Game.paused
 			Audio.play("click")
