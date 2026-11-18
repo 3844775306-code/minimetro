@@ -125,3 +125,12 @@ static func _test_line_render_offset(h: TestHarness) -> void:
 	var reversed_offset := LineGeometry.offset_points(reversed, LineGeometry.render_offset(0, 3))
 	# 反向路径的对应拐点也应与正向偏移在同一侧
 	h.check(reversed_offset[1].distance_to(left[1]) < 0.01, "反向绘制也使用同一侧偏移")
+
+	# 圆角/浮点误差会制造极小的 x/y 分量；不能因此把法线判成相反方向，
+	# 否则 miter 交点会被甩出几百像素，形成截图里的“竖向长线”。
+	var near_axis := PackedVector2Array([
+		Vector2(0.0, 0.0), Vector2(0.001, 100.0), Vector2(-0.001, 200.0),
+	])
+	var near_offset := LineGeometry.offset_points(near_axis, 6.0)
+	h.check(absf(near_offset[1].x) < 12.0, "近竖直折线不会产生超长 miter 尖刺")
+	h.check((near_offset[1] - near_axis[1]).length() < 20.0, "偏移量保持在合理范围")

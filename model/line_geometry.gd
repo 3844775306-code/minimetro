@@ -214,7 +214,12 @@ static func canonical_normal(direction: Vector2) -> Vector2:
 	if direction.length_squared() < 0.000001:
 		return Vector2.ZERO
 	var n := Vector2(-direction.y, direction.x).normalized()
-	if direction.x < -0.0001 or (absf(direction.x) <= 0.0001 and direction.y < 0.0):
+	# 用“主导轴”决定符号，避免圆角/浮点误差产生的微小 x/y 分量
+	# 让相邻的近水平/近竖直段被误判到相反法线，产生巨大的 miter 尖刺。
+	if absf(direction.x) >= absf(direction.y):
+		if direction.x < 0.0:
+			n = -n
+	elif direction.y < 0.0:
 		n = -n
 	return n
 
@@ -258,8 +263,12 @@ static func offset_points(points: PackedVector2Array, amount: float) -> PackedVe
 		if absf(denom) < 0.001:
 			out.append(vertex + n_previous * amount)
 		else:
-			# 两条偏移线的交点：vertex + miter * (amount / cos(夹角/2))
-			out.append(vertex + miter * (amount / denom))
+			var scale := amount / denom
+			# 斜接限长：异常接近反向的法线不允许把折点甩到很远
+			if absf(scale) > absf(amount) * 4.0:
+				out.append(vertex + miter * amount)
+			else:
+				out.append(vertex + miter * scale)
 	if closed:
 		out.append(out[0])
 	return out
