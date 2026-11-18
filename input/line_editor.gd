@@ -381,6 +381,7 @@ func _break_loop_hold() -> void:
 	_loop_hold_line.loop_seam_station_id = -1
 	_loop_hold_line.rebuild()
 	network.touch()
+	_notify_edited(_loop_hold_line)
 	toast_requested.emit(Loc.t("环线已拆开", "Loop opened"))
 	_request_redraw()
 
@@ -432,11 +433,13 @@ func _extend_with(st: Station) -> void:
 		_draft_line.is_loop = false
 		_draft_line.loop_seam_station_id = -1
 		_draft_line.rebuild()
+	_refresh_edit_legacy()
 	if _draft_at_start:
 		_draft_line.prepend_stop(st)
 	else:
 		_draft_line.add_stop(st)
 	network.touch()
+	_notify_edited(_draft_line)
 	_gesture_dirty = true
 
 
@@ -472,6 +475,7 @@ func _close_loop() -> void:
 	_draft_line.is_loop = true
 	_draft_line.rebuild()
 	network.touch()
+	_notify_edited(_draft_line)
 	_gesture_dirty = true
 
 
@@ -543,6 +547,7 @@ func _remove_dwelled_station() -> void:
 	_refresh_edit_legacy()
 	_draft_line.remove_stop_at(idx)
 	network.touch()
+	_notify_edited(_draft_line)
 	_mark_removed(_draft_line, target)
 	_gesture_dirty = true
 	_loop_candidate = false
@@ -565,6 +570,7 @@ func _remove_segment_endpoint() -> void:
 	_push_undo()
 	line.remove_stop_at(idx)
 	network.touch()
+	_notify_edited(line)
 	_mark_removed(line, target)
 	_segment_line = null
 	_segment_index = -1
@@ -626,6 +632,7 @@ func _apply_segment_tap() -> void:
 		_drop_pending_undo()
 		toast_requested.emit("没有可用的桥 / 隧道了")
 		return
+	_notify_edited(line)
 	_gesture_dirty = true
 
 
@@ -653,6 +660,7 @@ func _apply_segment_insert() -> void:
 	_push_undo()
 	line.insert_stop(_segment_index + 1, st)
 	network.touch()
+	_notify_edited(line)
 	_gesture_dirty = true
 
 
@@ -1003,6 +1011,7 @@ func _reorder_update() -> void:
 			_gesture_dirty = true
 			_swap_cooldown = SWAP_COOLDOWN
 			network.touch()
+			_notify_edited(_reorder_line)
 			return
 
 
@@ -1088,6 +1097,13 @@ func _refresh_edit_legacy() -> void:
 		line.edit_legacy_stops = line.stops.duplicate()
 		line.edit_legacy_flips = line.bend_flips.duplicate()
 		line.edit_legacy_valid = line.stops.size() >= 2 and not line.geometry.points.is_empty()
+
+
+## 编辑完成后立刻通知模拟层：即使暂停，也要先把列车挂到旧线收尾，
+## 不能让下一次编辑覆盖掉它还没处理的那份旧几何。
+func _notify_edited(line: MetroLine) -> void:
+	if simulation != null and line != null:
+		simulation.on_line_edited(line)
 
 
 func _push_undo() -> void:

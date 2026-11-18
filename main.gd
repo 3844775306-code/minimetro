@@ -74,7 +74,7 @@ func _ready() -> void:
 		hud.show_mode_menu()
 		if _pose == "intro":
 			hud.start_startup_intro()
-		elif not Game.intro_played and _shot_path == "" and _smoke_ticks == 0:
+		elif not Game.intro_played and _shot_path == "" and _smoke_ticks < 0:
 			Game.intro_played = true
 			hud.start_startup_intro()
 		match _open_arg:

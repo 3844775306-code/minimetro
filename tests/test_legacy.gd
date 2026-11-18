@@ -8,6 +8,7 @@ static func run(h: TestHarness) -> void:
 	_test_legacy_remove_endpoint(h)
 	_test_legacy_remove_middle(h)
 	_test_legacy_dwell_remove(h)
+	_test_legacy_paused_double_edit(h)
 	_test_legacy_flip(h)
 
 
@@ -256,6 +257,54 @@ static func _test_legacy_dwell_remove(h: TestHarness) -> void:
 		if not train.legacy_active:
 			break
 	h.check(not train.legacy_active, "旧线收尾能结束")
+	editor.free()
+
+
+## 暂停时删末端站，尚未恢复就再次编辑线路：列车仍应保留第一次删除前的
+## 旧线快照，不能因为第二次编辑覆盖 edit_legacy 而瞬移到相邻站。
+static func _test_legacy_paused_double_edit(h: TestHarness) -> void:
+	h.section("legacy/paused_double_edit")
+	var level := _make_level(1)
+	var made := _make_line(level)
+	var net: MetroNetwork = made[0]
+	var line: MetroLine = made[1]
+	var sim := _make_sim(net, level)
+	sim.tick(Simulation.STEP)
+	var train: Train = line.trains[0]
+	var seg_start := line.geometry.stop_offsets[1]
+	var seg_end := line.geometry.stop_offsets[2]
+	train.dist = lerpf(seg_start, seg_end, 0.55)
+	train.stop_index = 1
+	train.target_index = 2
+	train.target_dist = seg_end
+	train.state = Train.State.MOVING
+	train.line_version = line.version
+	var old_dist := train.dist
+	var editor := LineEditor.new()
+	editor.setup(net, level, null)
+	editor.simulation = sim
+	# 第一次编辑：删除末端 C（模拟暂停中，不 tick）
+	editor._push_undo()
+	line.remove_stop_at(2)
+	net.touch()
+	sim.on_line_edited(line)
+	h.check(train.legacy_active, "删末端站后立即进入旧线收尾（即使暂停）")
+	h.near(train.dist, old_dist, 0.1, "第一次删除后位置不跳")
+	# 第二次编辑：翻转 A-B，模拟暂停中继续改线，不先 tick
+	editor._push_undo()
+	line.flip_segment_by_index(0)
+	net.touch()
+	sim.on_line_edited(line)
+	h.check(train.legacy_active, "第二次编辑不会取消旧线收尾")
+	h.near(train.dist, old_dist, 0.1, "第二次编辑后位置仍不跳")
+	h.eq(train.legacy_stops.size(), 3, "保留第一次删除前的三站旧线")
+	var finished := false
+	for i in 2400:
+		sim.tick(Simulation.STEP)
+		if not train.legacy_active:
+			finished = true
+			break
+	h.check(finished, "双编辑后旧线仍能收尾")
 	editor.free()
 
 

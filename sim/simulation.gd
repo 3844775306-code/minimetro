@@ -1283,6 +1283,21 @@ func remap_train(train: Train, line: MetroLine) -> void:
 	_remap_train(train, line)
 
 
+## 线路结构刚被编辑：即使游戏暂停，也要立刻把该线上的列车切换到
+## “旧线收尾”或重映射。否则暂停期间再次编辑会覆盖旧几何，列车会在恢复时瞬移。
+func on_line_edited(line: MetroLine) -> void:
+	if line == null:
+		return
+	for train in line.trains:
+		if train.relocating or train.legacy_active:
+			continue
+		if train.line_version != line.version:
+			if line.edit_legacy_valid and line.edit_legacy_geometry != null:
+				_start_legacy(train, line)
+			else:
+				_remap_train(train, line)
+
+
 func _remap_train(train: Train, line: MetroLine) -> void:
 	train.line_version = line.version
 	train.stop_actions.clear()
