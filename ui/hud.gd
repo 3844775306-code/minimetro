@@ -1099,46 +1099,89 @@ func _draw_mode_menu(vp: Vector2) -> void:
 	_draw_vignette(vp, 1.2)
 	_draw_menu_ambient(vp)
 	var cx := vp.x * 0.5
-	var cy := vp.y * 0.5
-	# 标题：站牌式大字距 + 深色投影；让菜单第一眼有"城市线路图册"的身份
-	_text_tracked_centered("MINI METRO", cx + 2.0, cy - 288.0, 60,
-		Color(0.0, 0.0, 0.0, 0.28), 8.0)
-	_text_tracked_centered("MINI METRO", cx, cy - 290.0, 60,
-		Color(1.0, 1.0, 1.0, 0.98), 8.0)
-	_text_centered(Loc.t("极简地铁调度", "MINIMAL METRO PUZZLE"),
-		cx, cy - 244.0, 21, Color(0.96, 0.78, 0.52, 0.92))
-	_draw_accent_rule(Vector2(cx, cy - 232.0), 150.0, GOLD)
+	# 顶部标题带：像控制室的总站牌
+	_text_centered(Loc.t("METRO CONTROL · 线路控制台", "METRO CONTROL ROOM"),
+		cx, 76.0, 17, Color(0.96, 0.78, 0.52, 0.78))
+	_text_tracked_centered("MINI METRO", cx + 2.0, 156.0, 62,
+		Color(0.0, 0.0, 0.0, 0.30), 9.0)
+	_text_tracked_centered("MINI METRO", cx, 154.0, 62,
+		Color(1.0, 1.0, 1.0, 0.98), 9.0)
+	_text_centered(Loc.t("极简地铁调度 · 三轴配置", "MINIMAL METRO · THREE AXES"),
+		cx, 194.0, 20, Color(0.96, 0.78, 0.52, 0.90))
+	_draw_accent_rule(Vector2(cx, 212.0), 180.0, GOLD)
+	# 标题下方一条“总线路”，连接左侧城市、中央配置、右侧简报
+	var header_route_y := 234.0
+	draw_line(Vector2(80.0, header_route_y), Vector2(vp.x - 80.0, header_route_y),
+		Color(0.93, 0.89, 0.78, 0.20), 2.0, true)
+	for x in [330.0, cx, vp.x - 330.0]:
+		draw_circle(Vector2(x, header_route_y), 4.0, Color(PAPER, 0.78), true, -1.0, true)
+		draw_arc(Vector2(x, header_route_y), 4.0, 0.0, TAU, 20, Color(GOLD, 0.55), 1.4, true)
 	_draw_city_selector(vp)
 	_draw_config_panel(vp)
-	_text_centered(Loc.t("←/→ 切换城市 · 三项配置自由组合 · Enter 开始 · 每日 / 教程默认经典规则",
-		"←/→ city · combine three axes · Enter to start · daily/tutorial use classic rules"),
-		cx, cy + 444.0, 20, Color(1.0, 1.0, 1.0, 0.66))
-	# 底部入口：每日榜 / 地图大厅 / 地图排行 / 地图编辑器
-	var menu_buttons := [
-		{"rect": _daily_board_rect, "text": Loc.t("每日排行榜", "Daily board"),
-			"action": "daily", "key": "D"},
-		{"rect": _map_hall_rect, "text": Loc.t("地图大厅", "Map hall"),
-			"action": "hall", "key": "H"},
-		{"rect": _map_rank_rect, "text": Loc.t("地图排行榜", "Map ranks"),
-			"action": "rank", "key": "L"},
-		{"rect": _editor_button_rect, "text": Loc.t("地图编辑器", "Map editor"),
-			"action": "editor", "key": "E"},
+	_draw_dispatch_panel(vp)
+	_draw_menu_bottom_bar(vp)
+	_text_centered(Loc.t("←/→ 切换城市 · 1/2 资源 · 3/4 结束 · 5/6 开局 · Enter 发车 · T 教程",
+		"←/→ city · 1/2 resources · 3/4 ending · 5/6 start · Enter depart · T tutorial"),
+		cx, 1050.0, 19, Color(1.0, 1.0, 1.0, 0.62))
+
+
+## 左侧城市卡：把城市预览从顶部移到主区域，填满左侧。
+func _draw_city_selector(vp: Vector2) -> void:
+	var card := Rect2(80.0, 258.0, 500.0, 612.0)
+	_draw_soft_shadow(card, 20.0, 0.30, Vector2(0.0, 14.0))
+	var card_poly := DrawUtil.rounded_rect(card, 20.0, 10)
+	draw_colored_polygon(card_poly, Color(0.94, 0.91, 0.84, 0.97))
+	draw_polyline(DrawUtil.closed(card_poly), Color(GOLD, 0.42), 1.5, true)
+	draw_rect(Rect2(card.position + Vector2(26.0, 0.0), Vector2(card.size.x - 52.0, 5.0)),
+		Color(GOLD, 0.88))
+	var city: CityMap = null
+	if not menu_cities.is_empty():
+		city_index = clampi(city_index, 0, menu_cities.size() - 1)
+		city = menu_cities[city_index]
+	_text(Loc.t("当前城市 / CITY", "CITY MAP"), card.position + Vector2(26.0, 38.0),
+		16, Color(MUTED, 0.85))
+	if city != null:
+		_text(city.display_name(), card.position + Vector2(26.0, 78.0), 34, INK)
+		_text_right(Loc.t("%02d / %02d", "%02d / %02d") % [city_index + 1, menu_cities.size()],
+			card.end.x - 26.0, card.position.y + 42.0, 15, Color(MUTED, 0.72))
+	var preview := Rect2(card.position.x + 24.0, card.position.y + 102.0,
+		card.size.x - 48.0, 300.0)
+	_draw_city_preview(preview, city)
+	_city_arrow_rects = [
+		Rect2(preview.position.x + 8.0, preview.get_center().y - 30.0, 60.0, 60.0),
+		Rect2(preview.end.x - 68.0, preview.get_center().y - 30.0, 60.0, 60.0),
 	]
 	var mouse := get_global_mouse_position()
-	var button_w := 230.0
-	var button_gap := 14.0
-	var total_w := button_w * menu_buttons.size() + button_gap * (menu_buttons.size() - 1)
-	var start_x := cx - total_w * 0.5
-	for i in menu_buttons.size():
-		var rect := Rect2(Vector2(start_x + float(i) * (button_w + button_gap), cy + 358.0),
-			Vector2(button_w, 66.0))
-		match String(menu_buttons[i]["action"]):
-			"daily": _daily_board_rect = rect
-			"hall": _map_hall_rect = rect
-			"rank": _map_rank_rect = rect
-			"editor": _editor_button_rect = rect
-		_draw_touch_button(rect, String(menu_buttons[i]["text"]),
-			rect.has_point(mouse))
+	for i in 2:
+		var arrow_rect: Rect2 = _city_arrow_rects[i]
+		var hovered := arrow_rect.has_point(mouse)
+		var center := arrow_rect.get_center()
+		draw_circle(center, 24.0, Color(0.08, 0.09, 0.10, 0.72 if hovered else 0.50), true, -1.0, true)
+		draw_arc(center, 24.0, 0.0, TAU, 32, Color(1.0, 1.0, 1.0, 0.55 if hovered else 0.28), 1.4, true)
+		var sign := 1.0 if i == 0 else -1.0
+		draw_polyline(PackedVector2Array([
+			center + Vector2(sign * 6.0, -10.0),
+			center + Vector2(sign * -5.0, 0.0),
+			center + Vector2(sign * 6.0, 10.0),
+		]), Color(1.0, 1.0, 1.0, 0.95 if hovered else 0.72), 2.8, true)
+	# 城市摘要：初始资源 / 河道 / 城市数量
+	draw_line(Vector2(card.position.x + 26.0, card.position.y + 430.0),
+		Vector2(card.end.x - 26.0, card.position.y + 430.0), Color(INK, 0.10), 1.0, true)
+	if city != null:
+		_text(Loc.t("初始资源", "STARTING RESOURCES"), card.position + Vector2(26.0, 462.0),
+			15, Color(MUTED, 0.82))
+		_text(Loc.t("%d 线 · %d 列车 · %d 桥", "%d lines · %d trains · %d bridges") % [
+			city.start_lines, city.start_trains, city.start_bridges,
+		], card.position + Vector2(26.0, 490.0), 21, INK)
+		_text(Loc.t("河道 %d 条 · 可左右切换", "Rivers %d · use arrows to switch") % city.rivers.size(),
+			card.position + Vector2(26.0, 520.0), 17, Color(MUTED, 0.86))
+	# 一侧的线路色票，填满卡片底部
+	_text(Loc.t("线路色 / LINE COLORS", "LINE COLORS"), card.position + Vector2(26.0, 558.0),
+		14, Color(MUTED, 0.72))
+	for i in mini(level.line_colors.size() if level != null else 0, 8):
+		var color: Color = level.line_colors[i]
+		_draw_capsule(Vector2(card.position.x + 46.0 + float(i) * 50.0,
+			card.position.y + 588.0), color, 36.0, 12.0)
 
 
 func daily_board_button_at(pos: Vector2) -> bool:
@@ -1438,38 +1481,7 @@ func _draw_map_hall(vp: Vector2) -> void:
 		_map_hall_back_rect.has_point(get_global_mouse_position()))
 
 
-## 城市切换：左右箭头 + 城市名 + 迷你河道预览。
-func _draw_city_selector(vp: Vector2) -> void:
-	var cx := vp.x * 0.5
-	var cy := vp.y * 0.5
-	var city: CityMap = null
-	if not menu_cities.is_empty():
-		city_index = clampi(city_index, 0, menu_cities.size() - 1)
-		city = menu_cities[city_index]
-	if city != null:
-		_text_centered(city.display_name(), cx, cy - 196.0, 32, Color(1.0, 1.0, 1.0, 0.95))
-	_draw_city_preview(Rect2(cx - 180.0, cy - 180.0, 360.0, 156.0), city)
-	_city_arrow_rects = [
-		Rect2(cx - 292.0, cy - 140.0, 90.0, 90.0),
-		Rect2(cx + 202.0, cy - 140.0, 90.0, 90.0),
-	]
-	var mouse := get_global_mouse_position()
-	for i in 2:
-		var arrow_rect: Rect2 = _city_arrow_rects[i]
-		var hovered := arrow_rect.has_point(mouse)
-		var center := arrow_rect.get_center()
-		draw_circle(center, 31.0, Color(1.0, 1.0, 1.0, 0.10 if hovered else 0.045), true, -1.0, true)
-		draw_arc(center, 31.0, 0.0, TAU, 40,
-			Color(1.0, 1.0, 1.0, 0.48 if hovered else 0.22), 1.6, true)
-		var sign := 1.0 if i == 0 else -1.0
-		var color := Color(1.0, 1.0, 1.0, 0.95 if hovered else 0.68)
-		draw_polyline(PackedVector2Array([
-			center + Vector2(sign * 7.0, -13.0),
-			center + Vector2(sign * -6.0, 0.0),
-			center + Vector2(sign * 7.0, 13.0),
-		]), color, 3.2, true)
-
-
+## 城市预览卡（具体布局由菜单里的 _draw_city_selector 负责）。
 func _draw_city_preview(rect: Rect2, city: CityMap) -> void:
 	_draw_soft_shadow(rect, 14.0, 0.34, Vector2(0.0, 12.0))
 	# 预览边缘的暖色光晕
@@ -1558,16 +1570,23 @@ func _draw_city_schematic(rect: Rect2) -> void:
 
 func _draw_config_panel(vp: Vector2) -> void:
 	var cx := vp.x * 0.5
-	var cy := vp.y * 0.5
 	var mouse := get_global_mouse_position()
 	_menu_base_rects = []
 	_menu_endless_rects = []
 	_menu_manager_rects = []
-	var panel := Rect2(cx - 590.0, cy - 16.0, 1180.0, 272.0)
-	_draw_soft_shadow(panel, 20.0, 0.22, Vector2(0.0, 14.0))
+	var panel := Rect2(608.0, 258.0, 1184.0, 612.0)
+	_draw_soft_shadow(panel, 20.0, 0.34, Vector2(0.0, 16.0))
 	var panel_poly := DrawUtil.rounded_rect(panel, 20.0, 10)
-	draw_colored_polygon(panel_poly, Color(0.05, 0.065, 0.075, 0.52))
+	draw_colored_polygon(panel_poly, Color(0.05, 0.065, 0.075, 0.68))
 	draw_polyline(DrawUtil.closed(panel_poly), Color(1.0, 1.0, 1.0, 0.12), 1.4, true)
+	draw_rect(Rect2(panel.position + Vector2(26.0, 0.0), Vector2(panel.size.x - 52.0, 5.0)),
+		Color(1.0, 1.0, 1.0, 0.16))
+	_text(Loc.t("运营配置 / BUILD", "BUILD / THREE AXES"),
+		panel.position + Vector2(28.0, 48.0), 17, Color(GOLD, 0.82))
+	_text(Loc.t("三条线路决定本局规则", "Three lines define this run"),
+		panel.position + Vector2(28.0, 78.0), 26, Color(1.0, 1.0, 1.0, 0.92))
+	draw_line(Vector2(panel.position.x + 28.0, panel.position.y + 96.0),
+		Vector2(panel.end.x - 28.0, panel.position.y + 96.0), Color(1.0, 1.0, 1.0, 0.08), 1.0, true)
 	var rows := [
 		{
 			"label": Loc.t("资源获取", "RESOURCES"),
@@ -1599,9 +1618,8 @@ func _draw_config_panel(vp: Vector2) -> void:
 	]
 	for row_index in 3:
 		var row: Dictionary = rows[row_index]
-		var y := cy + 6.0 + float(row_index) * 70.0
+		var y := panel.position.y + 118.0 + float(row_index) * 80.0
 		var accent: Color = row["accent"]
-		# 每行本身就是一条迷你线路：左侧起点、两座可选站台
 		draw_circle(Vector2(cx - 574.0, y + 25.0), 5.0, accent, true, -1.0, true)
 		draw_line(Vector2(cx - 574.0, y + 25.0), Vector2(cx - 562.0, y + 25.0),
 			Color(accent, 0.45), 2.0, true)
@@ -1618,7 +1636,6 @@ func _draw_config_panel(vp: Vector2) -> void:
 				y, 250.0, 52.0)
 			rects.append(option_rect)
 			centers.append(Vector2(option_rect.get_center().x, y + 14.0))
-		# 先用一条线路把两座站台连起来，再画站台本身
 		draw_line(centers[0], centers[1], Color(accent, 0.48), 4.0, true)
 		draw_line(centers[0], centers[1], Color(1.0, 1.0, 1.0, 0.20), 1.2, true)
 		for option_index in 2:
@@ -1648,33 +1665,126 @@ func _draw_config_panel(vp: Vector2) -> void:
 			2:
 				_menu_manager_rects = rects
 		if row_index < 2:
-			draw_line(Vector2(panel.position.x + 26.0, y + 62.0),
-				Vector2(panel.end.x - 26.0, y + 62.0), Color(1.0, 1.0, 1.0, 0.055), 1.0, true)
+			draw_line(Vector2(panel.position.x + 26.0, y + 64.0),
+				Vector2(panel.end.x - 26.0, y + 64.0), Color(1.0, 1.0, 1.0, 0.055), 1.0, true)
 
-	# 配置摘要 + 本配置最高
 	var config_summary := "%s · %s · %s" % [
 		menu_config.resource_title(),
 		Loc.t("无尽", "Endless") if menu_config.endless else Loc.t("无", "None"),
 		Loc.t("管理", "Manager") if menu_config.manager else Loc.t("无", "None"),
 	]
 	_text_centered(Loc.t("配置：%s", "Build: %s") % config_summary,
-		cx - 150.0, cy + 236.0, 21, Color(1.0, 1.0, 1.0, 0.76))
+		cx - 170.0, panel.position.y + 382.0, 21, Color(1.0, 1.0, 1.0, 0.80))
 	_text_centered(Loc.t("评价：%s · 最高 %d", "Metric: %s · Best %d") % [
 		menu_config.metric_label(), menu_best,
-	], cx + 285.0, cy + 236.0, 19, Color(GOLD, 0.86))
+	], cx + 292.0, panel.position.y + 382.0, 19, Color(GOLD, 0.86))
+	_menu_start_rect = Rect2(cx - 210.0, panel.position.y + 414.0, 420.0, 104.0)
+	_draw_departure_button(_menu_start_rect, Loc.t("发车", "DEPART"),
+		_menu_start_rect.has_point(mouse))
+	_text_centered(Loc.t("每日挑战与新手教程固定使用经典规则", "Daily & tutorial always use classic rules"),
+		cx, panel.position.y + 570.0, 17, Color(1.0, 1.0, 1.0, 0.46))
 
-	# 快速入口：每日挑战（经典规则） / 开始运营 / 新手教程（经典规则）
-	_daily_card_rect = Rect2(cx - 454.0, cy + 258.0, 260.0, 76.0)
-	_menu_start_rect = Rect2(cx - 170.0, cy + 252.0, 340.0, 88.0)
-	_tutorial_card_rect = Rect2(cx + 194.0, cy + 258.0, 260.0, 76.0)
+
+## 右侧运营简报：把当前配置、评价指标、最高分和规则说明集中起来。
+func _draw_dispatch_panel(vp: Vector2) -> void:
+	var card := Rect2(1820.0, 258.0, 500.0, 612.0)
+	_draw_soft_shadow(card, 20.0, 0.30, Vector2(0.0, 14.0))
+	var poly := DrawUtil.rounded_rect(card, 20.0, 10)
+	draw_colored_polygon(poly, Color(0.97, 0.94, 0.88, 0.98))
+	draw_polyline(DrawUtil.closed(poly), Color(GOLD, 0.45), 1.5, true)
+	draw_rect(Rect2(card.position + Vector2(26.0, 0.0), Vector2(card.size.x - 52.0, 5.0)),
+		Color(GOLD, 0.88))
+	_text(Loc.t("运营简报 / DISPATCH", "DISPATCH"), card.position + Vector2(24.0, 40.0),
+		16, Color(MUTED, 0.85))
+	_text(menu_config.resource_title(), card.position + Vector2(24.0, 82.0), 34, INK)
+	_text_right(Loc.t("本配置最高 %d", "BEST %d") % menu_best,
+		card.end.x - 24.0, card.position.y + 56.0, 17, Color(MUTED, 0.82))
+	draw_line(Vector2(card.position.x + 24.0, card.position.y + 102.0),
+		Vector2(card.end.x - 24.0, card.position.y + 102.0), Color(INK, 0.10), 1.0, true)
+	var rows := [
+		{Loc.t("资源获取", "RESOURCES"): Loc.t("经典 · 周奖励", "Classic · weekly") if menu_config.base == "classic" else Loc.t("发展 · 金币商店", "Development · shop")},
+		{Loc.t("结束条件", "END"): Loc.t("无尽 · 不判负", "Endless · no fail") if menu_config.endless else Loc.t("普通 · 拥堵会结束", "Normal · overload ends")},
+		{Loc.t("开局条件", "START"): Loc.t("管理 · 40 站沙盘", "Manager · 40-station sandbox") if menu_config.manager else Loc.t("普通 · 城市逐步发展", "Normal · growing city")},
+		{Loc.t("评价指标", "METRIC"): menu_config.metric_label()},
+	]
+	var y := card.position.y + 138.0
+	for row in rows:
+		for key in row.keys():
+			_text(String(key), Vector2(card.position.x + 24.0, y), 16, Color(MUTED, 0.80))
+			_text(String(row[key]), Vector2(card.position.x + 24.0, y + 24.0), 21, INK)
+		y += 64.0
+	# 本局资源规则
+	var rule_rect := Rect2(card.position.x + 24.0, card.position.y + 392.0,
+		card.size.x - 48.0, 74.0)
+	var rule_poly := DrawUtil.rounded_rect(rule_rect, 13.0, 8)
+	draw_colored_polygon(rule_poly, Color(ACCENT if menu_config.is_development() else GOLD, 0.09))
+	_text(Loc.t("本局资源规则", "RUN ECONOMY"), rule_rect.position + Vector2(14.0, 22.0),
+		14, Color(MUTED, 0.85))
+	var economy := Loc.t("周奖励抽卡", "Weekly upgrade cards") if not menu_config.is_development() \
+		else Loc.t("送达赚金币 · 商店购买", "Earn coins · buy in shop")
+	_text(economy, rule_rect.position + Vector2(14.0, 48.0), 19, INK)
+	# 快捷键速查
+	var hint_y := card.position.y + 506.0
+	_text(Loc.t("操作速查", "KEY GUIDE"), Vector2(card.position.x + 24.0, hint_y - 26.0),
+		14, Color(MUTED, 0.72))
+	_text(Loc.t("1/2 资源   3/4 结束   5/6 开局", "1/2 resource   3/4 ending   5/6 start"),
+		Vector2(card.position.x + 24.0, hint_y), 16, Color(INK, 0.72))
+	_text(Loc.t("Enter 发车   T 教程    B 商店", "Enter depart   T tutorial   B shop"),
+		Vector2(card.position.x + 24.0, hint_y + 26.0), 16, Color(INK, 0.72))
+	_text(Loc.t("每日挑战 / 新手教程固定经典", "Daily & tutorial: classic rules"),
+		Vector2(card.position.x + 24.0, hint_y + 54.0), 15, Color(MUTED, 0.75))
+	# 底部线路色票
+	for i in mini(level.line_colors.size() if level != null else 0, 7):
+		_draw_capsule(Vector2(card.position.x + 36.0 + float(i) * 62.0,
+			card.end.y - 24.0), level.line_colors[i], 44.0, 12.0)
+
+
+## 底部命令条：每日挑战、教程、地图/排行榜入口，全部铺满宽度。
+func _draw_menu_bottom_bar(vp: Vector2) -> void:
+	var bar := Rect2(80.0, 896.0, vp.x - 160.0, 112.0)
+	_draw_soft_shadow(bar, 18.0, 0.26, Vector2(0.0, 9.0))
+	var poly := DrawUtil.rounded_rect(bar, 18.0, 10)
+	draw_colored_polygon(poly, Color(0.05, 0.065, 0.075, 0.72))
+	draw_polyline(DrawUtil.closed(poly), Color(1.0, 1.0, 1.0, 0.12), 1.2, true)
+	var mouse := get_global_mouse_position()
+	_daily_card_rect = Rect2(bar.position.x + 20.0, bar.position.y + 16.0, 286.0, 80.0)
+	_tutorial_card_rect = Rect2(bar.position.x + 322.0, bar.position.y + 16.0, 286.0, 80.0)
 	_draw_quick_config_card(_daily_card_rect, Loc.t("每日挑战", "Daily Challenge"),
 		Loc.t("经典规则 · 每天 1 次", "Classic rules · 1/day"), GOLD,
 		_daily_card_rect.has_point(mouse), false)
 	_draw_quick_config_card(_tutorial_card_rect, Loc.t("新手教程", "Tutorial"),
 		Loc.t("经典规则 · 12 步", "Classic rules · 12 steps"), TEAL,
 		_tutorial_card_rect.has_point(mouse), true)
-	_draw_departure_button(_menu_start_rect, Loc.t("发车", "DEPART"),
-		_menu_start_rect.has_point(mouse))
+	# 中间用一条迷你线路连接三个入口语境
+	var route_y := bar.position.y + 56.0
+	var route_left := bar.position.x + 670.0
+	var route_right := bar.position.x + 1260.0
+	draw_line(Vector2(route_left, route_y), Vector2(route_right, route_y),
+		Color(0.93, 0.89, 0.78, 0.20), 2.0, true)
+	for x in [route_left, (route_left + route_right) * 0.5, route_right]:
+		draw_circle(Vector2(x, route_y), 4.0, Color(PAPER, 0.70), true, -1.0, true)
+		draw_arc(Vector2(x, route_y), 4.0, 0.0, TAU, 20, Color(GOLD, 0.55), 1.2, true)
+	_text_centered(Loc.t("8 种组合 · 自由配置", "8 builds · configure freely"),
+		(route_left + route_right) * 0.5, route_y - 14.0, 16, Color(1.0, 1.0, 1.0, 0.48))
+	var menu_buttons := [
+		{"text": Loc.t("每日排行榜", "Daily board"), "action": "daily"},
+		{"text": Loc.t("地图大厅", "Map hall"), "action": "hall"},
+		{"text": Loc.t("地图排行榜", "Map ranks"), "action": "rank"},
+		{"text": Loc.t("地图编辑器", "Map editor"), "action": "editor"},
+	]
+	var button_w := 220.0
+	var button_gap := 14.0
+	var total_w := button_w * 4.0 + button_gap * 3.0
+	var start_x := bar.end.x - 20.0 - total_w
+	for i in menu_buttons.size():
+		var rect := Rect2(Vector2(start_x + float(i) * (button_w + button_gap),
+			bar.position.y + 16.0), Vector2(button_w, 80.0))
+		match String(menu_buttons[i]["action"]):
+			"daily": _daily_board_rect = rect
+			"hall": _map_hall_rect = rect
+			"rank": _map_rank_rect = rect
+			"editor": _editor_button_rect = rect
+		_draw_touch_button(rect, String(menu_buttons[i]["text"]), rect.has_point(mouse))
 
 
 func _draw_quick_config_card(rect: Rect2, title: String, desc: String, accent: Color,
