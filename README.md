@@ -111,7 +111,7 @@
 - **环线闭合段**：环线末站→首站的那一段也可以拖动、轻点翻转、拖入新站，或拖到端点站停留 0.8s 移出
 - **选中线路高亮**：正在画线/拖线段/重排某条线路时，该线所有车站都会用这条线的颜色描边，方便确认改的是哪条线
 - **环线双向行驶**：把车拖到环线上时，按“最近的站台”决定顺时针或逆时针；到达后保持该方向绕环，不再强制所有车同向
-- **重叠线路错开**：多条线走同一段时，每条线按线号沿法线横向错开约 6px；列车、车厢、端点手柄也跟随错开，末端圆形手柄额外加大错位，避免全部叠在一起
+- **重叠线路错开**：多条线走同一段时，每条线按线号沿法线横向错开约 6px；折点用两条偏移线的斜接交点，偏移后仍然只有水平 / 竖直 / 45°，不会出现轻微歪斜；列车、车厢、端点手柄也跟随错开，末端圆形手柄额外加大错位，避免全部叠在一起
 - **新站避边**：新车站生成区域在相机可见范围基础上再向内收缩（屏幕左右约 140px、底部约 90px），不再贴着屏幕/地图边缘生成
 - **夜晚地面变暗、河流不变色**：入夜后地面和地图外桌面变为深灰，河流保持白天的浅蓝色；HUD、线路、列车保持原色；地图名、时间、分数、底部提示在夜间自动切成浅色文字
 
@@ -392,7 +392,7 @@ $godot = "D:\Downloads\06_游戏与Flash资源\Godot_v4.7.2-stable_win64.exe\God
 ```powershell
 $godot = "D:\Downloads\06_游戏与Flash资源\Godot_v4.7.2-stable_win64.exe\Godot_v4.7.2-stable_win64_console.exe"
 & $godot --headless --path . --script res://tests/run_tests.gd
-# 期望输出：TESTS PASSED (844 checks)
+# 期望输出：TESTS PASSED (846 checks)
 ```
 
 覆盖：八向几何与弯曲翻转、弧长采样、网络增删、画线/撤销/重排/翻转/插站/停留移除手势、换乘寻路、
@@ -509,7 +509,7 @@ view/                     表现层（Node2D，只读模型）
 input/line_editor.gd      画线手势状态机（IDLE / DRAFT / REORDER / SEGMENT）+ Esc 设置信号
 ui/hud.gd                 资源/分数、周抽卡、换乘点选、模式菜单、暂停设置、结束遮罩（双语）
 tools/demo_setup.gd       截图用确定性布局
-tests/                    headless 测试（844 checks）
+tests/                    headless 测试（846 checks）
 export_presets.cfg        Windows Desktop 导出预设
 art/shaders/paper_grain.gdshader  极轻纸纹
 docs/设计方案.md           完整实现方案（机制拆解 / 架构 / 里程碑）

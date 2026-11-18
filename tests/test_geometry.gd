@@ -117,6 +117,8 @@ static func _test_line_render_offset(h: TestHarness) -> void:
 	var middle := LineGeometry.offset_points(points, LineGeometry.render_offset(1, 3))
 	var right := LineGeometry.offset_points(points, LineGeometry.render_offset(2, 3))
 	h.check(left[1].distance_to(right[1]) > 6.0, "多条重叠线路横向错开")
+	h.check(LineGeometry.is_octilinear(left), "偏移后仍是八向折线")
+	h.check(LineGeometry.is_octilinear(right), "右侧偏移仍保持水平/竖直/45°")
 	h.check(middle[1].distance_to(Vector2(300, 0)) < 0.01, "中间线路保持中心")
 	h.check(LineGeometry.offset_points(points, 0.0) == points, "单线不偏移")
 	var reversed := PackedVector2Array([Vector2(300, 300), Vector2(300, 0), Vector2(0, 0)])

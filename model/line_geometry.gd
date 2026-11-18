@@ -219,27 +219,47 @@ static func canonical_normal(direction: Vector2) -> Vector2:
 	return n
 
 
-## 按平均法线偏移整条折线；闭合折线保持首尾重合。
+## 按线段法线做斜接偏移；折点取两条偏移线的交点，保证偏移后的线段仍与原线平行
+## （也就是仍然只有水平 / 竖直 / 45° 三种方向）。
 static func offset_points(points: PackedVector2Array, amount: float) -> PackedVector2Array:
 	if points.size() < 2 or absf(amount) < 0.05:
 		return points
 	var closed := points[0].distance_to(points[points.size() - 1]) < 0.01
 	var count := points.size() - 1 if closed else points.size()
+	var segment_count := count if closed else count - 1
+	var normals: Array[Vector2] = []
+	for i in segment_count:
+		var next_i := (i + 1) % count if closed else i + 1
+		normals.append(canonical_normal(points[next_i] - points[i]))
 	var out := PackedVector2Array()
 	for i in count:
-		var previous := points[(i - 1 + count) % count] if closed \
-			else points[maxi(i - 1, 0)]
-		var following := points[(i + 1) % count] if closed \
-			else points[mini(i + 1, points.size() - 1)]
-		var n_previous := canonical_normal(points[i] - previous)
-		var n_following := canonical_normal(following - points[i])
-		var normal := n_previous + n_following
-		if normal.length_squared() < 0.000001:
-			normal = n_following if n_following.length_squared() > 0.0 else n_previous
-		if normal.length_squared() < 0.000001:
-			out.append(points[i])
+		var vertex := points[i]
+		# 开放折线的两个端点只用相邻那一段的法线
+		if not closed and i == 0:
+			out.append(vertex + normals[0] * amount)
+			continue
+		if not closed and i == count - 1:
+			out.append(vertex + normals[count - 2] * amount)
+			continue
+		var n_previous := normals[(i - 1 + count) % count]
+		var n_following := normals[i]
+		if n_previous.length_squared() < 0.000001:
+			out.append(vertex + n_following * amount)
+			continue
+		if n_following.length_squared() < 0.000001:
+			out.append(vertex + n_previous * amount)
+			continue
+		var miter := n_previous + n_following
+		if miter.length_squared() < 0.000001:
+			out.append(vertex + n_previous * amount)
+			continue
+		miter = miter.normalized()
+		var denom := miter.dot(n_following)
+		if absf(denom) < 0.001:
+			out.append(vertex + n_previous * amount)
 		else:
-			out.append(points[i] + normal.normalized() * amount)
+			# 两条偏移线的交点：vertex + miter * (amount / cos(夹角/2))
+			out.append(vertex + miter * (amount / denom))
 	if closed:
 		out.append(out[0])
 	return out
