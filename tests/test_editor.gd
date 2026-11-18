@@ -19,6 +19,8 @@ static func run(h: TestHarness) -> void:
 	_test_reconnect_cooldown(h)
 	_test_loop(h)
 	_test_loop_closing_segment(h)
+	_test_loop_hold_break(h)
+	_test_extend_start_keeps_train(h)
 
 
 static func _make(level: LevelData) -> Array:
@@ -137,6 +139,93 @@ static func _test_extend_from_handle(h: TestHarness) -> void:
 	h.check(line.stops[3] == d, "新站追加在末端")
 	editor.end_gesture(d.pos)
 	h.eq(editor.state, LineEditor.State.IDLE, "延伸后回到 IDLE")
+	editor.free()
+
+
+## 环线只有一个合并手柄：短按/拖动无效，长按 0.8s 才拆环。
+static func _test_loop_hold_break(h: TestHarness) -> void:
+	h.section("editor/loop_hold_break")
+	var level := LevelData.new()
+	var made := _make(level)
+	var network: MetroNetwork = made[0]
+	var editor: LineEditor = made[1]
+	var a := network.add_station(Vector2(200, 200), Shape.Kind.CIRCLE)
+	var b := network.add_station(Vector2(500, 200), Shape.Kind.TRIANGLE)
+	var c := network.add_station(Vector2(500, 500), Shape.Kind.SQUARE)
+	var line := network.create_line()
+	line.add_stop(a)
+	line.add_stop(b)
+	line.add_stop(c)
+	line.is_loop = true
+	line.rebuild()
+	network.touch()
+	var hp := editor._loop_handle_position(line)
+	h.eq(editor.begin_gesture(hp), true, "合并手柄可按下")
+	h.eq(editor.state, LineEditor.State.LOOP, "进入环线长按状态")
+	editor.advance(0.4)
+	h.check(line.is_loop, "0.4 秒还不够，环线保持")
+	editor.advance(0.5)
+	h.check(not line.is_loop, "长按 0.8 秒后拆环")
+	editor.end_gesture(hp)
+	h.eq(editor.state, LineEditor.State.IDLE, "拆环后回到 IDLE")
+
+	# 短按不拆环
+	line.is_loop = true
+	line.rebuild()
+	network.touch()
+	hp = editor._loop_handle_position(line)
+	editor.begin_gesture(hp)
+	editor.advance(0.2)
+	editor.end_gesture(hp)
+	h.check(line.is_loop, "短按合并手柄不会拆环")
+	editor.free()
+
+
+## 从起点延长一站时，列车应保持原来的物理位置，只整体平移新的前缀长度。
+static func _test_extend_start_keeps_train(h: TestHarness) -> void:
+	h.section("editor/extend_start_train")
+	var level := LevelData.new()
+	level.start_lines = 3
+	level.start_trains = 0
+	var network := MetroNetwork.new(level)
+	var a := network.add_station(Vector2(300, 300), Shape.Kind.CIRCLE)
+	var b := network.add_station(Vector2(700, 300), Shape.Kind.SQUARE)
+	var c := network.add_station(Vector2(700, 700), Shape.Kind.TRIANGLE)
+	var x := network.add_station(Vector2(300, 700), Shape.Kind.DIAMOND)
+	var line := network.create_line()
+	line.add_stop(a)
+	line.add_stop(b)
+	line.add_stop(c)
+	network.touch()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 2
+	var sim := Simulation.new(network, level, rng)
+	sim.auto_spawn = false
+	var train := Train.new()
+	train.line_id = line.id
+	train.line_version = line.version
+	train.dir = 1
+	train.dist = line.geometry.stop_offsets[1] + 120.0
+	train.stop_index = 1
+	train.target_index = 2
+	train.target_dist = line.geometry.stop_offsets[2]
+	train.state = Train.State.MOVING
+	train.refresh_capacity()
+	line.trains.append(train)
+	var old_dist := train.dist
+	var editor := LineEditor.new()
+	editor.setup(network, level, null)
+	editor.simulation = sim
+	var start_handle := line.geometry.handle_position(true)
+	editor.begin_gesture(start_handle)
+	editor.move_gesture(x.pos)
+	editor.end_gesture(x.pos)
+	h.eq(line.stops[0], x, "新站接在线路起点")
+	h.eq(line.stops[1], a, "旧首站后移一位")
+	sim.advance(Simulation.STEP)
+	var expected := old_dist + line.geometry.stop_offsets[1]
+	h.near(train.dist, expected, 5.0, "列车只平移新前缀长度，不会跳一整站")
+	h.eq(train.target_index, 3, "列车的下一站重新指向 C")
 	editor.free()
 
 

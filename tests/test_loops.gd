@@ -103,43 +103,53 @@ static func _test_trains(h: TestHarness) -> void:
 	h.check(not sim.is_over, "环线运行不会触发失败")
 
 
-## 接环处有两只分开的手柄：抓任一端都能把环打开并继续延伸。
+## 接环处只有一只合并手柄：长按 0.8s 拆环，之后才能从两端继续延伸。
 static func _test_handles(h: TestHarness) -> void:
 	h.section("loop/handles")
 	var level := _level()
 	var made := _make_loop(level)
 	var net: MetroNetwork = made[0]
 	var line: MetroLine = made[1]
-	var start_handle := line.geometry.handle_position(true)
-	var end_handle := line.geometry.handle_position(false)
-	h.check(start_handle.distance_to(end_handle) > 12.0,
-		"首端/末端手柄位置分开（相距 %.1f px）" % start_handle.distance_to(end_handle))
-
 	var editor := LineEditor.new()
 	editor.setup(net, level, null)
-	h.eq(editor.begin_gesture(end_handle), true, "环线末端手柄可抓取")
-	h.eq(editor.state, LineEditor.State.DRAFT, "抓住末端手柄进入延长状态")
+	var merged := editor._loop_handle_position(line)
+	h.eq(editor.begin_gesture(merged), true, "环线合并手柄可抓取")
+	h.eq(editor.state, LineEditor.State.LOOP, "合并手柄进入长按状态")
+	editor.advance(0.5)
+	h.check(line.is_loop, "不到 0.8 秒不会拆环")
+	editor.advance(0.4)
+	h.check(not line.is_loop, "长按 0.8 秒后拆环")
+	editor.end_gesture(merged)
+	h.eq(editor.state, LineEditor.State.IDLE, "拆环后回到 IDLE")
+	h.eq(line.stops.size(), 3, "拆环不会删除站点，只打开闭合段")
+
+	# 拆环后从末端继续延伸
+	var end_handle := line.geometry.handle_position(false)
+	h.eq(editor.begin_gesture(end_handle), true, "拆环后末端手柄可抓取")
+	h.eq(editor.state, LineEditor.State.DRAFT, "末端手柄进入延长状态")
 	var extra := net.add_station(Vector2(950, 650), Shape.Kind.CIRCLE)
 	editor.move_gesture(extra.pos)
-	h.check(not line.is_loop, "从末端延长后环线自动打开")
 	h.eq(line.stops.size(), 4, "打开环线后新增一站")
 	editor.end_gesture(extra.pos)
 	editor.free()
 
-	# 首端手柄：向起点方向延伸，同样打开环线
+	# 拆环后从首端延伸
 	var level2 := _level()
 	var made2 := _make_loop(level2)
 	var net2: MetroNetwork = made2[0]
 	var line2: MetroLine = made2[1]
-	var front := net2.add_station(Vector2(150, 150), Shape.Kind.SQUARE)
 	var editor2 := LineEditor.new()
 	editor2.setup(net2, level2, null)
+	var merged2 := editor2._loop_handle_position(line2)
+	editor2.begin_gesture(merged2)
+	editor2.advance(0.9)
+	editor2.end_gesture(merged2)
+	var front := net2.add_station(Vector2(150, 150), Shape.Kind.SQUARE)
 	var start_handle2 := line2.geometry.handle_position(true)
-	h.eq(editor2.begin_gesture(start_handle2), true, "环线首端手柄可抓取")
+	h.eq(editor2.begin_gesture(start_handle2), true, "拆环后首端手柄可抓取")
 	editor2.move_gesture(front.pos)
-	h.check(not line2.is_loop, "从首端延长同样打开环线")
 	h.eq(line2.stops.size(), 4, "首端方向新增一站")
-	h.check(line2.stops[0] == front, "新站插到起点")
+	h.eq(line2.stops[0], front, "新站插到起点")
 	editor2.end_gesture(front.pos)
 	editor2.free()
 

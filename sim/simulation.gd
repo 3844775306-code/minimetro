@@ -1286,7 +1286,11 @@ func remap_train(train: Train, line: MetroLine) -> void:
 func _remap_train(train: Train, line: MetroLine) -> void:
 	train.line_version = line.version
 	train.stop_actions.clear()
-	train.dist = clampf(train.dist, 0.0, line.geometry.total_length)
+	train.dist = _map_edited_distance(train.dist, line)
+	if line.is_loop and line.geometry.total_length > 0.001:
+		train.dist = fposmod(train.dist, line.geometry.total_length)
+	else:
+		train.dist = clampf(train.dist, 0.0, line.geometry.total_length)
 	var best := 0
 	var best_d := INF
 	for i in line.geometry.stop_offsets.size():
@@ -1295,8 +1299,119 @@ func _remap_train(train: Train, line: MetroLine) -> void:
 			best_d = d
 			best = i
 	train.stop_index = best
-	train.target_index = clampi(train.target_index, 0, line.stops.size() - 1)
-	train.target_dist = line.geometry.stop_offsets[train.target_index]
+	var next := _station_after_distance(line, train.dist, train.dir, best)
+	if next < 0:
+		next = best
+	train.target_index = next
+	train.target_dist = line.geometry.stop_offsets[next]
+	if line.is_loop and train.target_dist < train.dist:
+		train.target_dist += line.geometry.total_length
+
+
+## 线路被编辑后，把旧弧长位置映射到新几何上；优先按“同一对相邻站”映射，
+## 这样在首/尾延长一站时列车不会突然前进/后退一整站。
+func _map_edited_distance(old_dist: float, line: MetroLine) -> float:
+	var old_geometry := line.edit_legacy_geometry
+	var old_stops := line.edit_legacy_stops
+	if old_geometry == null or not old_geometry.is_drawable() or old_stops.size() < 2:
+		return old_dist
+	var old_offsets := old_geometry.stop_offsets
+	var old_total := old_geometry.total_length
+	var new_offsets := line.geometry.stop_offsets
+	for i in range(old_stops.size() - 1):
+		if old_offsets.size() <= i + 1:
+			continue
+		var a := old_offsets[i]
+		var b := old_offsets[i + 1]
+		if old_dist >= a - 0.5 and old_dist <= b + 0.5:
+			var mapped := _map_pair_fraction(old_stops[i], old_stops[i + 1],
+				old_dist, a, b, line)
+			if mapped >= 0.0:
+				return mapped
+	if old_geometry.is_loop_geometry and old_stops.size() >= 3:
+		var last := old_stops.size() - 1
+		if old_offsets.size() > last and old_dist >= old_offsets[last] - 0.5:
+			var mapped := _map_pair_fraction(old_stops[last], old_stops[0],
+				old_dist, old_offsets[last], old_total, line)
+			if mapped >= 0.0:
+				return mapped
+	# 中间插入/换序时没有完整对应段：退化为最近的旧站，再取新站偏移
+	var best_station: Station = null
+	var best_diff := INF
+	for i in old_stops.size():
+		if old_offsets.size() <= i:
+			continue
+		var diff := absf(old_offsets[i] - old_dist)
+		if diff < best_diff:
+			best_diff = diff
+			best_station = old_stops[i]
+	if best_station != null:
+		var idx := line.stops.find(best_station)
+		if idx >= 0 and new_offsets.size() > idx:
+			return new_offsets[idx]
+	return old_dist
+
+
+func _map_pair_fraction(old_a: Station, old_b: Station, old_dist: float,
+		old_start: float, old_end: float, line: MetroLine) -> float:
+	var span := old_end - old_start
+	if span <= 0.001:
+		return -1.0
+	var t := clampf((old_dist - old_start) / span, 0.0, 1.0)
+	var ia := line.stops.find(old_a)
+	var ib := line.stops.find(old_b)
+	if ia < 0 or ib < 0:
+		return -1.0
+	var new_offsets := line.geometry.stop_offsets
+	if new_offsets.size() <= maxi(ia, ib):
+		return -1.0
+	var size := line.stops.size()
+	var forward := ib == ia + 1
+	var reverse := ib == ia - 1
+	var loop_forward := line.is_loop and size >= 3 and ia == size - 1 and ib == 0
+	var loop_reverse := line.is_loop and size >= 3 and ib == size - 1 and ia == 0
+	if not (forward or reverse or loop_forward or loop_reverse):
+		return -1.0
+	if reverse or loop_reverse:
+		t = 1.0 - t
+	var na := new_offsets[ia]
+	var nb := new_offsets[ib]
+	if loop_forward and nb < na:
+		nb += line.geometry.total_length
+	elif loop_reverse and na < nb:
+		na += line.geometry.total_length
+	return na + (nb - na) * t
+
+
+## 到下一停靠站的索引；列车正好在站上时按方向取真正的下一站。
+func _station_after_distance(line: MetroLine, dist: float, dir: int, nearest: int) -> int:
+	var offsets := line.geometry.stop_offsets
+	var total := line.geometry.total_length
+	if offsets.is_empty():
+		return -1
+	if line.is_loop and total > 0.001:
+		if nearest >= 0 and absf(offsets[nearest] - dist) <= 1.0:
+			return _next_station_index(line, nearest, dir)
+		var best := nearest
+		var best_gap := INF
+		for i in offsets.size():
+			var gap := fposmod(offsets[i] - dist, total) if dir >= 0 \
+				else fposmod(dist - offsets[i], total)
+			if gap > 1.0 and gap < best_gap:
+				best_gap = gap
+				best = i
+		return best
+	if nearest >= 0 and absf(offsets[nearest] - dist) <= 1.0:
+		return _next_station_index(line, nearest, dir)
+	if dir >= 0:
+		for i in offsets.size():
+			if offsets[i] > dist + 1.0:
+				return i
+		return offsets.size() - 1
+	for i in range(offsets.size() - 1, -1, -1):
+		if offsets[i] < dist - 1.0:
+			return i
+	return 0
 
 
 # ---------------------------------------------------------------------------

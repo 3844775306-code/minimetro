@@ -19,7 +19,7 @@ signal toast_requested(message: String)
 ## 没有手势在进行时按 Esc：交给外层打开暂停/设置菜单。
 signal settings_requested
 
-enum State { IDLE, DRAFT, REORDER, SEGMENT, TRAIN, CARRIAGE, STOCK }
+enum State { IDLE, DRAFT, REORDER, SEGMENT, TRAIN, CARRIAGE, STOCK, LOOP }
 
 signal stock_drop_requested(kind: String, pos: Vector2)
 
@@ -81,6 +81,11 @@ var _stock_kind := ""
 var _stock_hover_line: MetroLine = null
 var _stock_hover_station: Station = null
 var _stock_hover_train: Train = null
+
+## 环线合并手柄：只有长按才会拆环，普通点击/拖动不改变线路
+var _loop_hold_line: MetroLine = null
+var _loop_hold_time := 0.0
+var _loop_hold_broken := false
 
 var _hover_dwell := 0.0
 var _dwell_station: Station = null
@@ -145,6 +150,10 @@ func advance(delta: float) -> void:
 		else:
 			_removal_cooldowns[key] = remaining
 	_update_dwell(delta)
+	if state == State.LOOP and _loop_hold_line != null and not _loop_hold_broken:
+		_loop_hold_time += delta
+		if _loop_hold_time >= dwell_remove_time:
+			_break_loop_hold()
 	_request_redraw()
 
 
@@ -196,6 +205,9 @@ func begin_gesture(pos: Vector2) -> bool:
 
 	var handle_line := _handle_at(pos)
 	if handle_line != null:
+		if handle_line.is_loop:
+			_begin_loop_hold(handle_line)
+			return true
 		_begin_extend(handle_line)
 		return true
 
@@ -279,12 +291,24 @@ func end_gesture(pos: Vector2) -> void:
 				_move_carriage(_fleet_train, _fleet_target_train)
 		State.STOCK:
 			stock_drop_requested.emit(_stock_kind, pos)
+		State.LOOP:
+			if not _loop_hold_broken:
+				_drop_pending_undo()
 	_reset_gesture()
 	_request_redraw()
 
 
 func cancel_gesture() -> void:
 	if state == State.SEGMENT:
+		_dragging = false
+		_reset_gesture()
+		_request_redraw()
+		return
+	if state == State.LOOP:
+		if _loop_hold_broken:
+			_restore_pending_undo()
+		else:
+			_drop_pending_undo()
 		_dragging = false
 		_reset_gesture()
 		_request_redraw()
@@ -337,6 +361,27 @@ func _begin_extend(line: MetroLine) -> void:
 	_draft_at_start = _handle_at_start
 	_draft_base_len = line.stops.size()
 	state = State.DRAFT
+
+
+## 环线只有一个合并手柄：按下后只开始计时，0.8 秒后才拆环。
+func _begin_loop_hold(line: MetroLine) -> void:
+	_push_undo()
+	_loop_hold_line = line
+	_loop_hold_time = 0.0
+	_loop_hold_broken = false
+	state = State.LOOP
+
+
+func _break_loop_hold() -> void:
+	if _loop_hold_line == null or _loop_hold_broken:
+		return
+	_loop_hold_broken = true
+	_gesture_dirty = true
+	_loop_hold_line.is_loop = false
+	_loop_hold_line.rebuild()
+	network.touch()
+	toast_requested.emit(Loc.t("环线已拆开", "Loop opened"))
+	_request_redraw()
 
 
 func _begin_reorder(line: MetroLine, st: Station) -> void:
@@ -528,6 +573,8 @@ func selected_line() -> MetroLine:
 			return _reorder_line
 		State.SEGMENT:
 			return _segment_line
+		State.LOOP:
+			return _loop_hold_line
 		_:
 			return null
 
@@ -958,12 +1005,22 @@ func _handle_at(pos: Vector2) -> MetroLine:
 	for line in network.lines:
 		if line.stops.size() < 2:
 			continue
+		if line.is_loop:
+			if pos.distance_to(_loop_handle_position(line)) <= HANDLE_HIT_RADIUS:
+				_handle_at_start = false
+				return line
+			continue
 		for at_start in [true, false]:
 			var hp := _handle_world_position(line, at_start)
 			if pos.distance_to(hp) <= HANDLE_HIT_RADIUS:
 				_handle_at_start = at_start
 				return line
 	return null
+
+
+## 环线首末手柄合并到接环处，只保留一个；长按才拆环。
+func _loop_handle_position(line: MetroLine) -> Vector2:
+	return (_handle_world_position(line, true) + _handle_world_position(line, false)) * 0.5
 
 
 func _handle_world_position(line: MetroLine, at_start: bool) -> Vector2:
@@ -1099,6 +1156,9 @@ func _reset_gesture() -> void:
 	_stock_hover_train = null
 	_hover_dwell = 0.0
 	_dwell_station = null
+	_loop_hold_line = null
+	_loop_hold_time = 0.0
+	_loop_hold_broken = false
 	_gesture_dirty = false
 	_hover_after_change()
 
@@ -1222,13 +1282,20 @@ func _draw_endpoint_handles() -> void:
 	for line in network.lines:
 		if line.stops.size() < 2:
 			continue
+		if line.is_loop:
+			var loop_hp := _loop_handle_position(line)
+			draw_circle(loop_hp, 9.5, Color.WHITE, true, -1.0, true)
+			draw_arc(loop_hp, 9.5, 0.0, TAU, 32, Color(line.color, 0.95), 3.5, true)
+			# 合并手柄的长按进度环
+			if _loop_hold_line == line and not _loop_hold_broken and _loop_hold_time > 0.0:
+				var t: float = clampf(_loop_hold_time / dwell_remove_time, 0.0, 1.0)
+				draw_arc(loop_hp, 16.0, -PI * 0.5, -PI * 0.5 + TAU * t, 40,
+					Color(0.84, 0.27, 0.27, 0.95), 4.0, true)
+			continue
 		for at_start in [true, false]:
 			var hp := _handle_world_position(line, at_start)
 			draw_circle(hp, 9.5, Color.WHITE, true, -1.0, true)
 			draw_arc(hp, 9.5, 0.0, TAU, 32, Color(line.color, 0.95), 3.5, true)
-			if line.is_loop:
-				# 环线的首末手柄落在接环处：中心小点区分"起点/终点"
-				draw_circle(hp, 2.6, Color(line.color, 0.9), true, -1.0, true)
 
 
 ## 不在场景树里时（单元测试直接 new 出来）跳过重绘请求。
