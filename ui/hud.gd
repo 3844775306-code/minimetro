@@ -63,6 +63,10 @@ var week_cards: Array = []
 var _card_rects: Array[Rect2] = []
 
 var mode_menu := false
+## 启动动画：只在本次启动第一次进入模式菜单时播放
+var startup_intro_active := false
+var startup_intro_time := 0.0
+const STARTUP_INTRO_DURATION := 2.4
 var mode_bests := {}
 var _mode_rects: Array[Rect2] = []
 var _editor_button_rect := Rect2()
@@ -283,8 +287,25 @@ func _on_name_edit_submitted(text: String) -> void:
 func _process(delta: float) -> void:
 	if toast_left > 0.0:
 		toast_left = maxf(0.0, toast_left - delta)
+	if startup_intro_active:
+		startup_intro_time += delta
+		if startup_intro_time >= STARTUP_INTRO_DURATION:
+			startup_intro_active = false
 	if not mode_menu and not paused:
 		hint_left = maxf(0.0, hint_left - delta)
+	queue_redraw()
+
+
+## 播放一次启动动画；点击/按键由 Main 调用 skip_startup_intro() 跳过。
+func start_startup_intro() -> void:
+	startup_intro_active = true
+	startup_intro_time = 0.0
+	queue_redraw()
+
+
+func skip_startup_intro() -> void:
+	startup_intro_active = false
+	startup_intro_time = STARTUP_INTRO_DURATION
 	queue_redraw()
 
 
@@ -292,6 +313,12 @@ func _draw() -> void:
 	if font == null or level == null:
 		return
 	var vp := get_viewport_rect().size
+	if startup_intro_active:
+		# 先画菜单，再让启动动画淡出，最后一帧自然接到模式选择
+		if mode_menu:
+			_draw_mode_menu(vp)
+		_draw_startup_intro(vp)
+		return
 	if not mode_menu:
 		_draw_game_hud(vp)
 	if tutorial_active:
@@ -1378,6 +1405,105 @@ func _draw_accent_rule(center: Vector2, width: float, color: Color = ACCENT) -> 
 	draw_line(center - Vector2(width * 0.5, 0.0), center + Vector2(width * 0.5, 0.0),
 		Color(color, 0.85), 3.0, true)
 	draw_circle(center + Vector2(width * 0.5 + 9.0, 0.0), 2.2, Color(color, 0.7), true, -1.0, true)
+
+
+## 启动动画：一条线路先被"画"出来，列车沿线路驶入，标题像站牌一样亮起。
+func _draw_startup_intro(vp: Vector2) -> void:
+	var t := clampf(startup_intro_time / STARTUP_INTRO_DURATION, 0.0, 1.0)
+	var alpha := 1.0 - smoothstep(0.84, 1.0, t)
+	var cx := vp.x * 0.5
+	var cy := vp.y * 0.5
+	draw_rect(Rect2(Vector2.ZERO, vp), Color("#111518", alpha))
+	# 中心暖光与低对比度网格
+	for i in 4:
+		draw_circle(Vector2(cx, cy - 40.0), 240.0 + float(i) * 120.0,
+			Color(ACCENT, (0.026 - float(i) * 0.005) * alpha), true, -1.0, true)
+	for i in 7:
+		var gy := fmod(float(i) * 190.0 + t * 8.0, vp.y + 120.0) - 60.0
+		draw_line(Vector2(0.0, gy), Vector2(vp.x, gy), Color(1.0, 1.0, 1.0, 0.028 * alpha), 1.0, true)
+
+	var reveal := smoothstep(0.06, 0.64, t)
+	var route := PackedVector2Array([
+		Vector2(vp.x * 0.05, vp.y * 0.75),
+		Vector2(vp.x * 0.23, vp.y * 0.75),
+		Vector2(vp.x * 0.34, vp.y * 0.63),
+		Vector2(vp.x * 0.58, vp.y * 0.63),
+		Vector2(vp.x * 0.69, vp.y * 0.75),
+		Vector2(vp.x * 0.95, vp.y * 0.75),
+	])
+	var colors := [ACCENT, TEAL, GOLD, ACCENT, TEAL]
+	var total := 0.0
+	for i in range(route.size() - 1):
+		total += route[i].distance_to(route[i + 1])
+	var remaining := total * reveal
+	var cumulative := 0.0
+	for i in range(route.size() - 1):
+		var a := route[i]
+		var b := route[i + 1]
+		var seg_len := a.distance_to(b)
+		var color: Color = colors[i % colors.size()]
+		if remaining > 0.01 and seg_len > 0.01:
+			var take := minf(seg_len, remaining)
+			var partial := a.lerp(b, take / seg_len)
+			draw_line(a, partial, Color(color, 0.13 * alpha), 30.0, true)
+			draw_line(a, partial, Color(color, 0.92 * alpha), 8.0, true)
+			draw_line(a, partial, Color(1.0, 1.0, 1.0, 0.38 * alpha), 2.0, true)
+		cumulative += seg_len
+		if reveal * total >= cumulative - 1.0:
+			draw_circle(b, 10.0, Color(PAPER, alpha), true, -1.0, true)
+			draw_arc(b, 10.0, 0.0, TAU, 32, Color(color, alpha), 3.5, true)
+		remaining -= seg_len
+	# 起点站也画出来
+	if reveal > 0.01:
+		draw_circle(route[0], 10.0, Color(PAPER, alpha), true, -1.0, true)
+		draw_arc(route[0], 10.0, 0.0, TAU, 32, Color(ACCENT, alpha), 3.5, true)
+
+	# 车头沿线行驶
+	if reveal > 0.02:
+		var target_len := total * reveal
+		var walked := 0.0
+		for i in range(route.size() - 1):
+			var a := route[i]
+			var b := route[i + 1]
+			var seg_len := a.distance_to(b)
+			if walked + seg_len >= target_len:
+				var local := 0.0 if seg_len <= 0.01 else (target_len - walked) / seg_len
+				var head := a.lerp(b, clampf(local, 0.0, 1.0))
+				var angle := (b - a).angle()
+				draw_circle(head, 20.0, Color(ACCENT, 0.09 * alpha), true, -1.0, true)
+				draw_set_transform(head, angle)
+				_draw_capsule(Vector2.ZERO, Color(PAPER, alpha), 62.0, 30.0)
+				_draw_capsule(Vector2.ZERO, Color(ACCENT, alpha), 54.0, 23.0)
+				draw_line(Vector2(-15.0, 0.0), Vector2(15.0, 0.0),
+					Color(1.0, 1.0, 1.0, 0.55 * alpha), 2.0, true)
+				draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+				break
+			walked += seg_len
+
+	var title_ease := smoothstep(0.16, 0.48, t)
+	var title_y := cy - 58.0 + (1.0 - title_ease) * 26.0
+	var title_alpha := title_ease * alpha
+	_text_tracked_centered("MINI METRO", cx + 2.0, title_y + 2.0, 76,
+		Color(0.0, 0.0, 0.0, 0.30 * title_alpha), 11.0)
+	_text_tracked_centered("MINI METRO", cx, title_y, 76,
+		Color(1.0, 1.0, 1.0, 0.98 * title_alpha), 11.0)
+	var rule_w := 190.0 * smoothstep(0.30, 0.55, t)
+	if rule_w > 0.5:
+		draw_line(Vector2(cx - rule_w * 0.5, cy + 22.0), Vector2(cx + rule_w * 0.5, cy + 22.0),
+			Color(GOLD, 0.8 * alpha), 2.5, true)
+	var sub_alpha := smoothstep(0.42, 0.62, t) * alpha
+	_text_centered(Loc.t("纸感地铁调度", "A PAPER METRO"), cx, cy + 60.0, 23,
+		Color(0.96, 0.80, 0.56, 0.85 * sub_alpha))
+
+	# 底部进度条与状态文案
+	var bar_y := vp.y - 104.0
+	var bar_w := 360.0
+	draw_rect(Rect2(cx - bar_w * 0.5, bar_y, bar_w, 2.0), Color(1.0, 1.0, 1.0, 0.10 * alpha))
+	draw_rect(Rect2(cx - bar_w * 0.5, bar_y, bar_w * t, 2.0), Color(GOLD, 0.85 * alpha))
+	_text_centered(Loc.t("正在铺开线路图", "Laying out the lines"), cx, bar_y - 18.0, 18,
+		Color(1.0, 1.0, 1.0, 0.44 * alpha))
+	_text_centered(Loc.t("点击或按键跳过", "Click or press any key to skip"), cx,
+		bar_y + 24.0, 15, Color(1.0, 1.0, 1.0, 0.26 * alpha))
 
 
 ## 模式菜单背景的呼吸路径与光晕。

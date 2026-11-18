@@ -103,10 +103,10 @@ static func _test_apply_line(h: TestHarness) -> void:
 	var net := _make_network(level)
 	var sim := _make_sim(net, level)
 	var before := level.start_lines
-	var carriages_before := sim.inventory_carriages
+	var trains_before := sim.inventory_trains
 	sim.apply_upgrade("line")
 	h.eq(level.start_lines, before + 1, "新线路 +1")
-	h.eq(sim.inventory_carriages, carriages_before + 1, "线路奖励额外送 1 节车厢")
+	h.eq(sim.inventory_trains, trains_before + 1, "线路奖励附赠 1 列车")
 	h.eq(net.available_lines(), level.start_lines - net.lines.size(), "可用线路数同步")
 
 

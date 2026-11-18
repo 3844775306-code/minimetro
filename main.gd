@@ -3,7 +3,7 @@ extends Node2D
 ##
 ## 命令行参数（放在 `--` 之后）：
 ##   --demo            确定性布局 + 3 条线路 + 预置乘客（截图/演示用）
-##   --pose=draft|insert|riders|interchange|pick|overload|gameover|week|settings|menu
+##   --pose=draft|insert|riders|interchange|pick|overload|gameover|week|settings|menu|intro
 ##   --mode=classic|endless|daily   直接以指定模式开局（跳过模式菜单）
 ##   --seed=12345      指定随机种子
 ##   --smoke=600       无渲染跑 N 个 tick 后打印状态并退出
@@ -72,6 +72,11 @@ func _ready() -> void:
 		editor.set_process_unhandled_input(false)
 		_refresh_mode_bests()
 		hud.show_mode_menu()
+		if _pose == "intro":
+			hud.start_startup_intro()
+		elif not Game.intro_played and _shot_path == "" and _smoke_ticks == 0:
+			Game.intro_played = true
+			hud.start_startup_intro()
 		match _open_arg:
 			"daily":
 				_open_daily_leaderboard()
@@ -160,8 +165,8 @@ func _process(delta: float) -> void:
 
 func _resolve_run() -> void:
 	var direct := _demo or _shot_path != "" or _smoke_ticks > 0 \
-		or (_pose != "" and _pose != "menu") or _mode_arg >= 0
-	if _pose == "menu":
+		or (_pose != "" and _pose != "menu" and _pose != "intro") or _mode_arg >= 0
+	if _pose in ["menu", "intro"]:
 		direct = false
 	if _city_arg != "":
 		Game.pending_city = _city_arg
@@ -443,6 +448,13 @@ func _input(event: InputEvent) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if hud != null and hud.startup_intro_active:
+		# 动画期间吞掉输入；任意点击/按键跳过，避免误触后面的模式卡
+		if (event is InputEventKey and event.pressed and not event.echo) \
+				or (event is InputEventMouseButton and event.pressed):
+			hud.skip_startup_intro()
+			get_viewport().set_input_as_handled()
+		return
 	if hud != null and hud.line_cancel_id >= 0:
 		if event is InputEventKey and event.pressed and not event.echo \
 				and event.keycode == KEY_ESCAPE:

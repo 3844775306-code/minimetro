@@ -133,7 +133,7 @@ Web 版使用 Godot Compatibility 渲染器、无多线程导出，可直接在�
 - 列车沿线往返、端点掉头、到站停靠；**车头**（纸色鼻锥 + 驾驶室 + 挡风玻璃 + 车灯）指示行进方向；**车厢是同样式圆角胶囊、没有车头**，沿线路弧长挂在车尾，转弯时会跟着线路弯而不是直着飘出去；车厢内也会逐个画出乘客图标
 - 乘客按目的地形状生成、围绕站点排队、上车 / 换乘 / 到站送达计分；**选车时会综合评分**：线路剩余代价（经过站数、换乘次数）+ 其他符合方向列车的**沿线弧长距离**（不是两点直线距离）；环线上如果首选方向的列车太远，乘客会改坐已经到站的反方向列车
 - 站点等待超容量（6，换乘站 12）→ 红色超载计时环，30s 不缓解 → 拥堵失控，`R` 重开；换乘枢纽上下客更快（**每人 0.3s**，普通站 0.5s）
-- **每周抽卡**：新线路 / 列车 / 新干线 / 车厢 / 桥梁隧道 / 换乘中心，二选一；选择新线路会额外获得 1 节车厢，且前几周抽到新线路的权重最高；列车、新干线、车厢、换乘中心会进入左上角库存，拖到地图上使用
+- **每周抽卡**：新线路 / 列车 / 新干线 / 车厢 / 桥梁隧道 / 换乘中心，二选一；选择新线路会附赠 1 列车，且前几周抽到新线路的权重最高；列车、新干线、车厢、换乘中心会进入左上角库存，拖到地图上使用
 - **新干线**：奖励卡「新干线」给一列最高速为普通列车 **2 倍** 的高速列车，车头更尖、白色速度线，入库后拖到线路上
 - **河道与桥隧**：跨河消耗额度，不足时拒绝接线；**同一段连续跨几条独立河流就消耗几座桥**（不是一段最多 1 座）；河道两岸都能生成站点，稀有菱形/星形站按权重出现；**跨河段的线路画成虚线**
 
@@ -181,9 +181,14 @@ Web 版使用 Godot Compatibility 渲染器、无多线程导出，可直接在�
 - **纸感城市图册**：地图保留纸张底色与颗粒，UI 用暖纸卡片、信号红与黄铜色做层次，避免纯白平铺。
 - **站牌式标题**：模式页标题用拉开字距的大写站牌字，五种模式不是五张孤立卡片，而是串在同一条"选线"上的五个站台。
 - **电影感层次**：菜单、结算、设置、周升级都有暗角、柔和投影和顶部强调色；资源卡片、速度按钮和提示条统一为纸片/玻璃两种材质。
+- **启动动画**：深色站厅里一条线路自左向右铺开，列车沿线驶入，站牌标题亮起后淡入模式菜单；点击或按键可跳过。
 - **动效克制**：只保留菜单缓慢漂移的线路与星点、卡片悬停抬升和长按/超载的呼吸环，不影响读图。
 
 ## 截图
+
+### 启动动画（线路铺开 + 站牌标题）
+
+![启动动画](docs/images/intro.png)
 
 ### 开局：村庄（固定 3 座基础车站）
 
@@ -416,7 +421,7 @@ $godot = "D:\Downloads\06_游戏与Flash资源\Godot_v4.7.2-stable_win64.exe\God
 ```powershell
 $godot = "D:\Downloads\06_游戏与Flash资源\Godot_v4.7.2-stable_win64.exe\Godot_v4.7.2-stable_win64_console.exe"
 & $godot --headless --path . --script res://tests/run_tests.gd
-# 期望输出：TESTS PASSED (871 checks)
+# 期望输出：TESTS PASSED (896 checks)
 ```
 
 覆盖：八向几何与弯曲翻转、弧长采样、网络增删、画线/撤销/重排/翻转/插站/停留移除手势、换乘寻路、
@@ -445,7 +450,7 @@ Start-Process -FilePath $godot -ArgumentList '--path',$PWD.Path,'--',
 ```
 
 - `--demo`：确定性布局 11 站 + 3 条线路（含两处跨河）+ 预置乘客，并先跑 8 秒模拟
-- `--pose=menu|draft|insert|riders|interchange|pick|overload|gameover|week|settings`：摆出对应姿态
+- `--pose=menu|intro|draft|insert|riders|interchange|pick|overload|gameover|week|settings`：摆出对应姿态
 - `--mode=classic|endless|daily|manager`：跳过模式菜单直接以指定模式开局
 - `--city=paper|london|paris|newyork|berlin|tokyo|shanghai`：直接指定城市
 - `--lang=en`：临时切英文界面（不写存档）
@@ -533,7 +538,7 @@ view/                     表现层（Node2D，只读模型）
 input/line_editor.gd      画线手势状态机（IDLE / DRAFT / REORDER / SEGMENT）+ Esc 设置信号
 ui/hud.gd                 资源/分数、周抽卡、换乘点选、模式菜单、暂停设置、结束遮罩（双语）
 tools/demo_setup.gd       截图用确定性布局
-tests/                    headless 测试（871 checks）
+tests/                    headless 测试（896 checks）
 export_presets.cfg        Windows Desktop 导出预设
 art/shaders/paper_grain.gdshader  极轻纸纹
 docs/设计方案.md           完整实现方案（机制拆解 / 架构 / 里程碑）

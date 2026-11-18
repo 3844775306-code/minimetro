@@ -5,6 +5,9 @@ static func run(h: TestHarness) -> void:
 	_test_place_train_facing(h)
 	_test_legacy_line(h)
 	_test_legacy_unchanged(h)
+	_test_legacy_remove_endpoint(h)
+	_test_legacy_remove_middle(h)
+	_test_legacy_dwell_remove(h)
 	_test_legacy_flip(h)
 
 
@@ -130,6 +133,132 @@ static func _test_legacy_line(h: TestHarness) -> void:
 
 
 ## 只改弯曲方向（站序不变）也算"不一样的部分"：该段上的车要沿旧线收尾。
+## 删除首/末站时，正在“被删站—相邻站”这一段上的列车也必须沿旧线收尾，
+## 而不是瞬移到相邻站。这里覆盖靠近相邻站的边界位置。
+static func _test_legacy_remove_endpoint(h: TestHarness) -> void:
+	h.section("legacy/remove_endpoint")
+	for at_start in [true, false]:
+		for ratio in [0.25, 0.9]:
+			var level := _make_level(1)
+			var made := _make_line(level)
+			var net: MetroNetwork = made[0]
+			var line: MetroLine = made[1]
+			var sim := _make_sim(net, level)
+			sim.tick(Simulation.STEP)
+			var train: Train = line.trains[0]
+			var seg_index := 0 if at_start else 1
+			var seg_start := line.geometry.stop_offsets[seg_index]
+			var seg_end := line.geometry.stop_offsets[seg_index + 1]
+			train.legacy_active = false
+			train.dist = lerpf(seg_start, seg_end, ratio)
+			train.stop_index = seg_index
+			train.target_index = seg_index + 1
+			train.target_dist = seg_end
+			train.state = Train.State.MOVING
+			train.line_version = line.version
+			var old_dist := train.dist
+			var editor := LineEditor.new()
+			editor.setup(net, level, null)
+			editor._push_undo()
+			line.remove_stop_at(0 if at_start else line.stops.size() - 1)
+			net.touch()
+			sim.tick(Simulation.STEP)
+			h.check(train.legacy_active,
+				"删%s端站、列车在变化段 %.0f%% 处时进入旧线收尾" % [
+					"首" if at_start else "末", ratio * 100.0])
+			h.near(train.dist, old_dist, 0.1, "进入旧线收尾时列车位置不跳")
+			var finished := false
+			for i in 2400:
+				sim.tick(Simulation.STEP)
+				if not train.legacy_active:
+					finished = true
+					break
+			h.check(finished, "旧线收尾能结束")
+			h.check(train.line_version == line.version, "收尾后切回当前线路")
+			editor.free()
+
+
+## 删除中间站时，列车在它的任一侧变化段上都沿旧线收尾。
+static func _test_legacy_remove_middle(h: TestHarness) -> void:
+	h.section("legacy/remove_middle")
+	var level := _make_level(1)
+	var made := _make_line(level)
+	var net: MetroNetwork = made[0]
+	var line: MetroLine = made[1]
+	var sim := _make_sim(net, level)
+	sim.tick(Simulation.STEP)
+	var train: Train = line.trains[0]
+	for i in 30:
+		sim.tick(Simulation.STEP)
+	var old_dist := train.dist
+	var editor := LineEditor.new()
+	editor.setup(net, level, null)
+	editor._push_undo()
+	line.remove_stop_at(1)
+	net.touch()
+	sim.tick(Simulation.STEP)
+	h.check(train.legacy_active, "列车在 B 左侧变化段时进入旧线收尾")
+	h.near(train.dist, old_dist, 0.1, "旧线收尾位置不跳")
+	editor.free()
+
+	# 列车恰好停在将被删除的 B 站上：也不能直接重映射到相邻站
+	var level2 := _make_level(1)
+	var made2 := _make_line(level2)
+	var net2: MetroNetwork = made2[0]
+	var line2: MetroLine = made2[1]
+	var sim2 := _make_sim(net2, level2)
+	sim2.tick(Simulation.STEP)
+	var train2: Train = line2.trains[0]
+	train2.dist = line2.geometry.stop_offsets[1]
+	train2.stop_index = 1
+	train2.target_index = 2
+	train2.target_dist = line2.geometry.stop_offsets[2]
+	train2.state = Train.State.DWELL
+	train2.line_version = line2.version
+	var at_b := train2.dist
+	var editor2 := LineEditor.new()
+	editor2.setup(net2, level2, null)
+	editor2._push_undo()
+	line2.remove_stop_at(1)
+	net2.touch()
+	sim2.tick(Simulation.STEP)
+	h.check(train2.legacy_active, "列车停在被删站 B 上时进入旧线收尾")
+	h.near(train2.dist, at_b, 0.1, "停在被删站时也不瞬移")
+	editor2.free()
+
+
+## 真正走 LineEditor 的“停留移站”路径，确认删除瞬间不会把列车重映射。
+static func _test_legacy_dwell_remove(h: TestHarness) -> void:
+	h.section("legacy/dwell_remove")
+	var level := _make_level(1)
+	var made := _make_line(level)
+	var net: MetroNetwork = made[0]
+	var line: MetroLine = made[1]
+	var sim := _make_sim(net, level)
+	sim.tick(Simulation.STEP)
+	var train: Train = line.trains[0]
+	for i in 30:
+		sim.tick(Simulation.STEP)
+	var old_dist := train.dist
+	var editor := LineEditor.new()
+	editor.setup(net, level, null)
+	editor.begin_gesture(line.geometry.handle_position(false))
+	h.eq(editor.state, LineEditor.State.DRAFT, "从末端手柄进入延长状态")
+	editor._dwell_station = line.stops[1]
+	editor._remove_dwelled_station()
+	net.touch()
+	sim.tick(Simulation.STEP)
+	h.eq(line.stops.size(), 2, "停留移站后只剩两站")
+	h.check(train.legacy_active, "停留移站的同一帧就进入旧线收尾")
+	h.near(train.dist, old_dist, 0.1, "停留移站不会瞬移列车")
+	for i in 2400:
+		sim.tick(Simulation.STEP)
+		if not train.legacy_active:
+			break
+	h.check(not train.legacy_active, "旧线收尾能结束")
+	editor.free()
+
+
 static func _test_legacy_flip(h: TestHarness) -> void:
 	h.section("legacy/flip")
 	var level := _make_level(1)

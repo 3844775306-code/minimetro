@@ -542,8 +542,8 @@ func apply_upgrade(card_id: String) -> void:
 	match card_id:
 		"line":
 			level.start_lines = mini(level.start_lines + 1, level.max_lines)
-			# 选线路奖励时额外送 1 节车厢
-			inventory_carriages += 1
+			# 选线路奖励时附赠 1 列车（入库后拖到线路上使用）
+			inventory_trains += 1
 		"train":
 			inventory_trains += 1
 		"express":
@@ -1535,7 +1535,9 @@ func _start_legacy(train: Train, line: MetroLine) -> void:
 		line.stops, line.bend_flips, line.is_loop)
 	var found := Vector2(-1.0, -1.0)
 	for candidate in ranges:
-		if train.dist > candidate.x + 1.0 and train.dist < candidate.y - 1.0:
+		# 包含变化段两端：列车刚离开被删站/刚好在站上时也要沿旧线收尾，
+		# 否则会被重映射到相邻站，看起来像瞬移。
+		if train.dist >= candidate.x - 1.0 and train.dist <= candidate.y + 1.0:
 			found = candidate
 			break
 	if found.x < 0.0:

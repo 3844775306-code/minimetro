@@ -8,6 +8,8 @@ var run_seed: int = 0
 var rng := RandomNumberGenerator.new()
 var speed: float = 1.0
 var paused: bool = false
+## 本次程序启动是否已经播放过启动动画（返回菜单不重复播放）
+var intro_played: bool = false
 
 ## 当前模式（GameMode.Kind）、每日挑战日期、城市地图。
 var mode: int = GameMode.Kind.CLASSIC

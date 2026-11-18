@@ -8,8 +8,8 @@ const CARDS := {
 		"id": "line",
 		"title_zh": "新线路",
 		"title_en": "New Line",
-		"desc_zh": "可以再画一条线路，并额外获得 1 节车厢",
-		"desc_en": "Draw another line and get 1 extra carriage",
+		"desc_zh": "可以再画一条线路，并附赠 1 列车",
+		"desc_en": "Draw another line and get 1 extra train",
 		"weight": 3.0,
 	},
 	"train": {

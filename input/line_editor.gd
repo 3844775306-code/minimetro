@@ -540,6 +540,7 @@ func _remove_dwelled_station() -> void:
 	var idx := _draft_line.stops.find(target)
 	if idx < 0 or _draft_line.stops.size() <= 1:
 		return
+	_refresh_edit_legacy()
 	_draft_line.remove_stop_at(idx)
 	network.touch()
 	_mark_removed(_draft_line, target)
@@ -560,6 +561,7 @@ func _remove_segment_endpoint() -> void:
 	var idx := line.stops.find(target)
 	if idx < 0 or line.stops.size() <= 1:
 		return
+	_refresh_edit_legacy()
 	_push_undo()
 	line.remove_stop_at(idx)
 	network.touch()
@@ -1077,6 +1079,16 @@ func _refresh_hover(pos: Vector2) -> void:
 # ---------------------------------------------------------------------------
 # 快照 / 撤销
 # ---------------------------------------------------------------------------
+
+## 结构变更前刷新“编辑前几何”：旧线收尾应该对应刚刚这次删除/插入，
+## 而不是整个手势开始时的更早状态（否则列车可能找不到变化段而瞬移）。
+func _refresh_edit_legacy() -> void:
+	for line in network.lines:
+		line.edit_legacy_geometry = line.geometry.clone()
+		line.edit_legacy_stops = line.stops.duplicate()
+		line.edit_legacy_flips = line.bend_flips.duplicate()
+		line.edit_legacy_valid = line.stops.size() >= 2 and not line.geometry.points.is_empty()
+
 
 func _push_undo() -> void:
 	# 记录"本次编辑前"的线路几何：沿旧线路行驶的列车与浅色旧线都要用它
