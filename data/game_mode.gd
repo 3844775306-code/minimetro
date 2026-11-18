@@ -2,13 +2,14 @@ class_name GameMode
 extends RefCounted
 ## 模式定义：经典 / 无尽 / 每日挑战。
 
-enum Kind { CLASSIC, ENDLESS, DAILY, MANAGER }
+enum Kind { CLASSIC, ENDLESS, DAILY, MANAGER, TUTORIAL }
 
 const KEYS := {
 	Kind.CLASSIC: "classic",
 	Kind.ENDLESS: "endless",
 	Kind.DAILY: "daily",
 	Kind.MANAGER: "manager",
+	Kind.TUTORIAL: "tutorial",
 }
 
 
@@ -31,6 +32,8 @@ static func title(kind: int) -> String:
 			return Loc.t("每日挑战", "Daily Challenge")
 		Kind.MANAGER:
 			return Loc.t("管理", "Manager")
+		Kind.TUTORIAL:
+			return Loc.t("新手教程", "Tutorial")
 		_:
 			return Loc.t("经典", "Classic")
 
@@ -46,6 +49,9 @@ static func description(kind: int) -> String:
 		Kind.MANAGER:
 			return Loc.t("40站 · 7线5隧道 · 固定视角",
 				"40 stations · 7 lines · fixed camera")
+		Kind.TUTORIAL:
+			return Loc.t("画线 · 发车 · 加车厢 · 送客",
+				"Draw · run · add carriage · deliver")
 		_:
 			return Loc.t("拥堵失控即结束", "Overcrowding ends the run")
 

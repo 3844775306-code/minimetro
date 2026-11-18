@@ -38,6 +38,8 @@ func start_run(p_seed: int = 0, p_mode: int = -1) -> void:
 				official.append(candidate)
 		if not official.is_empty():
 			city_id = official[GameMode.daily_city_index(daily_date, official.size())].id
+	if mode == GameMode.Kind.TUTORIAL:
+		city_id = CityMaps.default_city_id()
 	city = CityMaps.get_city(city_id)
 	if mode == GameMode.Kind.DAILY and has_node("/root/Save"):
 		get_node("/root/Save").mark_daily_attempt(daily_date)
@@ -55,7 +57,23 @@ func start_run(p_seed: int = 0, p_mode: int = -1) -> void:
 	level.start_lines = city.start_lines
 	level.start_trains = city.start_trains
 	level.start_bridges = city.start_bridges
-	if mode == GameMode.Kind.MANAGER:
+	if mode == GameMode.Kind.TUTORIAL:
+		# 新手教程：三座固定站、无随机生成、无周结算、不会因拥堵结束
+		level.start_lines = 1
+		level.start_trains = 0
+		level.start_carriages = 0
+		level.start_bridges = 0
+		level.max_lines = 1
+		level.max_trains = 6
+		level.max_carriages = 1
+		level.max_stations = 3
+		level.no_station_spawn = true
+		level.station_spawn_interval = 999999.0
+		level.passenger_spawn_start = 999999.0
+		level.passenger_spawn_end = 999999.0
+		level.week_seconds = 999999.0
+		level.overload_grace = 999999.0
+	elif mode == GameMode.Kind.MANAGER:
 		# 管理模式：40 站、7 线、5 隧道的固定沙盘
 		level.manager_mode = true
 		level.no_station_spawn = true
@@ -65,8 +83,12 @@ func start_run(p_seed: int = 0, p_mode: int = -1) -> void:
 		level.max_trains = 7
 		level.station_margin = 150.0
 	level.rivers.clear()
-	for river in city.rivers:
-		level.rivers.append(river)
+	if mode == GameMode.Kind.TUTORIAL:
+		# 教程地图保持干净，避免第一局就被河流/桥梁规则打断
+		pass
+	else:
+		for river in city.rivers:
+			level.rivers.append(river)
 	network = MetroNetwork.new(level)
 	speed = 1.0
 	paused = false

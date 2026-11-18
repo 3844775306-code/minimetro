@@ -14,6 +14,10 @@ static func _test_daily(h: TestHarness) -> void:
 	h.eq(dates.size(), 7, "最近一周有 7 天")
 	h.eq(dates[0], Time.get_date_string_from_system(), "第一天是今天")
 	var board := Cloud.daily_leaderboard(dates[0], 8)
+	if board.is_empty():
+		# 新的一天本地缓存还没成绩时，先提交一条，避免测试依赖跨天缓存
+		Cloud.submit_daily(dates[0], 1)
+		board = Cloud.daily_leaderboard(dates[0], 8)
 	h.check(not board.is_empty(), "每日榜有成绩")
 	var sorted := true
 	for i in range(1, board.size()):

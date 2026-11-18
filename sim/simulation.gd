@@ -67,6 +67,8 @@ var _train_id: int = 0
 var _auto_lines := {}
 ## 玩家正在拖拽/编辑线路时，不要立刻剪掉"暂时不足两站"的草稿线。
 var edit_in_progress := false
+## 教程关闭自动配车，让玩家自己把库存列车拖上线路。
+var auto_assign_lines := true
 
 
 func _init(p_network: MetroNetwork, p_level: LevelData, p_rng: RandomNumberGenerator) -> void:
@@ -825,6 +827,8 @@ func _spawn_passenger() -> void:
 
 ## 只有"新开的线路"才会自动配 1 列车（且库存里还有车）；其余都要玩家手动拖。
 func _auto_assign_new_lines() -> void:
+	if not auto_assign_lines:
+		return
 	# 清理已经删除的线路标记
 	var live := {}
 	for line in network.lines:

@@ -66,6 +66,19 @@ var _daily_board_rect := Rect2()
 var _map_hall_rect := Rect2()
 var _map_rank_rect := Rect2()
 
+## 新手教程引导层
+var tutorial_active := false
+var tutorial_step := 0
+var tutorial_total := 5
+var tutorial_title := ""
+var tutorial_body := ""
+var tutorial_hint := ""
+var tutorial_complete := false
+var tutorial_highlights: Array[Vector2] = []
+var _tutorial_skip_rect := Rect2()
+var _tutorial_start_rect := Rect2()
+var _tutorial_menu_rect := Rect2()
+
 ## 排行榜 / 地图大厅浮层
 var leaderboard_open := false
 var leaderboard_title := ""
@@ -282,6 +295,8 @@ func _draw() -> void:
 	var vp := get_viewport_rect().size
 	if not mode_menu:
 		_draw_game_hud(vp)
+	if tutorial_active:
+		_draw_tutorial(vp)
 	if week_modal:
 		_draw_week(vp)
 	if settings_menu:
@@ -335,7 +350,7 @@ func _draw_game_hud(vp: Vector2) -> void:
 		), vp.x * 0.5, vp.y - 46.0, 22,
 			Color(1.0, 1.0, 1.0, 0.72) if is_night else Color(MUTED, 0.9 * hint_alpha))
 	if paused and not game_over and not settings_menu and not week_modal \
-			and not mode_menu and not ending_focus:
+			and not mode_menu and not ending_focus and not tutorial_active:
 		_text_centered(Loc.t("已暂停", "Paused"), vp.x * 0.5, vp.y * 0.5, 44,
 			Color(1.0, 1.0, 1.0, 0.85) if is_night else Color(INK, 0.75))
 		_text_centered(Loc.t("可继续修改线路、调动车厢", "You can still edit lines and move carriages"),
@@ -645,6 +660,67 @@ func _draw_week(vp: Vector2) -> void:
 # 模式选择 / 暂停设置
 # ---------------------------------------------------------------------------
 
+func tutorial_skip_at(pos: Vector2) -> bool:
+	return tutorial_active and not tutorial_complete and _tutorial_skip_rect.has_point(pos)
+
+
+func tutorial_start_at(pos: Vector2) -> bool:
+	return tutorial_complete and _tutorial_start_rect.has_point(pos)
+
+
+func tutorial_menu_at(pos: Vector2) -> bool:
+	return tutorial_complete and _tutorial_menu_rect.has_point(pos)
+
+
+func _draw_tutorial(vp: Vector2) -> void:
+	var cx := vp.x * 0.5
+	# 先给目标站点画呼吸环，帮助玩家找到要拖拽的位置
+	var canvas := get_viewport().get_canvas_transform()
+	var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 260.0)
+	for world_pos in tutorial_highlights:
+		var screen_pos: Vector2 = canvas * world_pos
+		draw_arc(screen_pos, 42.0 + pulse * 7.0, 0.0, TAU, 48,
+			Color(0.83, 0.32, 0.24, 0.28 + pulse * 0.25), 7.0, true)
+		draw_arc(screen_pos, 42.0 + pulse * 7.0, 0.0, TAU, 48,
+			Color(0.83, 0.32, 0.24, 0.85), 2.0, true)
+	if tutorial_complete:
+		draw_rect(Rect2(Vector2.ZERO, vp), Color(0.08, 0.09, 0.10, 0.60))
+		var end_panel := Rect2(cx - 430.0, vp.y * 0.5 - 190.0, 860.0, 380.0)
+		var poly := DrawUtil.rounded_rect(end_panel, 22.0, 10)
+		draw_colored_polygon(poly, Color(0.99, 0.97, 0.92, 0.98))
+		draw_polyline(DrawUtil.closed(poly), Color(0.72, 0.69, 0.62), 2.0, true)
+		_text_centered(Loc.t("教程完成", "Tutorial complete"), cx,
+			end_panel.position.y + 72.0, 44, INK)
+		_text_centered(Loc.t("你已经学会画线、发车、挂车厢和送客。",
+			"You can draw lines, run trains, add carriages and deliver."),
+			cx, end_panel.position.y + 120.0, 23, MUTED)
+		_text_centered(Loc.t("接下来试试经典模式，看看能送多少人？",
+			"Now try Classic and see how many you can deliver."),
+			cx, end_panel.position.y + 158.0, 21, Color(MUTED, 0.85))
+		_tutorial_start_rect = Rect2(cx - 310.0, end_panel.position.y + 220.0, 290.0, 78.0)
+		_tutorial_menu_rect = Rect2(cx + 20.0, end_panel.position.y + 220.0, 290.0, 78.0)
+		_draw_touch_button(_tutorial_start_rect,
+			Loc.t("开始经典模式", "Start Classic"), _tutorial_start_rect.has_point(get_global_mouse_position()))
+		_draw_touch_button(_tutorial_menu_rect,
+			Loc.t("返回模式选择", "Mode menu"), _tutorial_menu_rect.has_point(get_global_mouse_position()))
+		return
+	var panel := Rect2(cx - 430.0, 218.0, 860.0, 154.0)
+	var panel_poly := DrawUtil.rounded_rect(panel, 16.0, 8)
+	draw_colored_polygon(panel_poly, Color(0.99, 0.97, 0.92, 0.96))
+	draw_polyline(DrawUtil.closed(panel_poly), Color(0.72, 0.69, 0.62, 0.85), 1.6, true)
+	_text(Loc.t("教程 %d/%d", "Tutorial %d/%d") % [tutorial_step + 1, tutorial_total],
+		panel.position + Vector2(22.0, 30.0), 19, Color(0.83, 0.32, 0.24, 0.95))
+	_text_centered(tutorial_title, cx, panel.position.y + 50.0, 27, INK)
+	_text_centered(tutorial_body, cx, panel.position.y + 84.0, 21, Color(INK, 0.9))
+	_text_centered(tutorial_hint, cx, panel.position.y + 118.0, 18, MUTED)
+	_tutorial_skip_rect = Rect2(panel.end.x - 122.0, panel.position.y + 14.0, 102.0, 40.0)
+	var skip_poly := DrawUtil.rounded_rect(_tutorial_skip_rect, 9.0, 6)
+	draw_colored_polygon(skip_poly, Color(1.0, 1.0, 1.0, 0.65))
+	draw_polyline(DrawUtil.closed(skip_poly), Color(INK, 0.35), 1.2, true)
+	_text_centered(Loc.t("跳过", "Skip"), _tutorial_skip_rect.get_center().x,
+		_tutorial_skip_rect.position.y + 27.0, 18, Color(INK, 0.8))
+
+
 func _draw_mode_menu(vp: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.09, 0.10, 0.11, 0.62))
 	var cx := vp.x * 0.5
@@ -654,8 +730,8 @@ func _draw_mode_menu(vp: Vector2) -> void:
 		cx, cy - 250.0, 24, Color(1.0, 1.0, 1.0, 0.78))
 	_draw_city_selector(vp)
 	_draw_mode_cards(vp)
-	_text_centered(Loc.t("← → 切换城市 · 点击卡片或按 1 / 2 / 3 / 4 开始",
-		"Left / Right city · click a card or press 1 / 2 / 3 / 4"),
+	_text_centered(Loc.t("← → 切换城市 · 点击卡片或按 1 / 2 / 3 / 4 / 5 开始",
+		"Left / Right city · click a card or press 1 / 2 / 3 / 4 / 5"),
 		cx, cy + 350.0, 21, Color(1.0, 1.0, 1.0, 0.75))
 	# 底部入口：每日榜 / 地图大厅 / 地图排行 / 地图编辑器
 	var menu_buttons := [
@@ -955,7 +1031,7 @@ func _draw_mode_cards(vp: Vector2) -> void:
 	var top := cy + 8.0
 	_mode_rects = []
 	var mouse := get_global_mouse_position()
-	for i in 4:
+	for i in 5:
 		var rect := Rect2(start_x + float(i) * (width + gap), top, width, height)
 		_mode_rects.append(rect)
 		var kind := _mode_kind_at(i)
@@ -969,8 +1045,12 @@ func _draw_mode_cards(vp: Vector2) -> void:
 			rect.position.y + 100.0, 19, rect.size.x - 44.0, MUTED)
 		var mode_key := GameMode.key(kind)
 		var best := int(mode_bests.get(mode_key, 0))
-		_text_centered(Loc.t("最高 %d", "Best %d") % best,
-			rect.position.x + rect.size.x * 0.5, rect.position.y + 148.0, 20, Color(MUTED, 0.9))
+		if kind == GameMode.Kind.TUTORIAL:
+			_text_centered(Loc.t("从零开始", "Start here"),
+				rect.position.x + rect.size.x * 0.5, rect.position.y + 148.0, 20, Color(MUTED, 0.9))
+		else:
+			_text_centered(Loc.t("最高 %d", "Best %d") % best,
+				rect.position.x + rect.size.x * 0.5, rect.position.y + 148.0, 20, Color(MUTED, 0.9))
 		_text_centered(Loc.t("按 %d", "Press %d") % (i + 1),
 			rect.position.x + rect.size.x * 0.5, rect.position.y + rect.size.y - 16.0, 17,
 			Color(MUTED, 0.72))
@@ -984,6 +1064,8 @@ func _mode_kind_at(index: int) -> int:
 			return GameMode.Kind.DAILY
 		3:
 			return GameMode.Kind.MANAGER
+		4:
+			return GameMode.Kind.TUTORIAL
 		_:
 			return GameMode.Kind.CLASSIC
 

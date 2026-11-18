@@ -52,6 +52,10 @@ var _ending_station: Station = null
 var _ending_score := 0
 var _ending_best := 0
 var _ending_can_restart := true
+var _tutorial: TutorialController = null
+var _tutorial_station_a: Station = null
+var _tutorial_station_b: Station = null
+var _tutorial_station_c: Station = null
 
 
 func _ready() -> void:
@@ -126,6 +130,8 @@ func _process(delta: float) -> void:
 	if simulation != null and not Game.paused:
 		simulation.edit_in_progress = editor != null and editor.is_busy()
 		simulation.advance(delta, Game.speed)
+	if _tutorial != null and _tutorial.active:
+		_tutorial.update()
 	if camera != null and simulation != null:
 		if _ending_focus:
 			_ending_timer += delta
@@ -173,7 +179,7 @@ func _resolve_run() -> void:
 
 
 func _best_for_mode() -> int:
-	if Save == null:
+	if Save == null or Game.mode == GameMode.Kind.TUTORIAL:
 		return 0
 	if Game.is_daily():
 		return Save.daily_best(Game.daily_date)
@@ -319,7 +325,7 @@ func _cycle_city(direction: int) -> void:
 
 
 func _record_run_result() -> void:
-	if simulation == null or Save == null:
+	if simulation == null or Save == null or Game.mode == GameMode.Kind.TUTORIAL:
 		return
 	var score := simulation.score
 	if Game.is_daily():
@@ -363,6 +369,24 @@ func _back_to_menu() -> void:
 func _input(event: InputEvent) -> void:
 	if hud == null:
 		return
+	if hud.tutorial_active:
+		if event is InputEventMouseButton and event.pressed \
+				and event.button_index == MOUSE_BUTTON_LEFT:
+			var tutorial_pos: Vector2 = (event as InputEventMouseButton).position
+			if hud.tutorial_complete:
+				if hud.tutorial_start_at(tutorial_pos):
+					_start_after_tutorial()
+					get_viewport().set_input_as_handled()
+				elif hud.tutorial_menu_at(tutorial_pos):
+					_finish_tutorial_to_menu()
+					get_viewport().set_input_as_handled()
+				return
+			if hud.tutorial_skip_at(tutorial_pos):
+				_finish_tutorial_to_menu()
+				get_viewport().set_input_as_handled()
+				return
+		if hud.tutorial_complete:
+			return
 	if hud.line_cancel_id >= 0:
 		if event is InputEventMouseButton and event.pressed \
 				and event.button_index == MOUSE_BUTTON_LEFT:
@@ -503,6 +527,8 @@ func _handle_mode_menu_input(event: InputEvent) -> void:
 				_choose_mode(GameMode.Kind.DAILY)
 			KEY_4:
 				_choose_mode(GameMode.Kind.MANAGER)
+			KEY_5:
+				_choose_mode(GameMode.Kind.TUTORIAL)
 			KEY_E:
 				_open_map_editor()
 			KEY_D:
@@ -954,6 +980,8 @@ func _start_session() -> void:
 		DemoSetup.seed_passengers(network)
 		_advance_sim(480)
 		_apply_pose()
+	elif Game.mode == GameMode.Kind.TUTORIAL:
+		_setup_tutorial()
 	else:
 		if Game.mode == GameMode.Kind.MANAGER:
 			# 管理模式：固定 1x，一次性生成 40 座车站，之后不再生成
@@ -966,6 +994,69 @@ func _start_session() -> void:
 			# 开局固定三座基础车站：圆形（居民区）、三角形（商务区）、方形（车站）
 			simulation.spawner.spawn_rect = simulation.spawn_world_rect()
 			simulation.spawner.spawn_starting_trio(network)
+
+
+## 新手教程：三座固定位置的实际站台，不随机生成，不自动配车。
+func _setup_tutorial() -> void:
+	if camera != null:
+		camera.zoom = Vector2(2.0, 2.0)
+		simulation.current_camera_zoom = 2.0
+	_tutorial_station_a = network.add_station(Vector2(920, 600), Shape.Kind.CIRCLE)
+	_tutorial_station_b = network.add_station(Vector2(1480, 600), Shape.Kind.SQUARE)
+	_tutorial_station_c = network.add_station(Vector2(1200, 790), Shape.Kind.TRIANGLE)
+	network.touch()
+	_tutorial = TutorialController.new()
+	_tutorial.setup(network, simulation, _tutorial_station_a,
+		_tutorial_station_b, _tutorial_station_c)
+	_tutorial.step_changed.connect(_on_tutorial_step_changed)
+	_tutorial.finished.connect(_on_tutorial_finished)
+	if hud != null:
+		hud.map_name = Loc.t("新手教程", "Tutorial")
+	_refresh_tutorial_hud()
+
+
+func _on_tutorial_step_changed(_index: int) -> void:
+	_refresh_tutorial_hud()
+
+
+func _refresh_tutorial_hud() -> void:
+	if hud == null or _tutorial == null:
+		return
+	hud.tutorial_active = true
+	hud.tutorial_complete = _tutorial.completed
+	hud.tutorial_step = _tutorial.step
+	hud.tutorial_total = TutorialController.TOTAL_STEPS
+	hud.tutorial_title = _tutorial.title()
+	hud.tutorial_body = _tutorial.body()
+	hud.tutorial_hint = _tutorial.hint()
+	hud.tutorial_highlights = _tutorial.highlights()
+	hud.queue_redraw()
+
+
+func _on_tutorial_finished() -> void:
+	Game.paused = true
+	if editor != null:
+		editor.set_process_unhandled_input(false)
+	_refresh_tutorial_hud()
+
+
+func _finish_tutorial_to_menu() -> void:
+	Game.paused = false
+	_tutorial = null
+	if hud != null:
+		hud.tutorial_active = false
+	Game.pending_mode = -1
+	get_tree().reload_current_scene()
+
+
+func _start_after_tutorial() -> void:
+	Game.paused = false
+	_tutorial = null
+	if hud != null:
+		hud.tutorial_active = false
+	Game.pending_mode = GameMode.Kind.CLASSIC
+	Game.pending_city = Game.city_id
+	get_tree().reload_current_scene()
 
 
 func _apply_pose() -> void:
