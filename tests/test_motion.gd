@@ -9,6 +9,7 @@ static func run(h: TestHarness) -> void:
 	_test_dwell_proportional(h)
 	_test_curve_limit(h)
 	_test_near_line_marker(h)
+	_test_carriage_follows_line(h)
 
 
 ## 车站尺寸与列车速度整体下调 40%（本轮手感调整）。
@@ -225,3 +226,34 @@ static func _test_near_line_marker(h: TestHarness) -> void:
 	h.check(found_near, "20px 内的近线站台有标记")
 	h.check(not found_far, "超过 20px 的站台不再标记")
 	h.check(not found_on, "已在线上的站台不会被标记为未接入")
+
+
+## 车厢必须沿线路弧长采样：车头刚过弯时，车厢应还在上一段直线上，而不是沿车头切线飘出去。
+static func _test_carriage_follows_line(h: TestHarness) -> void:
+	h.section("motion/carriage_follows_line")
+	var level := _make_level()
+	var net := MetroNetwork.new(level)
+	var a := net.add_station(Vector2(100, 100), Shape.Kind.CIRCLE)
+	var b := net.add_station(Vector2(500, 100), Shape.Kind.SQUARE)
+	var c := net.add_station(Vector2(500, 500), Shape.Kind.TRIANGLE)
+	var line := net.create_line()
+	line.add_stop(a)
+	line.add_stop(b)
+	line.add_stop(c)
+	net.touch()
+	var train := Train.new()
+	train.line_id = line.id
+	train.line_version = line.version
+	train.dir = 1
+	train.dist = line.geometry.stop_offsets[1] + 30.0
+	train.stop_index = 1
+	train.target_index = 2
+	train.state = Train.State.MOVING
+	var expected_distance := train.dist - TrainView.CARRIAGE_FIRST_OFFSET
+	var expected := line.geometry.sample(expected_distance).origin
+	var actual := TrainView.carriage_transform(train, line, 0).origin
+	h.near(actual.distance_to(expected), 0.0, 0.5,
+		"车厢按弧长挂在车尾（转弯时跟随上一段线路）")
+	var straight_behind := line.geometry.sample(train.dist).origin - Vector2(0.0, TrainView.CARRIAGE_FIRST_OFFSET)
+	h.check(actual.distance_to(straight_behind) > 20.0,
+		"车厢不会沿车头切线飘到线路外")

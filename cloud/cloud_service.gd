@@ -29,6 +29,12 @@ var _remote_live := false
 var _remote_pending := 0
 var _remote_loaded := false
 var _remote_failed := false
+## Web 端不能依赖 Godot HTTPRequest 的 gzip 解码：用浏览器 fetch 拿明文文本，
+## 再通过 JavaScriptBridge 回调把结果交回 GDScript。
+var _web_bridge_ready := false
+var _web_callback: Variant = null
+var _web_next_id := 0
+var _web_requests := {}
 
 
 func _ready() -> void:
@@ -331,7 +337,9 @@ func _remote_done() -> void:
 
 
 func _headers() -> PackedStringArray:
-	var headers := PackedStringArray(["apikey: " + _remote_key, "Content-Type: application/json"])
+	var headers := PackedStringArray(["apikey: " + _remote_key, "Content-Type: application/json",
+		# Godot Web 的 HTTP 层不总是能解码 gzip；让 Supabase 直接回明文
+		"Accept-Encoding: identity"])
 	# Legacy anon JWT 需要 Authorization；新版 sb_publishable_* 只需 apikey。
 	if _remote_key.begins_with("eyJ"):
 		headers.append("Authorization: Bearer " + _remote_key)
@@ -351,6 +359,8 @@ func _on_write_done(code: int, response: PackedByteArray) -> void:
 
 
 func _request(path: String, method: int, body: String, callback: Callable) -> void:
+	if OS.has_feature("web") and _request_web(path, method, body, callback):
+		return
 	var http := HTTPRequest.new()
 	add_child(http)
 	http.request_completed.connect(func(_result: int, code: int, _headers_r: PackedStringArray,
@@ -362,6 +372,64 @@ func _request(path: String, method: int, body: String, callback: Callable) -> vo
 	if err != OK:
 		http.queue_free()
 		callback.call(0, PackedByteArray())
+
+
+func _ensure_web_bridge() -> void:
+	if _web_bridge_ready:
+		return
+	_web_callback = JavaScriptBridge.create_callback(_on_web_http_done)
+	var js := """
+window.__minimetro_http = function(id, url, method, headersJson, body, cb) {
+	var opts = { method: method, headers: JSON.parse(headersJson) };
+	if (body !== null && body !== "") opts.body = body;
+	fetch(url, opts).then(async function(r) {
+		var text = await r.text();
+		cb(id, r.status, text);
+	}).catch(function(e) {
+		cb(id, 0, String(e));
+	});
+};
+"""
+	JavaScriptBridge.eval(js)
+	_web_bridge_ready = true
+
+
+func _request_web(path: String, method: int, body: String, callback: Callable) -> bool:
+	if _remote_url == "":
+		return false
+	_ensure_web_bridge()
+	if _web_callback == null:
+		return false
+	var headers := {}
+	for raw_header in _headers():
+		var header := String(raw_header)
+		var split := header.find(":")
+		if split <= 0:
+			continue
+		var key := header.substr(0, split).strip_edges()
+		if key.to_lower() == "accept-encoding":
+			continue
+		headers[key] = header.substr(split + 1).strip_edges()
+	var method_name := "POST" if method == HTTPClient.METHOD_POST else "GET"
+	var request_id := _web_next_id
+	_web_next_id += 1
+	_web_requests[request_id] = callback
+	var window: JavaScriptObject = JavaScriptBridge.get_interface("window")
+	window.__minimetro_http(request_id, _remote_url + path, method_name,
+		JSON.stringify(headers), body, _web_callback)
+	return true
+
+
+func _on_web_http_done(args: Array) -> void:
+	if args.size() < 3:
+		return
+	var request_id := int(args[0])
+	var code := int(args[1])
+	var text := String(args[2])
+	var callback: Callable = _web_requests.get(request_id, Callable())
+	_web_requests.erase(request_id)
+	if callback.is_valid():
+		callback.call(code, text.to_utf8_buffer())
 
 
 func _json_array(response: PackedByteArray) -> Array:

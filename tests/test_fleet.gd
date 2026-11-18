@@ -205,8 +205,7 @@ static func _test_carriage_drag(h: TestHarness) -> void:
 	var editor := LineEditor.new()
 	editor.setup(net, level, null)
 
-	var xf := l1.geometry.sample(source.dist)
-	var carriage_pos := xf.origin + xf.x.normalized() * -TrainView.CARRIAGE_FIRST_OFFSET
+	var carriage_pos := TrainView.carriage_transform(source, l1, 0).origin
 	h.eq(editor.begin_gesture(carriage_pos), true, "按住车厢开始拖动")
 	h.eq(editor.state, LineEditor.State.CARRIAGE, "进入 CARRIAGE 状态")
 	var target_pos := l2.geometry.sample(target.dist).origin

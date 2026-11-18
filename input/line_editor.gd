@@ -755,13 +755,7 @@ func _carriage_at(pos: Vector2) -> Dictionary:
 
 
 func _carriage_position(line: MetroLine, train: Train, index: int) -> Vector2:
-	var geometry := line.geometry
-	if train.legacy_active and train.legacy_geometry != null:
-		geometry = train.legacy_geometry
-	var xf := geometry.sample(train.dist)
-	return xf.origin + LineGeometry.canonical_normal(xf.x) * line.render_offset + xf.x.normalized() * -(
-		TrainView.CARRIAGE_FIRST_OFFSET + TrainView.CARRIAGE_SPACING * float(index)
-	)
+	return TrainView.carriage_transform(train, line, index).origin
 
 
 ## 拖动目标是哪条线（排除源线路）：优先线路本体，其次站内线路。

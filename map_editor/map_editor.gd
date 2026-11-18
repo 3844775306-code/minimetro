@@ -22,7 +22,7 @@ var _buttons: Array = []
 var _undo_stack: Array = []
 var _toast := ""
 var _toast_left := 0.0
-var _font: SystemFont
+var _font: Font
 var _shot_path := ""
 var _demo_editor := false
 
@@ -35,11 +35,7 @@ func _ready() -> void:
 			_shot_path = arg.trim_prefix("--shot=")
 		elif arg == "--editor-demo":
 			_demo_editor = true
-	_font = SystemFont.new()
-	_font.font_names = PackedStringArray([
-		"Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC",
-		"Noto Sans CJK SC", "Source Han Sans SC", "sans-serif",
-	])
+	_font = UiFonts.get_font()
 	# 恢复上次最后保存的自定义地图，方便继续修改
 	var maps := CustomMapStore.load_maps()
 	if not maps.is_empty():

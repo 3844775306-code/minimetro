@@ -6,7 +6,7 @@ extends RefCounted
 signal step_changed(index: int)
 signal finished
 
-const TOTAL_STEPS := 11
+const TOTAL_STEPS := 12
 
 var network: MetroNetwork
 var simulation: Simulation
@@ -58,14 +58,16 @@ func update() -> void:
 		5:
 			advance = _has_line_with_stops(4)
 		6:
-			advance = _has_loop()
+			advance = station_d != null and not _station_on_any_line(station_d)
 		7:
-			advance = _second_line() != null
+			advance = _has_loop()
 		8:
-			advance = _second_line() != null and not _second_line().trains.is_empty()
+			advance = _second_line() != null
 		9:
-			advance = simulation.delivered >= 2
+			advance = _second_line() != null and not _second_line().trains.is_empty()
 		10:
+			advance = simulation.delivered >= 2
+		11:
 			advance = not simulation.week_pending
 	if advance:
 		_advance()
@@ -82,11 +84,11 @@ func _advance() -> void:
 			_seed_first_passenger()
 		5:
 			_add_station_d()
-		7:
-			_add_station_e()
 		8:
-			simulation.inventory_trains += 1
+			_add_station_e()
 		9:
+			simulation.inventory_trains += 1
+		10:
 			_seed_transfer_passenger()
 	if step >= TOTAL_STEPS:
 		completed = true
@@ -121,6 +123,13 @@ func _has_carriage() -> bool:
 func _has_loop() -> bool:
 	for line in network.lines:
 		if line.is_loop and line.stops.size() >= 3:
+			return true
+	return false
+
+
+func _station_on_any_line(station: Station) -> bool:
+	for line in network.lines:
+		if line.stops.has(station):
 			return true
 	return false
 
@@ -168,7 +177,7 @@ func _seed_first_passenger() -> void:
 	seed_station.waiting.append(Passenger.new(seed_target, simulation.elapsed))
 
 
-## 第 9 步：C 站 → 对岸 E 站，必须经 B 换乘。
+## 第 10 步：C 站 → 对岸 E 站，必须经 B 换乘。
 func _seed_transfer_passenger() -> void:
 	if station_c == null or station_e == null:
 		return
@@ -192,14 +201,16 @@ func title() -> String:
 		5:
 			return Loc.t("插入第四座车站", "Insert the fourth station")
 		6:
-			return Loc.t("把线路闭合成环线", "Close the loop")
+			return Loc.t("拆掉一座车站", "Remove a station")
 		7:
-			return Loc.t("跨河建第二条线", "Build a second line across the river")
+			return Loc.t("把线路闭合成环线", "Close the loop")
 		8:
-			return Loc.t("给第二条线发车", "Put a train on line 2")
+			return Loc.t("跨河建第二条线", "Build a second line across the river")
 		9:
-			return Loc.t("完成一次换乘", "Make one transfer")
+			return Loc.t("给第二条线发车", "Put a train on line 2")
 		10:
+			return Loc.t("完成一次换乘", "Make one transfer")
+		11:
 			return Loc.t("选择一张升级卡", "Choose an upgrade")
 		_:
 			return Loc.t("教程完成", "Tutorial complete")
@@ -226,23 +237,26 @@ func body() -> String:
 			return Loc.t("把新出现的 + 车站拖进线路中段，或从端点接上它。",
 				"Drag the new + station into a segment, or extend a line end to it.")
 		6:
+			return Loc.t("按住 D 旁线段，把光标停在 D 上 0.8 秒，红环填满后松手。",
+				"Drag the segment next to D, hold on D until the red ring fills, then release.")
+		7:
 			return Loc.t("把线路端点拖回起点，闭合成环线。",
 				"Drag a line end back to the first station to close a loop.")
-		7:
+		8:
 			return Loc.t("已解锁线路 2 与 1 座桥；从河对岸 E 开始画线，接到 B。",
 				"Line 2 and one bridge unlocked. Start at E and draw across the river to B.")
-		8:
+		9:
 			return Loc.t("左上角「列车」又多了 1 辆，拖到第二条线路上。",
 				"Another Train is in stock. Drag it onto line 2.")
-		9:
+		10:
 			return Loc.t("C 站乘客要去对岸 E：先坐 1 号线到 B，再换乘 2 号线。",
 				"The C passenger needs E: ride line 1 to B, then transfer to line 2.")
-		10:
+		11:
 			return Loc.t("每周会暂停并给出两张升级卡；任选一张，熟悉资源循环。",
 				"The game pauses for two weekly cards; pick one to learn the upgrade loop.")
 		_:
-			return Loc.t("你已经掌握了画线、改线、环线、跨河、第二条线、换乘和升级。",
-				"You know drawing, editing, loops, bridges, a second line, transfers and upgrades.")
+			return Loc.t("你已经掌握了画线、改线、拆站、环线、跨河、第二条线、换乘和升级。",
+				"You know drawing, editing, removing stations, loops, bridges, a second line, transfers and upgrades.")
 
 
 func hint() -> String:
@@ -260,14 +274,16 @@ func hint() -> String:
 		5:
 			return Loc.t("提示：拖线段中间可以在两站之间插入新站", "Tip: drop on a segment to insert")
 		6:
-			return Loc.t("提示：闭合段会多出一个环形段", "Tip: the closing segment joins both ends")
+			return Loc.t("提示：红色进度环填满后松手，站台就移出线路", "Tip: release after the red ring fills")
 		7:
-			return Loc.t("提示：桥 / 隧道额度显示在左上角", "Tip: bridge quota is in the top-left panel")
+			return Loc.t("提示：闭合段会多出一个环形段", "Tip: the closing segment joins both ends")
 		8:
-			return Loc.t("提示：两条线在 B 站交汇，不需要换乘站也能换乘", "Tip: B is the transfer point")
+			return Loc.t("提示：桥 / 隧道额度显示在左上角", "Tip: bridge quota is in the top-left panel")
 		9:
-			return Loc.t("正在等待换乘乘客送达…", "Waiting for the transfer delivery…")
+			return Loc.t("提示：两条线在 B 站交汇，不需要换乘站也能换乘", "Tip: B is the transfer point")
 		10:
+			return Loc.t("正在等待换乘乘客送达…", "Waiting for the transfer delivery…")
+		11:
 			return Loc.t("提示：升级卡会暂停游戏，选完后继续", "Tip: the game pauses until you pick a card")
 		_:
 			return ""
@@ -291,15 +307,18 @@ func highlights() -> Array[Vector2]:
 			if station_d != null:
 				result.append(station_d.pos)
 		6:
+			if station_d != null:
+				result.append(station_d.pos)
+		7:
 			if network != null and not network.lines.is_empty() \
 					and not network.lines[0].stops.is_empty():
 				result.append(network.lines[0].stops[0].pos)
-		7:
+		8:
 			if station_b != null:
 				result.append(station_b.pos)
 			if station_e != null:
 				result.append(station_e.pos)
-		9:
+		10:
 			if station_c != null:
 				result.append(station_c.pos)
 			if station_e != null:

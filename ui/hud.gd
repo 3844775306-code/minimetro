@@ -13,7 +13,7 @@ const CHIP_GAP := 12.0
 
 var network: MetroNetwork = null
 var level: LevelData = null
-var font: SystemFont = null
+var font: Font = null
 
 var paused := false
 var speed := 1.0
@@ -114,14 +114,9 @@ signal name_submitted(player_name: String)
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	font = SystemFont.new()
-	font.font_names = PackedStringArray([
-		"Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC",
-		"Noto Sans CJK SC", "Source Han Sans SC", "sans-serif",
-	])
-	font.antialiasing = TextServer.FONT_ANTIALIASING_GRAY
-	font.subpixel_positioning = TextServer.SUBPIXEL_POSITIONING_AUTO
+	font = UiFonts.get_font()
 	name_edit = LineEdit.new()
+	name_edit.add_theme_font_override("font", font)
 	name_edit.visible = false
 	name_edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	name_edit.max_length = 16
@@ -509,7 +504,7 @@ func _draw_resource_slots(vp: Vector2) -> void:
 			draw_polyline(DrawUtil.closed(chip_poly), Color(INK, 0.30), 1.2, true)
 			_draw_capsule(Vector2(button.position.x + chip_w * 0.5 - 4.0, chip_y + chip_h * 0.5),
 				line.color, 40.0, 13.0)
-			_text_centered("×", button.end.x - 12.0, chip_y + 24.0, 17, Color(INK, 0.62))
+			_text_centered("x", button.end.x - 12.0, chip_y + 24.0, 17, Color(INK, 0.62))
 			# 放大后的点击区就是整只按钮
 			_line_chips.append({"id": line.id, "rect": button})
 		else:
@@ -730,7 +725,7 @@ func _draw_mode_menu(vp: Vector2) -> void:
 		cx, cy - 250.0, 24, Color(1.0, 1.0, 1.0, 0.78))
 	_draw_city_selector(vp)
 	_draw_mode_cards(vp)
-	_text_centered(Loc.t("← → 切换城市 · 点击卡片或按 1 / 2 / 3 / 4 / 5 开始",
+	_text_centered(Loc.t("左右键切换城市 · 点击卡片或按 1 / 2 / 3 / 4 / 5 开始",
 		"Left / Right city · click a card or press 1 / 2 / 3 / 4 / 5"),
 		cx, cy + 350.0, 21, Color(1.0, 1.0, 1.0, 0.75))
 	# 底部入口：每日榜 / 地图大厅 / 地图排行 / 地图编辑器
@@ -892,8 +887,8 @@ func _draw_line_cancel(vp: Vector2) -> void:
 	draw_polyline(PackedVector2Array([
 		center + Vector2(26.0, -26.0), center + Vector2(-26.0, 26.0),
 	]), Color.WHITE, 11.0, true)
-	_text_centered(Loc.t("点击 × 确认 · 点其他位置关闭",
-		"Tap × to confirm · tap elsewhere to close"),
+	_text_centered(Loc.t("点击 x 确认 · 点其他位置关闭",
+		"Tap x to confirm · tap elsewhere to close"),
 		vp.x * 0.5, panel.end.y - 26.0, 20, MUTED)
 
 
@@ -916,7 +911,7 @@ func _draw_map_hall_preview(entry: Dictionary, rect: Rect2) -> void:
 	var inner := rect.grow(-2.0)
 	draw_rect(inner, Color("#F3EFE6"))
 	if city.rivers.is_empty():
-		_text_centered("—", rect.get_center().x, rect.get_center().y + 6.0, 22, MUTED)
+		_text_centered("-", rect.get_center().x, rect.get_center().y + 6.0, 22, MUTED)
 	else:
 		var world := Vector2(2400.0, 1200.0)
 		var scale := minf(inner.size.x / world.x, inner.size.y / world.y)
@@ -1121,7 +1116,7 @@ func _draw_settings(vp: Vector2) -> void:
 			_settings_plus_rects.append(plus_rect)
 			_settings_minus_rows.append(i)
 			_settings_plus_rows.append(i)
-			for pair in [{"rect": minus_rect, "text": "−"}, {"rect": plus_rect, "text": "+"}]:
+			for pair in [{"rect": minus_rect, "text": "-"}, {"rect": plus_rect, "text": "+"}]:
 				var br: Rect2 = pair["rect"]
 				var bp := DrawUtil.rounded_rect(br, 12.0, 6)
 				draw_colored_polygon(bp, Color(1.0, 1.0, 1.0, 0.14))
@@ -1133,8 +1128,8 @@ func _draw_settings(vp: Vector2) -> void:
 			var width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 32).x
 			_text(text, Vector2(row.position.x + row.size.x - 40.0 - width, row.position.y + 47.0),
 				32, Color(1.0, 1.0, 1.0, 0.88))
-	_text_centered(Loc.t("点击行切换/确认 · 音量与移站时间可点 − / + · Esc 返回",
-		"Tap a row · use − / + for volume or remove time · Esc back"),
+	_text_centered(Loc.t("点击行切换/确认 · 音量与移站时间可点 - / + · Esc 返回",
+		"Tap a row · use - / + for volume or remove time · Esc back"),
 		vp.x * 0.5, vp.y * 0.5 + 382.0, 20, Color(1.0, 1.0, 1.0, 0.65))
 
 

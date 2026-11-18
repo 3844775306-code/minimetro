@@ -22,6 +22,7 @@ var _riders: Array[Passenger] = []
 var _rider_signature := -1
 var _carriages := 0
 var _high_speed := false
+var _carriage_transforms: Array[Transform2D] = []
 
 
 func update_from(train: Train, line: MetroLine) -> void:
@@ -43,6 +44,9 @@ func update_from(train: Train, line: MetroLine) -> void:
 	_riders = train.riders
 	_carriages = train.carriages
 	_high_speed = train.high_speed
+	_carriage_transforms.clear()
+	for i in _carriages:
+		_carriage_transforms.append(carriage_transform(train, line, i))
 	var signature := _make_rider_signature(train)
 	if line.color != _drawn_color or signature != _rider_signature:
 		_drawn_color = line.color
@@ -90,26 +94,50 @@ func _draw_cab() -> void:
 			Vector2(half.x - 8.0, half.y - 7.0), Color(1.0, 1.0, 1.0, 0.45), 2.0, true)
 
 
+## 车厢沿线路弧长挂在车尾；转弯时和车头一样采样线路，而不是沿车头切线直着飘出去。
+static func carriage_transform(train: Train, line: MetroLine, index: int) -> Transform2D:
+	var geometry := line.geometry
+	if train.legacy_active and train.legacy_geometry != null:
+		geometry = train.legacy_geometry
+	var dir := 1.0 if train.dir >= 0 else -1.0
+	var offset := CARRIAGE_FIRST_OFFSET + CARRIAGE_SPACING * float(index)
+	var distance := train.dist - dir * offset
+	if geometry.is_loop_geometry and geometry.total_length > 0.001:
+		distance = fposmod(distance, geometry.total_length)
+	else:
+		distance = clampf(distance, 0.0, geometry.total_length)
+	var xf := geometry.sample(distance)
+	var pos: Vector2 = xf.origin
+	if not is_zero_approx(line.render_offset):
+		pos += LineGeometry.canonical_normal(xf.x) * line.render_offset
+	return Transform2D(xf.x.angle(), pos)
+
+
 ## 车厢：和车体同款的圆角胶囊（纸色描边 + 线路色），没有车头；车内也画乘客。
 func _draw_carriages() -> void:
 	for i in _carriages:
-		var center := Vector2(-(CARRIAGE_FIRST_OFFSET + CARRIAGE_SPACING * float(i)), 0.0)
-		_capsule(center, CARRIAGE_BODY + Vector2(CARRIAGE_OUTLINE * 2.0, CARRIAGE_OUTLINE * 2.0), PAPER)
-		_capsule(center, CARRIAGE_BODY, _drawn_color)
+		if i >= _carriage_transforms.size():
+			break
+		var world_xf: Transform2D = _carriage_transforms[i]
+		var local_center := to_local(world_xf.origin)
+		var local_angle := world_xf.get_rotation() - rotation
+		draw_set_transform(local_center, local_angle)
+		_capsule(Vector2.ZERO, CARRIAGE_BODY + Vector2(CARRIAGE_OUTLINE * 2.0, CARRIAGE_OUTLINE * 2.0), PAPER)
+		_capsule(Vector2.ZERO, CARRIAGE_BODY, _drawn_color)
 		# 车顶一道浅色高光，和车头的挡风玻璃呼应
-		draw_line(center + Vector2(-CARRIAGE_BODY.x * 0.28, -CARRIAGE_BODY.y * 0.28),
-			center + Vector2(CARRIAGE_BODY.x * 0.28, -CARRIAGE_BODY.y * 0.28),
+		draw_line(Vector2(-CARRIAGE_BODY.x * 0.28, -CARRIAGE_BODY.y * 0.28),
+			Vector2(CARRIAGE_BODY.x * 0.28, -CARRIAGE_BODY.y * 0.28),
 			Color(1.0, 1.0, 1.0, 0.25), 2.0, true)
 		var from := Train.BASE_CAPACITY + i * Train.CARRIAGE_CAPACITY
-		if from >= _riders.size():
-			continue
-		var count := mini(_riders.size() - from, Train.CARRIAGE_CAPACITY)
-		for j in count:
-			_draw_rider_icon(
-				center + _carriage_seat_position(j, count),
-				_riders[from + j].target_shape,
-				SEAT_RADIUS * 0.82
-			)
+		if from < _riders.size():
+			var count := mini(_riders.size() - from, Train.CARRIAGE_CAPACITY)
+			for j in count:
+				_draw_rider_icon(
+					_carriage_seat_position(j, count),
+					_riders[from + j].target_shape,
+					SEAT_RADIUS * 0.82
+				)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 func _carriage_seat_position(index: int, count: int) -> Vector2:

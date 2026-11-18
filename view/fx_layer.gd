@@ -6,18 +6,13 @@ extends Node2D
 const INK := Color("#2B2B2B")
 const WARN := Color("#D64545")
 
-var font: SystemFont = null
+var font: Font = null
 var _texts: Array[Dictionary] = []
 var _rings: Array[Dictionary] = []
 
 
 func _ready() -> void:
-	font = SystemFont.new()
-	font.font_names = PackedStringArray([
-		"Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC",
-		"Noto Sans CJK SC", "Source Han Sans SC", "sans-serif",
-	])
-	font.antialiasing = TextServer.FONT_ANTIALIASING_GRAY
+	font = UiFonts.get_font()
 
 
 ## 送达 N 名乘客：在站点上方飘出 "+N"。

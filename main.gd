@@ -376,15 +376,16 @@ func _input(event: InputEvent) -> void:
 			var tutorial_pos: Vector2 = (event as InputEventMouseButton).position
 			if hud.tutorial_complete:
 				if hud.tutorial_start_at(tutorial_pos):
+					# reload 会销毁当前 viewport，先消费输入再 reload
+					get_viewport().set_input_as_handled()
 					_start_after_tutorial()
-					get_viewport().set_input_as_handled()
 				elif hud.tutorial_menu_at(tutorial_pos):
-					_finish_tutorial_to_menu()
 					get_viewport().set_input_as_handled()
+					_finish_tutorial_to_menu()
 				return
 			if hud.tutorial_skip_at(tutorial_pos):
-				_finish_tutorial_to_menu()
 				get_viewport().set_input_as_handled()
+				_finish_tutorial_to_menu()
 				return
 		if hud.tutorial_complete:
 			return
@@ -1019,7 +1020,7 @@ func _setup_tutorial() -> void:
 
 func _on_tutorial_step_changed(_index: int) -> void:
 	_refresh_tutorial_hud()
-	if _tutorial != null and _tutorial.step == 10 and not _tutorial_upgrade_offered:
+	if _tutorial != null and _tutorial.step == 11 and not _tutorial_upgrade_offered:
 		_tutorial_upgrade_offered = true
 		# 复用正式周结算：HUD 周卡弹窗、暂停和选卡逻辑都不另写一套
 		simulation.offer_week_reward()
