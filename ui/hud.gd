@@ -686,8 +686,8 @@ func _draw_tutorial(vp: Vector2) -> void:
 		draw_polyline(DrawUtil.closed(poly), Color(0.72, 0.69, 0.62), 2.0, true)
 		_text_centered(Loc.t("教程完成", "Tutorial complete"), cx,
 			end_panel.position.y + 72.0, 44, INK)
-		_text_centered(Loc.t("你已经学会画线、发车、挂车厢和送客。",
-			"You can draw lines, run trains, add carriages and deliver."),
+		_text_centered(Loc.t("你已经学会画线、拆站、环线、过河、换乘和升级。",
+			"You can draw, remove stations, loop, bridge, transfer and upgrade."),
 			cx, end_panel.position.y + 120.0, 23, MUTED)
 		_text_centered(Loc.t("接下来试试经典模式，看看能送多少人？",
 			"Now try Classic and see how many you can deliver."),
