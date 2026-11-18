@@ -203,6 +203,10 @@ Web 版使用 Godot Compatibility 渲染器、无多线程导出，可直接在�
 
 ![对局 HUD](docs/images/ui-game.png)
 
+### 四角 HUD 自动避让
+
+![四角 HUD 自动避让](docs/images/hud-occlusion.png)
+
 ### 新手教程（模式菜单第 5 张卡 / 按 5）
 
 - 固定站、干净地图、不会因拥堵失败，专注学会基础操作；后段会解锁新站、第二线路和桥梁
