@@ -77,6 +77,8 @@ var _tutorial_card_rect := Rect2()
 var development_mode := false
 var coins := 0
 var shop_open := false
+## 每种商品的购买次数（用于动态价格显示）
+var shop_purchase_counts := {}
 var _shop_button_rect := Rect2()
 var _shop_close_rect := Rect2()
 var _shop_item_rects: Array[Rect2] = []
@@ -662,7 +664,10 @@ func _draw_shop(vp: Vector2) -> void:
 		_shop_item_rects.append(base)
 		var hovered := base.has_point(mouse)
 		var rect := Rect2(base.position + Vector2(0.0, -5.0 if hovered else 0.0), base.size)
-		var price := int(item["price"])
+		var price := ShopCatalog.price_for(String(item["id"]),
+			int(shop_purchase_counts.get(String(item["id"]), 0)))
+		var next_price := ShopCatalog.price_hint(String(item["id"]),
+			int(shop_purchase_counts.get(String(item["id"]), 0)))
 		var affordable := coins >= price
 		var accent: Color = accents[i % accents.size()]
 		_draw_soft_shadow(rect, 16.0, 0.26 if hovered else 0.10, Vector2(0.0, 9.0))
@@ -680,8 +685,9 @@ func _draw_shop(vp: Vector2) -> void:
 			rect.size.x - 44.0, 44.0)
 		var price_poly := DrawUtil.rounded_rect(price_rect, 12.0, 6)
 		draw_colored_polygon(price_poly, Color(accent, 0.12 if affordable else 0.05))
-		_text_centered(Loc.t("%d 金币", "%d coins") % price, price_rect.get_center().x,
-			price_rect.position.y + 29.0, 21, Color(INK, 0.92 if affordable else 0.38))
+		_text_centered(Loc.t("%d 金币 · 下次 %d", "%d coins · next %d") % [price, next_price],
+			price_rect.get_center().x, price_rect.position.y + 29.0, 19,
+			Color(INK, 0.92 if affordable else 0.38))
 		if not affordable:
 			_text_centered(Loc.t("金币不足", "Not enough"), rect.get_center().x,
 				rect.end.y - 78.0, 15, Color(ACCENT, 0.72))
@@ -691,8 +697,8 @@ func _draw_shop(vp: Vector2) -> void:
 		else:
 			_text_centered(Loc.t("可购买", "Available"), rect.get_center().x,
 				rect.end.y - 78.0, 15, Color(TEAL, 0.72))
-	_text_centered(Loc.t("点击卡片购买 · Esc / B 关闭 · 游戏已暂停",
-		"Click a card to buy · Esc / B to close · game paused"),
+	_text_centered(Loc.t("点击卡片购买 · 同种商品每次 +25% · 无购买上限 · Esc / B 关闭 · 游戏已暂停",
+		"Click to buy · same item +25% each time · no limit · Esc / B close · paused"),
 		cx, panel.end.y - 34.0, 19, Color(MUTED, 0.78))
 	if toast_left > 0.0:
 		var alpha := clampf(toast_left / 0.5, 0.0, 1.0)
@@ -829,16 +835,19 @@ func _draw_resource_slots(vp: Vector2) -> void:
 	var used := 0 if network == null else network.lines.size()
 	var mouse := get_global_mouse_position()
 	_text("资源 · 拖动图标到地图", Vector2(40.0, 60.0), 20, Color(INK, 0.65))
-	# 线路颜色按钮：统一 62×34 的按钮盒，颜色胶囊居中，右侧小 × 对齐
+	# 线路颜色按钮：基础 62×34；商店不设上限后线路可能超过 10 条，宽度自动压缩
 	var chip_y := 66.0
-	var chip_w := 62.0
 	var chip_h := 34.0
 	var chip_gap := 8.0
+	var line_count := maxi(level.start_lines, 1)
+	var chip_w := minf(62.0, (700.0 - chip_gap * float(line_count - 1)) / float(line_count))
+	chip_w = maxf(chip_w, 28.0)
 	var chip_start_x := 40.0
 	_line_chips = []
 	for i in level.start_lines:
 		var button := Rect2(Vector2(chip_start_x + float(i) * (chip_w + chip_gap), chip_y),
 			Vector2(chip_w, chip_h))
+		var capsule_w := clampf(chip_w - 20.0, 14.0, 40.0)
 		if i < used:
 			var line: MetroLine = network.lines[i]
 			var hovered := button.has_point(mouse)
@@ -846,7 +855,7 @@ func _draw_resource_slots(vp: Vector2) -> void:
 			draw_colored_polygon(chip_poly, Color(1.0, 1.0, 1.0, 0.62 if hovered else 0.38))
 			draw_polyline(DrawUtil.closed(chip_poly), Color(INK, 0.30), 1.2, true)
 			_draw_capsule(Vector2(button.position.x + chip_w * 0.5 - 4.0, chip_y + chip_h * 0.5),
-				line.color, 40.0, 13.0)
+				line.color, capsule_w, 13.0)
 			_text_centered("x", button.end.x - 12.0, chip_y + 24.0, 17, Color(INK, 0.62))
 			# 放大后的点击区就是整只按钮
 			_line_chips.append({"id": line.id, "rect": button})
@@ -857,7 +866,7 @@ func _draw_resource_slots(vp: Vector2) -> void:
 			draw_polyline(DrawUtil.closed(empty_poly), Color(INK, 0.16), 1.0, true)
 			_draw_capsule_outline(
 				Vector2(button.position.x + chip_w * 0.5 - 4.0, chip_y + chip_h * 0.5),
-				Color(level.line_colors[i % level.line_colors.size()], 0.26), 40.0, 13.0)
+				Color(level.line_colors[i % level.line_colors.size()], 0.26), capsule_w, 13.0)
 	# 显示“已用 / 总共拥有”的线路数量
 	_text_right(Loc.t("线路 %d/%d", "Lines %d/%d") % [used, level.start_lines],
 		740.0, chip_y + 23.0, 20, Color(INK, 0.70))

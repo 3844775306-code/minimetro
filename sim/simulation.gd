@@ -57,6 +57,8 @@ var inventory_interchanges: int = 0
 ## 发展模式金币（其他模式也会保持 0）
 var coins: int = 0
 var coins_earned: int = 0
+## 商店每种商品的购买次数（用于动态涨价）
+var shop_purchases := {}
 
 ## 最近送达时间列表（无尽模式评价指标：近 30 秒平均每 5 秒客运量）
 var _delivery_times: Array[float] = []
@@ -120,36 +122,24 @@ func _earn_fare(passenger: Passenger, station: Station) -> void:
 			_coin_events.pop_front()
 
 
-## 商店购买；返回 true 表示扣款并入库成功。
+## 商店当前价格：同一种商品每买一次，基础价 +25%，没有购买上限。
+func shop_price(item_id: String) -> int:
+	return ShopCatalog.price_for(item_id, int(shop_purchases.get(item_id, 0)))
+
+
+## 商店购买；返回 true 表示扣款并入库成功。没有资源上限，价格随购买次数递增。
 func purchase(item_id: String) -> bool:
 	if not is_development():
 		return false
 	var item := ShopCatalog.get_item(item_id)
 	if item.is_empty():
 		return false
-	var price := int(item["price"])
+	var price := shop_price(item_id)
 	if coins < price:
 		return false
-	var kind := String(item["kind"])
-	match kind:
-		"line":
-			if level.start_lines >= level.max_lines:
-				return false
-		"train", "express":
-			if total_trains_owned() >= level.max_trains:
-				return false
-		"carriage":
-			if total_carriages_owned() >= level.max_carriages * 3:
-				return false
-		"bridge":
-			if level.start_bridges >= level.max_bridges:
-				return false
-		"interchange":
-			if total_interchanges_owned() >= level.max_interchanges:
-				return false
-		_:
-			return false
 	coins -= price
+	shop_purchases[item_id] = int(shop_purchases.get(item_id, 0)) + 1
+	var kind := String(item["kind"])
 	match kind:
 		"line":
 			level.start_lines += 1
@@ -163,6 +153,8 @@ func purchase(item_id: String) -> bool:
 			level.start_bridges += 1
 		"interchange":
 			inventory_interchanges += 1
+		_:
+			return false
 	return true
 
 

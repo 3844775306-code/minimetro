@@ -45,6 +45,10 @@ func update_from(train: Train, line: MetroLine) -> void:
 	_carriage_transforms.clear()
 	for i in _carriages:
 		_carriage_transforms.append(carriage_transform(train, line, i))
+	# 车体只随节点 transform 移动；车厢是 _draw 里按弧长画出来的，
+	# 所以有车厢时必须每帧重绘，否则转弯后车厢会停在旧切线位置（看起来飘出轨道）。
+	if _carriages > 0:
+		queue_redraw()
 	var signature := _make_rider_signature(train)
 	if line.color != _drawn_color or signature != _rider_signature:
 		_drawn_color = line.color
@@ -102,21 +106,35 @@ static func visible_geometry(train: Train, line: MetroLine) -> LineGeometry:
 	return line.geometry
 
 
-## 车厢沿线路弧长挂在车尾；转弯时和车头一样采样线路，而不是沿车头切线直着飘出去。
+## 车厢沿线路弧长挂在车尾。用“车厢前后端各采样一次线路”的弦来定位：
+## 刚性胶囊过长时不会像单点切线那样在 90° 弯角外侧探出轨道。
 static func carriage_transform(train: Train, line: MetroLine, index: int) -> Transform2D:
 	var geometry := visible_geometry(train, line)
 	var dir := 1.0 if train.dir >= 0 else -1.0
 	var offset := CARRIAGE_FIRST_OFFSET + CARRIAGE_SPACING * float(index)
-	var distance := train.dist - dir * offset
-	if geometry.is_loop_geometry and geometry.total_length > 0.001:
-		distance = fposmod(distance, geometry.total_length)
-	else:
-		distance = clampf(distance, 0.0, geometry.total_length)
-	var xf := geometry.sample(distance)
-	var pos: Vector2 = xf.origin
+	var half_length := CARRIAGE_BODY.x * 0.5 - 2.0
+	var near_distance := train.dist - dir * (offset - half_length)
+	var far_distance := train.dist - dir * (offset + half_length)
+	near_distance = _wrap_carriage_distance(geometry, near_distance)
+	far_distance = _wrap_carriage_distance(geometry, far_distance)
+	var near_xf := geometry.sample(near_distance)
+	var far_xf := geometry.sample(far_distance)
+	var near_pos := near_xf.origin
+	var far_pos := far_xf.origin
 	if not is_zero_approx(line.render_offset):
-		pos += LineGeometry.canonical_normal(xf.x) * line.render_offset
-	return Transform2D(xf.x.angle(), pos)
+		near_pos += LineGeometry.canonical_normal(near_xf.x) * line.render_offset
+		far_pos += LineGeometry.canonical_normal(far_xf.x) * line.render_offset
+	var center := (near_pos + far_pos) * 0.5
+	var angle := (near_pos - far_pos).angle()
+	if near_pos.distance_squared_to(far_pos) < 0.001:
+		angle = near_xf.x.angle()
+	return Transform2D(angle, center)
+
+
+static func _wrap_carriage_distance(geometry: LineGeometry, distance: float) -> float:
+	if geometry.is_loop_geometry and geometry.total_length > 0.001:
+		return fposmod(distance, geometry.total_length)
+	return clampf(distance, 0.0, geometry.total_length)
 
 
 ## 车厢：和车体同款的圆角胶囊（纸色描边 + 线路色），没有车头；车内也画乘客。

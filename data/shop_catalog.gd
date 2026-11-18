@@ -80,3 +80,17 @@ static func get_item(item_id: String) -> Dictionary:
 		if String(entry["id"]) == item_id:
 			return entry
 	return {}
+
+
+## 同一商品越买越贵：每次购买在基础价上增加 25%，不设上限。
+static func price_for(item_id: String, purchased_count: int) -> int:
+	var item := get_item(item_id)
+	if item.is_empty():
+		return 0
+	var base_price := int(item["price"])
+	return base_price + int(round(float(base_price) * 0.25 * float(maxi(purchased_count, 0))))
+
+
+## 商品按钮上的变化幅度提示，例如 45 → 56。
+static func price_hint(item_id: String, purchased_count: int) -> int:
+	return price_for(item_id, purchased_count + 1)

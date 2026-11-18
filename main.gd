@@ -105,6 +105,7 @@ func _process(delta: float) -> void:
 		hud.endless_mode = Game.is_endless()
 		hud.development_mode = Game.is_development()
 		hud.coins = 0 if simulation == null else simulation.coins
+		hud.shop_purchase_counts = {} if simulation == null else simulation.shop_purchases.duplicate()
 		hud.week = 1 if simulation == null else simulation.week_index
 		hud.best_score = _best_for_mode()
 		hud.clock_hours = 7.0 if simulation == null else simulation.hour_of_day()
@@ -1213,6 +1214,17 @@ func _apply_pose() -> void:
 	match _pose:
 		"shop":
 			_open_shop()
+		"carriages":
+			if not network.lines.is_empty() and not network.lines[0].trains.is_empty():
+				var carriage_train: Train = network.lines[0].trains[0]
+				carriage_train.carriages = 3
+				carriage_train.refresh_capacity()
+				var carriage_line: MetroLine = network.lines[0]
+				if carriage_line.geometry.is_drawable():
+					var mid := carriage_line.geometry.total_length * 0.45
+					carriage_train.dist = mid
+					carriage_train.target_dist = mid
+					carriage_train.state = Train.State.MOVING
 		"draft":
 			var st := network.add_station(Vector2(1300, 880), Shape.Kind.TRIANGLE)
 			editor.begin_gesture(st.pos)

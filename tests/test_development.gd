@@ -82,11 +82,20 @@ static func _test_shop_purchase(h: TestHarness) -> void:
 	var trains_before := sim.inventory_trains
 	h.check(sim.purchase("train"), "金币足够可购买列车")
 	h.eq(sim.inventory_trains, trains_before + 1, "列车入库")
-	h.eq(sim.coins, 455, "扣除列车价格 45")
+	h.eq(sim.coins, 455, "首次列车价格 45")
+	h.eq(ShopCatalog.price_for("train", 1), 56, "同种商品第二次价格递增")
 	h.check(sim.purchase("line"), "购买新线路")
 	h.eq(made[2].start_lines, 3, "线路资源 +1")
-	h.eq(sim.coins, 375, "扣除线路价格 80")
+	h.eq(sim.coins, 375, "首次线路价格 80")
 	h.check(ShopCatalog.get_item("unknown").is_empty(), "未知商品不存在")
+
+	# 不设购买上限：即使超过普通 max_lines/max_trains 也允许继续买
+	made[2].max_lines = 3
+	made[2].max_trains = 2
+	h.check(sim.purchase("line"), "超过 max_lines 仍可购买线路")
+	h.check(sim.purchase("line"), "可继续购买线路，没有上限")
+	h.check(sim.purchase("train"), "超过 max_trains 仍可购买列车")
+	h.check(sim.purchase("carriage"), "可购买车厢，没有上限")
 
 
 static func _test_no_weekly_and_no_fail(h: TestHarness) -> void:
