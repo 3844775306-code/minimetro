@@ -12,6 +12,8 @@ var bend_flips := {}
 
 ## 环线：末站与首站相连，列车沿着环单向循环。
 var is_loop := false
+## 闭合成环时鼠标所在站台（合并手柄放在这个站台上）
+var loop_seam_station_id: int = -1
 
 ## 手动编辑前的旧几何/旧站序：供"正在被修改的线路"上的列车沿原线行驶完。
 var edit_legacy_geometry: LineGeometry = null

@@ -6,6 +6,7 @@ static func run(h: TestHarness) -> void:
 	_test_bridge_budget(h)
 	_test_spawner_avoids_water(h)
 	_test_shape_weights(h)
+	_test_two_rivers_one_segment(h)
 
 
 ## 竖直河道把地图切成左右两半。
@@ -107,3 +108,49 @@ static func _test_shape_weights(h: TestHarness) -> void:
 	h.eq(net.stations.size(), 3, "生成三个站点")
 	for st in net.stations:
 		h.eq(st.shape, Shape.Kind.DIAMOND, "权重表生效：全部为菱形")
+
+
+## 同一段线路连续穿过两条独立河流，必须消耗 2 座桥，而不是 1 座。
+static func _test_two_rivers_one_segment(h: TestHarness) -> void:
+	h.section("water/two_rivers_one_segment")
+	var level := LevelData.new()
+	level.rivers = [
+		PackedVector2Array([
+			Vector2(300, 0), Vector2(420, 0), Vector2(420, 1000), Vector2(300, 1000),
+		]),
+		PackedVector2Array([
+			Vector2(600, 0), Vector2(720, 0), Vector2(720, 1000), Vector2(600, 1000),
+		]),
+	]
+	level.start_bridges = 1
+	level.start_lines = 3
+	level.start_trains = 0
+	var net := MetroNetwork.new(level)
+	var a := net.add_station(Vector2(100, 500), Shape.Kind.CIRCLE)
+	var b := net.add_station(Vector2(900, 500), Shape.Kind.SQUARE)
+	h.eq(net.segment_bridge_count(a.pos, b.pos), 2, "一段连续跨两条河 = 2 座桥")
+	var line := net.create_line()
+	line.add_stop(a)
+	line.add_stop(b)
+	net.touch()
+	h.eq(net.line_bridge_count(line), 2, "线路桥数也计为 2")
+	h.eq(net.used_bridges(), 2, "总桥数使用 2")
+	var editor := LineEditor.new()
+	editor.setup(net, level, null)
+	var toasts: Array[String] = []
+	editor.toast_requested.connect(func(message: String) -> void: toasts.append(message))
+	editor.begin_gesture(a.pos)
+	editor.move_gesture(b.pos)
+	h.eq(network_line_count_free(net), 1, "没有桥额度时第二条跨河线不会被接上")
+	h.eq(toasts.size(), 1, "给出无桥提示")
+	editor.cancel_gesture()
+	editor.free()
+
+
+static func network_line_count_free(net: MetroNetwork) -> int:
+	# 只保留第一条完整线路；草稿线若被拒会立即回滚
+	var count := 0
+	for line in net.lines:
+		if line.stops.size() >= 2:
+			count += 1
+	return count

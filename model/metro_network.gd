@@ -157,9 +157,27 @@ func line_bridge_count(line: MetroLine) -> int:
 	for i in range(line.stops.size() - 1):
 		var a: Vector2 = line.stops[i].pos
 		var b: Vector2 = line.stops[i + 1].pos
-		if segment_crosses_water(a, b, line.is_segment_flipped(i)):
-			count += 1
+		count += segment_bridge_count(a, b, line.is_segment_flipped(i))
 	return count
+
+
+## 一段八向折线跨过多少条独立河流；同一段连续跨两条河要算 2 座桥。
+func segment_bridge_count(a: Vector2, b: Vector2, flipped: bool = false) -> int:
+	if level == null or level.rivers.is_empty():
+		return 0
+	var path := LineGeometry.octilinear_segment(a, b, flipped)
+	var crossed := 0
+	for river in level.rivers:
+		if river.size() < 3:
+			continue
+		var hit := false
+		for i in range(path.size() - 1):
+			if _segment_hits_polygon(path[i], path[i + 1], river):
+				hit = true
+				break
+		if hit:
+			crossed += 1
+	return crossed
 
 
 ## 两站之间的八向折线是否穿过任意河道（考虑该段的弯曲翻转）。

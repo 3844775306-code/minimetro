@@ -26,11 +26,9 @@ var _carriage_transforms: Array[Transform2D] = []
 
 
 func update_from(train: Train, line: MetroLine) -> void:
-	# 旧线收尾期间列车沿“编辑前几何”行驶：视图也必须用旧几何采样，
-	# 否则模型在旧线上、画面却跳到了新线上。
-	var geometry := line.geometry
-	if train.legacy_active and train.legacy_geometry != null:
-		geometry = train.legacy_geometry
+	# 旧线收尾期间列车沿“编辑前几何”行驶；线路刚编辑、模拟层还没 remap 的那一帧
+	# 也继续按旧几何画，避免车先瞬移到新端点再被拉回来。
+	var geometry := visible_geometry(train, line)
 	var xf := geometry.sample(train.dist)
 	position = xf.origin
 	# 与 LineLayer 的视觉错开保持一致：列车也骑在偏移后的线路上
@@ -94,11 +92,19 @@ func _draw_cab() -> void:
 			Vector2(half.x - 8.0, half.y - 7.0), Color(1.0, 1.0, 1.0, 0.45), 2.0, true)
 
 
+## 视图使用的几何：旧线 > 刚编辑尚未 remap 的旧几何 > 当前几何。
+static func visible_geometry(train: Train, line: MetroLine) -> LineGeometry:
+	if train.legacy_active and train.legacy_geometry != null:
+		return train.legacy_geometry
+	if train.line_version != line.version and line.edit_legacy_geometry != null \
+			and line.edit_legacy_geometry.is_drawable():
+		return line.edit_legacy_geometry
+	return line.geometry
+
+
 ## 车厢沿线路弧长挂在车尾；转弯时和车头一样采样线路，而不是沿车头切线直着飘出去。
 static func carriage_transform(train: Train, line: MetroLine, index: int) -> Transform2D:
-	var geometry := line.geometry
-	if train.legacy_active and train.legacy_geometry != null:
-		geometry = train.legacy_geometry
+	var geometry := visible_geometry(train, line)
 	var dir := 1.0 if train.dir >= 0 else -1.0
 	var offset := CARRIAGE_FIRST_OFFSET + CARRIAGE_SPACING * float(index)
 	var distance := train.dist - dir * offset

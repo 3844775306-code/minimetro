@@ -378,6 +378,7 @@ func _break_loop_hold() -> void:
 	_loop_hold_broken = true
 	_gesture_dirty = true
 	_loop_hold_line.is_loop = false
+	_loop_hold_line.loop_seam_station_id = -1
 	_loop_hold_line.rebuild()
 	network.touch()
 	toast_requested.emit(Loc.t("环线已拆开", "Loop opened"))
@@ -416,12 +417,20 @@ func _extend_with(st: Station) -> void:
 	var tip: Station = _draft_line.stops[_draft_tip_index()]
 	var from_pos: Vector2 = st.pos if _draft_at_start else tip.pos
 	var to_pos: Vector2 = tip.pos if _draft_at_start else st.pos
-	if network.segment_crosses_water(from_pos, to_pos, false) and network.available_bridges() <= 0:
+	var added := network.segment_bridge_count(from_pos, to_pos, false)
+	var removed := 0
+	if _draft_line.is_loop and _draft_line.stops.size() >= 2:
+		var old_last: Station = _draft_line.stops[_draft_line.stops.size() - 1]
+		var old_first: Station = _draft_line.stops[0]
+		removed = network.segment_bridge_count(old_last.pos, old_first.pos,
+			_draft_line.is_segment_flipped_pair(old_last, old_first))
+	if network.used_bridges() + added - removed > level.start_bridges:
 		toast_requested.emit("没有可用的桥 / 隧道了")
 		return
 	# 从环线的端点手柄继续延伸时，先把环打开（快照里保留着环线状态，可撤销）
 	if _draft_line.is_loop:
 		_draft_line.is_loop = false
+		_draft_line.loop_seam_station_id = -1
 		_draft_line.rebuild()
 	if _draft_at_start:
 		_draft_line.prepend_stop(st)
@@ -448,8 +457,18 @@ func _update_loop_candidate() -> void:
 
 
 func _close_loop() -> void:
-	if _draft_line == null:
+	if _draft_line == null or _draft_line.stops.size() < 2:
 		return
+	var old_last: Station = _draft_line.stops[_draft_line.stops.size() - 1]
+	var old_first: Station = _draft_line.stops[0]
+	var added := network.segment_bridge_count(old_last.pos, old_first.pos,
+		_draft_line.is_segment_flipped_pair(old_last, old_first))
+	if network.used_bridges() + added > level.start_bridges:
+		toast_requested.emit("没有可用的桥 / 隧道了")
+		return
+	# 长按/闭合发生在哪座站台上，就把合并手柄放在哪座站台
+	_draft_line.loop_seam_station_id = hover_station.id if hover_station != null \
+		else _draft_line.stops[0].id
 	_draft_line.is_loop = true
 	_draft_line.rebuild()
 	network.touch()
@@ -598,6 +617,13 @@ func _apply_segment_tap() -> void:
 	_push_undo()
 	line.flip_segment(endpoints[0], endpoints[1])
 	network.touch()
+	if network.used_bridges() > level.start_bridges:
+		# 翻转后可能多跨一条河，额度不够就恢复
+		line.flip_segment(endpoints[0], endpoints[1])
+		network.touch()
+		_drop_pending_undo()
+		toast_requested.emit("没有可用的桥 / 隧道了")
+		return
 	_gesture_dirty = true
 
 
@@ -616,13 +642,9 @@ func _apply_segment_insert() -> void:
 		return
 	var a: Station = endpoints[0]
 	var b: Station = endpoints[1]
-	var delta := 0
-	if network.segment_crosses_water(a.pos, st.pos, false):
-		delta += 1
-	if network.segment_crosses_water(st.pos, b.pos, false):
-		delta += 1
-	if network.segment_crosses_water(a.pos, b.pos, line.is_segment_flipped_pair(a, b)):
-		delta -= 1
+	var delta := network.segment_bridge_count(a.pos, st.pos, false)
+	delta += network.segment_bridge_count(st.pos, b.pos, false)
+	delta -= network.segment_bridge_count(a.pos, b.pos, line.is_segment_flipped_pair(a, b))
 	if delta > network.available_bridges():
 		toast_requested.emit("没有可用的桥 / 隧道了")
 		return
@@ -782,9 +804,7 @@ func _train_at(pos: Vector2) -> Dictionary:
 
 
 func _train_world_position(line: MetroLine, train: Train) -> Vector2:
-	var geometry := line.geometry
-	if train.legacy_active and train.legacy_geometry != null:
-		geometry = train.legacy_geometry
+	var geometry := TrainView.visible_geometry(train, line)
 	var xf := geometry.sample(train.dist)
 	return xf.origin + LineGeometry.canonical_normal(xf.x) * line.render_offset
 
@@ -1018,8 +1038,14 @@ func _handle_at(pos: Vector2) -> MetroLine:
 	return null
 
 
-## 环线首末手柄合并到接环处，只保留一个；长按才拆环。
+## 环线首末手柄合并到接环时鼠标所在的站台；只保留一个，长按才拆环。
 func _loop_handle_position(line: MetroLine) -> Vector2:
+	var idx := line.stops.find(network.station_by_id(line.loop_seam_station_id)) \
+		if line.loop_seam_station_id >= 0 else -1
+	if idx < 0 and not line.stops.is_empty():
+		idx = 0
+	if idx >= 0:
+		return line.stops[idx].pos
 	return (_handle_world_position(line, true) + _handle_world_position(line, false)) * 0.5
 
 
@@ -1076,6 +1102,7 @@ func _snapshot() -> Dictionary:
 			"stops": ids,
 			"flips": line.bend_flips.duplicate(),
 			"loop": line.is_loop,
+			"loop_seam": line.loop_seam_station_id,
 		})
 	return {"lines": lines_data, "next_line_id": network.next_line_id}
 
@@ -1111,6 +1138,7 @@ func _apply_snapshot(snap: Dictionary) -> void:
 		var flips: Dictionary = entry.get("flips", {})
 		line.bend_flips = flips
 		line.is_loop = bool(entry.get("loop", false))
+		line.loop_seam_station_id = int(entry.get("loop_seam", -1))
 		line.rebuild()
 		# 已有线路的列车接回新对象；线路 id 在快照里不变
 		for train in kept_trains.get(line.id, []):
@@ -1284,12 +1312,13 @@ func _draw_endpoint_handles() -> void:
 			continue
 		if line.is_loop:
 			var loop_hp := _loop_handle_position(line)
-			draw_circle(loop_hp, 9.5, Color.WHITE, true, -1.0, true)
-			draw_arc(loop_hp, 9.5, 0.0, TAU, 32, Color(line.color, 0.95), 3.5, true)
+			# 手柄落在成环站的站台上：画成空心环，避免把站台图标整个盖掉
+			draw_arc(loop_hp, 12.5, 0.0, TAU, 40, Color.WHITE, 5.0, true)
+			draw_arc(loop_hp, 12.5, 0.0, TAU, 40, Color(line.color, 0.95), 3.5, true)
 			# 合并手柄的长按进度环
 			if _loop_hold_line == line and not _loop_hold_broken and _loop_hold_time > 0.0:
 				var t: float = clampf(_loop_hold_time / dwell_remove_time, 0.0, 1.0)
-				draw_arc(loop_hp, 16.0, -PI * 0.5, -PI * 0.5 + TAU * t, 40,
+				draw_arc(loop_hp, 19.0, -PI * 0.5, -PI * 0.5 + TAU * t, 40,
 					Color(0.84, 0.27, 0.27, 0.95), 4.0, true)
 			continue
 		for at_start in [true, false]:

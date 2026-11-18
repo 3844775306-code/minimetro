@@ -513,6 +513,9 @@ static func _test_loop(h: TestHarness) -> void:
 	h.check(perimeter > 0.0, "环线总长大于 0")
 	h.check(line.geometry.sample(perimeter).origin.distance_to(a.pos) < 1.0,
 		"环线终点回到起点所在位置")
+	h.eq(line.loop_seam_station_id, a.id, "记录成环时鼠标所在的站台")
+	h.check(editor._loop_handle_position(line).distance_to(a.pos) < 0.1,
+		"合并手柄就在成环站台上")
 	editor.free()
 
 
