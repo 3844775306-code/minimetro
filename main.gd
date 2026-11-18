@@ -57,6 +57,8 @@ var _tutorial_station_a: Station = null
 var _tutorial_station_b: Station = null
 var _tutorial_station_c: Station = null
 var _tutorial_upgrade_offered := false
+## 打开商店前是否处于暂停；关闭商店后恢复
+var _shop_resume_after_close := false
 
 
 func _ready() -> void:
@@ -101,6 +103,8 @@ func _process(delta: float) -> void:
 		hud.score = 0 if simulation == null else simulation.score
 		hud.throughput = 0.0 if simulation == null else simulation.recent_throughput_per_30s()
 		hud.endless_mode = Game.is_endless()
+		hud.development_mode = Game.is_development()
+		hud.coins = 0 if simulation == null else simulation.coins
 		hud.week = 1 if simulation == null else simulation.week_index
 		hud.best_score = _best_for_mode()
 		hud.clock_hours = 7.0 if simulation == null else simulation.hour_of_day()
@@ -410,6 +414,12 @@ func _input(event: InputEvent) -> void:
 		# HUD 在 CanvasLayer 里，必须用屏幕坐标命中；世界拖拽才用世界坐标
 		var pos: Vector2 = (event as InputEventMouseButton).position
 		var ghost_ui := hud.ui_ghost_at(pos)
+		# 发展模式左下角商店入口
+		if hud.development_mode and not ghost_ui and hud.shop_button_at(pos):
+			_open_shop()
+			Audio.play("click")
+			get_viewport().set_input_as_handled()
+			return
 		# 左上角线路颜色条：点开"取消整条线路"的叉按钮
 		var chip_line_id := -1 if ghost_ui else hud.line_chip_at(pos)
 		if chip_line_id >= 0:
@@ -460,6 +470,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event is InputEventKey and event.pressed and not event.echo \
 				and event.keycode == KEY_ESCAPE:
 			hud.hide_line_cancel()
+		return
+	if hud != null and hud.shop_open:
+		_handle_shop_input(event)
+		return
+	if hud != null and hud.development_mode and not hud.mode_menu \
+			and not hud.settings_menu and not hud.week_modal and not hud.game_over \
+			and event is InputEventKey and event.pressed and not event.echo \
+			and event.keycode == KEY_B:
+		_open_shop()
+		get_viewport().set_input_as_handled()
 		return
 	if hud != null and hud.leaderboard_open:
 		var back := false
@@ -544,6 +564,8 @@ func _handle_mode_menu_input(event: InputEvent) -> void:
 				_choose_mode(GameMode.Kind.MANAGER)
 			KEY_5:
 				_choose_mode(GameMode.Kind.TUTORIAL)
+			KEY_6:
+				_choose_mode(GameMode.Kind.DEVELOPMENT)
 			KEY_E:
 				_open_map_editor()
 			KEY_D:
@@ -590,6 +612,55 @@ func _open_settings() -> void:
 	_sync_settings_values()
 	if editor != null:
 		editor.set_process_unhandled_input(false)
+
+
+func _open_shop() -> void:
+	if hud == null or simulation == null or not Game.is_development():
+		return
+	if hud.mode_menu or hud.settings_menu or hud.week_modal or hud.game_over:
+		return
+	_shop_resume_after_close = not Game.paused
+	Game.paused = true
+	hud.paused = true
+	hud.show_shop()
+	if editor != null:
+		editor.set_process_unhandled_input(false)
+
+
+func _close_shop() -> void:
+	if hud == null:
+		return
+	hud.hide_shop()
+	if editor != null and not hud.mode_menu:
+		editor.set_process_unhandled_input(true)
+	if _shop_resume_after_close:
+		Game.paused = false
+		hud.paused = false
+	_shop_resume_after_close = false
+
+
+func _handle_shop_input(event: InputEvent) -> void:
+	if hud == null:
+		return
+	if event is InputEventKey and event.pressed and not event.echo \
+			and event.keycode in [KEY_ESCAPE, KEY_B]:
+		_close_shop()
+		return
+	if event is InputEventMouseButton and event.pressed \
+			and event.button_index == MOUSE_BUTTON_LEFT:
+		var pos: Vector2 = (event as InputEventMouseButton).position
+		if hud.shop_close_at(pos):
+			_close_shop()
+			return
+		var item_id := hud.shop_item_at(pos)
+		if item_id != "":
+			if simulation != null and simulation.purchase(item_id):
+				hud.show_toast(Loc.t("购买成功", "Purchased"))
+				Audio.play("click")
+			else:
+				hud.show_toast(Loc.t("金币不足或已达上限",
+					"Not enough coins or at max"))
+			get_viewport().set_input_as_handled()
 
 
 func _close_settings() -> void:
@@ -1084,6 +1155,8 @@ func _apply_pose() -> void:
 			and (network.lines.is_empty() or network.stations.size() < 7):
 		return
 	match _pose:
+		"shop":
+			_open_shop()
 		"draft":
 			var st := network.add_station(Vector2(1300, 880), Shape.Kind.TRIANGLE)
 			editor.begin_gesture(st.pos)

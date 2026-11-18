@@ -72,6 +72,10 @@ extends Resource
 @export_group("模式")
 ## 无尽模式：站点超载只显示计时环，不会判负。
 @export var endless: bool = false
+## 发展模式：送达乘客获得金币，商店购买资源，不发放周奖励。
+@export var development_mode: bool = false
+## 发展模式开局金币
+@export var start_coins: int = 0
 
 @export_group("线路配色")
 @export var line_colors: Array[Color] = [

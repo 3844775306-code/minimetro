@@ -8,9 +8,11 @@ uniform vec2 viewport_size = vec2(2400.0, 1200.0);
 uniform vec4 tl_rect = vec4(0.0);
 uniform vec4 tr_rect = vec4(0.0);
 uniform vec4 br_rect = vec4(0.0);
+uniform vec4 bl_rect = vec4(0.0);
 uniform float tl_ghost = 0.0;
 uniform float tr_ghost = 0.0;
 uniform float br_ghost = 0.0;
+uniform float bl_ghost = 0.0;
 
 float inside_rect(vec2 p, vec4 rect) {
 	if (rect.z <= 0.0 || rect.w <= 0.0) {
@@ -26,6 +28,7 @@ void fragment() {
 	ghost = max(ghost, tl_ghost * inside_rect(p, tl_rect));
 	ghost = max(ghost, tr_ghost * inside_rect(p, tr_rect));
 	ghost = max(ghost, br_ghost * inside_rect(p, br_rect));
+	ghost = max(ghost, bl_ghost * inside_rect(p, bl_rect));
 	// Keep a faint trace instead of fully removing the HUD.
 	float alpha = mix(1.0, 0.20, clamp(ghost, 0.0, 1.0));
 	COLOR.a *= alpha;

@@ -64,6 +64,13 @@ var week_cards: Array = []
 var _card_rects: Array[Rect2] = []
 
 var mode_menu := false
+## 发展模式：金币经济 + 商店
+var development_mode := false
+var coins := 0
+var shop_open := false
+var _shop_button_rect := Rect2()
+var _shop_close_rect := Rect2()
+var _shop_item_rects: Array[Rect2] = []
 ## 启动动画：只在本次启动第一次进入模式菜单时播放
 var startup_intro_active := false
 var startup_intro_time := 0.0
@@ -124,9 +131,11 @@ var _hud_material: ShaderMaterial = null
 var _ghost_tl := 0.0
 var _ghost_tr := 0.0
 var _ghost_br := 0.0
+var _ghost_bl := 0.0
 var _tl_rect := Rect2()
 var _tr_rect := Rect2()
 var _br_rect := Rect2()
+var _bl_rect := Rect2()
 
 
 ## 四角 HUD 遮挡站台时自动“隐身”，但保留很淡的轮廓；输入也会穿透到站台。
@@ -137,12 +146,14 @@ func _update_corner_occlusion(delta: float) -> void:
 	_tl_rect = Rect2(24.0, 36.0, 748.0, 176.0)
 	_tr_rect = Rect2(vp.x - 342.0, 18.0, 312.0, 232.0)
 	_br_rect = Rect2(vp.x - 470.0, vp.y - 140.0, 454.0, 132.0)
+	_bl_rect = Rect2(28.0, vp.y - 142.0, 264.0, 104.0)
 	var playable := network != null and not mode_menu and not game_over \
 		and not week_modal and not settings_menu and not leaderboard_open \
-		and not map_hall_open and not startup_intro_active
+		and not map_hall_open and not startup_intro_active and not shop_open
 	var hit_tl := false
 	var hit_tr := false
 	var hit_br := false
+	var hit_bl := false
 	if playable:
 		var canvas := get_viewport().get_canvas_transform()
 		for station in network.stations:
@@ -154,22 +165,28 @@ func _update_corner_occlusion(delta: float) -> void:
 				hit_tr = true
 			if _br_rect.grow(margin).has_point(screen_pos):
 				hit_br = true
+			if development_mode and _bl_rect.grow(margin).has_point(screen_pos):
+				hit_bl = true
 	var follow := clampf(delta * 7.0, 0.0, 1.0)
 	if not playable:
 		_ghost_tl = 0.0
 		_ghost_tr = 0.0
 		_ghost_br = 0.0
+		_ghost_bl = 0.0
 	else:
 		_ghost_tl = move_toward(_ghost_tl, 1.0 if hit_tl else 0.0, follow)
 		_ghost_tr = move_toward(_ghost_tr, 1.0 if hit_tr else 0.0, follow)
 		_ghost_br = move_toward(_ghost_br, 1.0 if hit_br else 0.0, follow)
+		_ghost_bl = move_toward(_ghost_bl, 1.0 if hit_bl else 0.0, follow)
 	_hud_material.set_shader_parameter("viewport_size", vp)
 	_hud_material.set_shader_parameter("tl_rect", _rect_to_vec4(_tl_rect))
 	_hud_material.set_shader_parameter("tr_rect", _rect_to_vec4(_tr_rect))
 	_hud_material.set_shader_parameter("br_rect", _rect_to_vec4(_br_rect))
+	_hud_material.set_shader_parameter("bl_rect", _rect_to_vec4(_bl_rect))
 	_hud_material.set_shader_parameter("tl_ghost", _ghost_tl)
 	_hud_material.set_shader_parameter("tr_ghost", _ghost_tr)
 	_hud_material.set_shader_parameter("br_ghost", _ghost_br)
+	_hud_material.set_shader_parameter("bl_ghost", _ghost_bl)
 
 
 static func _rect_to_vec4(rect: Rect2) -> Vector4:
@@ -180,7 +197,8 @@ static func _rect_to_vec4(rect: Rect2) -> Vector4:
 func ui_ghost_at(pos: Vector2) -> bool:
 	return (_ghost_tl > 0.18 and _tl_rect.has_point(pos)) \
 		or (_ghost_tr > 0.18 and _tr_rect.has_point(pos)) \
-		or (_ghost_br > 0.18 and _br_rect.has_point(pos))
+		or (_ghost_br > 0.18 and _br_rect.has_point(pos)) \
+		or (_ghost_bl > 0.18 and _bl_rect.has_point(pos))
 
 
 func _ready() -> void:
@@ -263,6 +281,35 @@ func show_mode_menu() -> void:
 func hide_mode_menu() -> void:
 	mode_menu = false
 	queue_redraw()
+
+
+func show_shop() -> void:
+	shop_open = true
+	queue_redraw()
+
+
+func hide_shop() -> void:
+	shop_open = false
+	_shop_item_rects = []
+	_shop_close_rect = Rect2()
+	queue_redraw()
+
+
+func shop_button_at(pos: Vector2) -> bool:
+	return development_mode and not shop_open and _shop_button_rect.has_point(pos)
+
+
+func shop_close_at(pos: Vector2) -> bool:
+	return _shop_close_rect.has_point(pos)
+
+
+## 返回被点击的商店条目 id；“” 表示没点中。
+func shop_item_at(pos: Vector2) -> String:
+	var items := ShopCatalog.items()
+	for i in _shop_item_rects.size():
+		if i < items.size() and _shop_item_rects[i].has_point(pos):
+			return String(items[i]["id"])
+	return ""
 
 
 func mode_card_at(pos: Vector2) -> int:
@@ -403,6 +450,8 @@ func _draw() -> void:
 		_draw_leaderboard(vp)
 	if map_hall_open:
 		_draw_map_hall(vp)
+	if shop_open:
+		_draw_shop(vp)
 	if name_edit_open:
 		_draw_name_modal(vp)
 	if line_cancel_id >= 0:
@@ -433,10 +482,17 @@ func _draw_game_hud(vp: Vector2) -> void:
 	else:
 		_text_right(Loc.t("已送达 %d", "Delivered %d") % score, vp.x - 40.0, 162.0, 32,
 			Color.WHITE if is_night else INK)
+	if development_mode:
+		_text_right(Loc.t("金币 %d", "Coins %d") % coins, vp.x - 40.0, 204.0, 30,
+			Color(GOLD, 0.98))
+		_text_right(Loc.t("票价 2 金币起", "Fare from 2 coins"), vp.x - 40.0, 232.0, 17,
+			Color(1.0, 1.0, 1.0, 0.60) if is_night else Color(MUTED, 0.82))
 	if stage_label != "":
-		_text_right(stage_label, vp.x - 40.0, 222.0, 20,
+		_text_right(stage_label, vp.x - 40.0, 258.0 if development_mode else 222.0, 20,
 			Color(1.0, 1.0, 1.0, 0.68) if is_night else Color(MUTED, 0.78))
 	_draw_resource_slots(vp)
+	if development_mode:
+		_draw_shop_button(vp)
 	var show_hint := hint_left > 0.0 or (network != null and network.lines.is_empty())
 	if show_hint:
 		var hint_alpha: float = 1.0
@@ -448,7 +504,8 @@ func _draw_game_hud(vp: Vector2) -> void:
 		), vp.x * 0.5, vp.y - 46.0, 22,
 			Color(1.0, 1.0, 1.0, 0.72) if is_night else Color(MUTED, 0.9 * hint_alpha))
 	if paused and not game_over and not settings_menu and not week_modal \
-			and not mode_menu and not ending_focus and not tutorial_active:
+			and not mode_menu and not ending_focus and not tutorial_active \
+			and not shop_open:
 		_text_centered(Loc.t("已暂停", "Paused"), vp.x * 0.5, vp.y * 0.5, 44,
 			Color(1.0, 1.0, 1.0, 0.85) if is_night else Color(INK, 0.75))
 		_text_centered(Loc.t("可继续修改线路、调动车厢", "You can still edit lines and move carriages"),
@@ -481,6 +538,111 @@ func _draw_game_hud(vp: Vector2) -> void:
 		draw_colored_polygon(poly, Color("#FBF8F1", 0.98))
 		draw_polyline(DrawUtil.closed(poly), Color(GOLD, 0.45), 1.2, true)
 		_text(hover_landmark, rect.position + Vector2(11.0, 21.0), 18, INK)
+
+
+func _draw_shop_button(vp: Vector2) -> void:
+	_shop_button_rect = Rect2(38.0, vp.y - 128.0, 238.0, 78.0)
+	var hovered := _shop_button_rect.has_point(get_global_mouse_position())
+	_draw_soft_shadow(_shop_button_rect, 16.0, 0.20 if hovered else 0.12, Vector2(0.0, 7.0))
+	var poly := DrawUtil.rounded_rect(_shop_button_rect, 16.0, 10)
+	draw_colored_polygon(poly, Color("#FFFFFF") if hovered else Color(PAPER, 0.96))
+	draw_polyline(DrawUtil.closed(poly), Color(GOLD, 0.55 if hovered else 0.32), 1.6, true)
+	draw_circle(Vector2(_shop_button_rect.position.x + 38.0,
+		_shop_button_rect.get_center().y), 17.0, Color(GOLD, 0.16), true, -1.0, true)
+	draw_circle(Vector2(_shop_button_rect.position.x + 38.0,
+		_shop_button_rect.get_center().y), 11.0, Color(GOLD, 0.92), true, -1.0, true)
+	_text(Loc.t("商店", "Shop"), Vector2(_shop_button_rect.position.x + 66.0,
+		_shop_button_rect.position.y + 34.0), 27, INK)
+	_text_right(Loc.t("B", "B"), _shop_button_rect.end.x - 18.0,
+		_shop_button_rect.end.y - 16.0, 16, Color(MUTED, 0.75))
+
+
+func _draw_shop(vp: Vector2) -> void:
+	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.05, 0.06, 0.07, 0.78))
+	_draw_vignette(vp, 1.3)
+	var panel := Rect2(vp.x * 0.5 - 750.0, vp.y * 0.5 - 420.0, 1500.0, 840.0)
+	_draw_soft_shadow(panel, 24.0, 0.46, Vector2(0.0, 18.0))
+	var poly := DrawUtil.rounded_rect(panel, 24.0, 12)
+	draw_colored_polygon(poly, Color(0.99, 0.97, 0.92, 0.99))
+	draw_polyline(DrawUtil.closed(poly), Color(GOLD, 0.55), 1.8, true)
+	draw_rect(Rect2(panel.position + Vector2(38.0, 0.0),
+		Vector2(panel.size.x - 76.0, 5.0)), Color(GOLD, 0.92))
+	var cx := panel.get_center().x
+	_text_centered(Loc.t("资源商店", "RESOURCE SHOP"), cx, panel.position.y + 72.0, 42, INK)
+	_text_centered(Loc.t("送达乘客赚金币 · 金币兑换运营资源",
+		"Deliver passengers for coins · spend them on resources"),
+		cx, panel.position.y + 108.0, 21, MUTED)
+	var coin_badge := Rect2(cx - 120.0, panel.position.y + 126.0, 240.0, 42.0)
+	var coin_poly := DrawUtil.rounded_rect(coin_badge, 21.0, 8)
+	draw_colored_polygon(coin_poly, Color(GOLD, 0.13))
+	draw_circle(Vector2(coin_badge.position.x + 24.0, coin_badge.get_center().y), 8.0,
+		Color(GOLD, 0.95), true, -1.0, true)
+	_text_centered(Loc.t("金币 %d", "Coins %d") % coins, cx, coin_badge.get_center().y + 10.0,
+		24, INK)
+	_shop_close_rect = Rect2(panel.end.x - 92.0, panel.position.y + 30.0, 58.0, 58.0)
+	var close_center := _shop_close_rect.get_center()
+	var close_hovered := _shop_close_rect.has_point(get_global_mouse_position())
+	draw_circle(close_center, 26.0, Color(INK, 0.10 if close_hovered else 0.05), true, -1.0, true)
+	draw_line(close_center + Vector2(-9.0, -9.0), close_center + Vector2(9.0, 9.0),
+		Color(INK, 0.8), 3.0, true)
+	draw_line(close_center + Vector2(9.0, -9.0), close_center + Vector2(-9.0, 9.0),
+		Color(INK, 0.8), 3.0, true)
+
+	var items := ShopCatalog.items()
+	var columns := 3
+	var card_w := 430.0
+	var card_h := 258.0
+	var gap := 24.0
+	var grid_w := card_w * columns + gap * (columns - 1)
+	var start_x := cx - grid_w * 0.5
+	var start_y := panel.position.y + 194.0
+	var accents := [GOLD, TEAL, ACCENT, Color("#4F9E63"), Color("#7A6BB5"), Color("#E67E22")]
+	_shop_item_rects = []
+	var mouse := get_global_mouse_position()
+	for i in items.size():
+		var item: Dictionary = items[i]
+		var col := i % columns
+		var row := i / columns
+		var base := Rect2(start_x + float(col) * (card_w + gap),
+			start_y + float(row) * (card_h + gap), card_w, card_h)
+		_shop_item_rects.append(base)
+		var hovered := base.has_point(mouse)
+		var rect := Rect2(base.position + Vector2(0.0, -5.0 if hovered else 0.0), base.size)
+		var price := int(item["price"])
+		var affordable := coins >= price
+		var accent: Color = accents[i % accents.size()]
+		_draw_soft_shadow(rect, 16.0, 0.26 if hovered else 0.10, Vector2(0.0, 9.0))
+		var card_poly := DrawUtil.rounded_rect(rect, 16.0, 8)
+		draw_colored_polygon(card_poly, Color("#FFFFFF") if hovered else Color(PAPER, 0.98))
+		draw_rect(Rect2(rect.position + Vector2(20.0, 0.0), Vector2(rect.size.x - 40.0, 5.0)),
+			Color(accent, 0.90))
+		draw_polyline(DrawUtil.closed(card_poly), Color(accent, 0.34 if hovered else 0.16),
+			1.8 if hovered else 1.2, true)
+		_text_centered(String(item["title"]), rect.get_center().x,
+			rect.position.y + 58.0, 30, INK)
+		_text_wrapped(String(item["desc"]), rect.get_center().x,
+			rect.position.y + 92.0, 19, rect.size.x - 44.0, MUTED)
+		var price_rect := Rect2(rect.position.x + 22.0, rect.end.y - 66.0,
+			rect.size.x - 44.0, 44.0)
+		var price_poly := DrawUtil.rounded_rect(price_rect, 12.0, 6)
+		draw_colored_polygon(price_poly, Color(accent, 0.12 if affordable else 0.05))
+		_text_centered(Loc.t("%d 金币", "%d coins") % price, price_rect.get_center().x,
+			price_rect.position.y + 29.0, 21, Color(INK, 0.92 if affordable else 0.38))
+		if not affordable:
+			_text_centered(Loc.t("金币不足", "Not enough"), rect.get_center().x,
+				rect.end.y - 78.0, 15, Color(ACCENT, 0.72))
+		elif hovered:
+			_text_centered(Loc.t("点击购买", "Click to buy"), rect.get_center().x,
+				rect.end.y - 78.0, 15, Color(TEAL, 0.82))
+		else:
+			_text_centered(Loc.t("可购买", "Available"), rect.get_center().x,
+				rect.end.y - 78.0, 15, Color(TEAL, 0.72))
+	_text_centered(Loc.t("点击卡片购买 · Esc / B 关闭 · 游戏已暂停",
+		"Click a card to buy · Esc / B to close · game paused"),
+		cx, panel.end.y - 34.0, 19, Color(MUTED, 0.78))
+	if toast_left > 0.0:
+		var alpha := clampf(toast_left / 0.5, 0.0, 1.0)
+		_text_centered(toast_text, cx, panel.end.y - 64.0, 19, Color(INK, alpha))
 
 
 ## HUD 半透明纸面板：地图变丰富后保证左上/右上文字可读
@@ -885,8 +1047,8 @@ func _draw_mode_menu(vp: Vector2) -> void:
 	_draw_accent_rule(Vector2(cx, cy - 232.0), 150.0, GOLD)
 	_draw_city_selector(vp)
 	_draw_mode_cards(vp)
-	_text_centered(Loc.t("左右键切换城市 · 点击卡片或按 1 / 2 / 3 / 4 / 5 开始",
-		"Left / Right city · click a card or press 1 / 2 / 3 / 4 / 5"),
+	_text_centered(Loc.t("左右键切换城市 · 点击卡片或按 1 / 2 / 3 / 4 / 5 / 6 开始",
+		"Left / Right city · click a card or press 1 / 2 / 3 / 4 / 5 / 6"),
 		cx, cy + 350.0, 21, Color(1.0, 1.0, 1.0, 0.72))
 	# 底部入口：每日榜 / 地图大厅 / 地图排行 / 地图编辑器
 	var menu_buttons := [
@@ -1206,14 +1368,14 @@ func _draw_mode_cards(vp: Vector2) -> void:
 	var width := 300.0
 	var height := 188.0
 	var gap := 22.0
-	# 五张卡片的真实总宽（旧版只按四张计算，会整体偏右）
-	var total := width * 5.0 + gap * 4.0
+	# 六张模式卡：一条选线上的六个站台
+	var total := width * 6.0 + gap * 5.0
 	var start_x := cx - total * 0.5
 	var top := cy + 8.0
 	_mode_rects = []
 	var mouse := get_global_mouse_position()
-	var accents := [ACCENT, TEAL, GOLD, Color("#6F7C86"), Color("#4F9E63")]
-	# 模式卡不是一排普通卡片，而是同一条"选线"上的五个站台
+	var accents := [ACCENT, TEAL, GOLD, Color("#6F7C86"), Color("#4F9E63"), Color("#B26A2F")]
+	# 模式卡不是一排普通卡片，而是同一条"选线"上的六个站台
 	var route_y := cy - 6.0
 	draw_line(Vector2(start_x + width * 0.5, route_y),
 		Vector2(start_x + total - width * 0.5, route_y),
@@ -1223,7 +1385,7 @@ func _draw_mode_cards(vp: Vector2) -> void:
 		Vector2(start_x + width * 0.5, route_y + 7.0), Color(GOLD, 0.55), 2.0, true)
 	draw_line(Vector2(start_x + total - width * 0.5, route_y - 7.0),
 		Vector2(start_x + total - width * 0.5, route_y + 7.0), Color(GOLD, 0.55), 2.0, true)
-	for i in 5:
+	for i in 6:
 		var base := Rect2(start_x + float(i) * (width + gap), top, width, height)
 		_mode_rects.append(base)
 		var kind := _mode_kind_at(i)
@@ -1275,6 +1437,8 @@ func _mode_kind_at(index: int) -> int:
 			return GameMode.Kind.MANAGER
 		4:
 			return GameMode.Kind.TUTORIAL
+		5:
+			return GameMode.Kind.DEVELOPMENT
 		_:
 			return GameMode.Kind.CLASSIC
 

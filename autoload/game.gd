@@ -85,6 +85,11 @@ func start_run(p_seed: int = 0, p_mode: int = -1) -> void:
 		level.start_bridges = 5
 		level.max_trains = 7
 		level.station_margin = 150.0
+	elif mode == GameMode.Kind.DEVELOPMENT:
+		# 发展模式：靠送达收入买资源，不再发周奖励
+		level.development_mode = true
+		level.start_coins = 30
+		level.week_seconds = 999999.0
 	level.rivers.clear()
 	if mode == GameMode.Kind.TUTORIAL:
 		# 教程用一条简单竖向河流，后面用桥跨过去
@@ -106,3 +111,7 @@ func is_endless() -> bool:
 
 func is_daily() -> bool:
 	return mode == GameMode.Kind.DAILY
+
+
+func is_development() -> bool:
+	return mode == GameMode.Kind.DEVELOPMENT

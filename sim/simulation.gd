@@ -54,6 +54,10 @@ var inventory_high_speed: int = 0
 var inventory_carriages: int = 0
 var inventory_interchanges: int = 0
 
+## 发展模式金币（其他模式也会保持 0）
+var coins: int = 0
+var coins_earned: int = 0
+
 ## 最近送达时间列表（无尽模式评价指标：近 30 秒平均每 5 秒客运量）
 var _delivery_times: Array[float] = []
 
@@ -82,6 +86,77 @@ func _init(p_network: MetroNetwork, p_level: LevelData, p_rng: RandomNumberGener
 	inventory_trains = level.start_trains
 	inventory_carriages = level.start_carriages
 	inventory_interchanges = level.start_interchanges
+	coins = maxi(level.start_coins, 0)
+	coins_earned = 0
+
+
+func is_development() -> bool:
+	return level != null and level.development_mode
+
+
+## 发展模式票价：地铁起步价 2 金币，按直线里程每 500px 加 1，最高 6。
+func fare_for(passenger: Passenger, station: Station) -> int:
+	if not is_development() or passenger == null or station == null:
+		return 0
+	var fare := 2
+	if passenger.origin_pos != Vector2.ZERO:
+		fare += clampi(int(floor(passenger.origin_pos.distance_to(station.pos) / 500.0)), 0, 4)
+	return clampi(fare, 2, 6)
+
+
+func _earn_fare(passenger: Passenger, station: Station) -> void:
+	if not is_development():
+		return
+	var fare := fare_for(passenger, station)
+	if fare > 0:
+		coins += fare
+		coins_earned += fare
+
+
+## 商店购买；返回 true 表示扣款并入库成功。
+func purchase(item_id: String) -> bool:
+	if not is_development():
+		return false
+	var item := ShopCatalog.get_item(item_id)
+	if item.is_empty():
+		return false
+	var price := int(item["price"])
+	if coins < price:
+		return false
+	var kind := String(item["kind"])
+	match kind:
+		"line":
+			if level.start_lines >= level.max_lines:
+				return false
+		"train", "express":
+			if total_trains_owned() >= level.max_trains:
+				return false
+		"carriage":
+			if total_carriages_owned() >= level.max_carriages * 3:
+				return false
+		"bridge":
+			if level.start_bridges >= level.max_bridges:
+				return false
+		"interchange":
+			if total_interchanges_owned() >= level.max_interchanges:
+				return false
+		_:
+			return false
+	coins -= price
+	match kind:
+		"line":
+			level.start_lines += 1
+		"train":
+			inventory_trains += 1
+		"express":
+			inventory_high_speed += 1
+		"carriage":
+			inventory_carriages += 1
+		"bridge":
+			level.start_bridges += 1
+		"interchange":
+			inventory_interchanges += 1
+	return true
 
 
 ## 由主循环每帧调用；speed 为倍速（倍速 = 多跑 tick，而不是放大 delta）。
@@ -459,6 +534,9 @@ func total_interchanges_owned() -> int:
 # ---------------------------------------------------------------------------
 
 func _update_week() -> void:
+	if level.development_mode:
+		# 发展模式用商店替代每周奖励
+		return
 	if level.endless:
 		_update_endless_milestones()
 		return
@@ -501,7 +579,7 @@ func _update_endless_milestones() -> void:
 
 ## 教程用：主动开启一次周升级选择，复用正式周结算的卡片与 HUD 流程。
 func offer_week_reward(reward_title: String = "") -> bool:
-	if week_pending:
+	if is_development() or week_pending:
 		return false
 	var cards := _roll_cards()
 	if cards.is_empty():
@@ -834,7 +912,7 @@ func _spawn_passenger() -> void:
 	for i in shapes.size():
 		pick -= shape_weights[i]
 		if pick <= 0.0:
-			chosen.waiting.append(Passenger.new(shapes[i], elapsed))
+			chosen.waiting.append(Passenger.new(shapes[i], elapsed, chosen.pos))
 			return
 
 
@@ -1233,6 +1311,7 @@ func _perform_next_stop_action(train: Train, station: Station) -> void:
 	match String(action["kind"]):
 		"deliver":
 			_remove_rider(train, passenger)
+			_earn_fare(passenger, station)
 			score += 1
 			delivered += 1
 			_delivery_times.append(elapsed)
@@ -1739,6 +1818,7 @@ func _legacy_deliver(train: Train, station: Station) -> int:
 	var delivered_count := 0
 	for passenger in train.riders:
 		if passenger.target_shape == station.shape:
+			_earn_fare(passenger, station)
 			score += 1
 			delivered += 1
 			delivered_count += 1
@@ -1809,6 +1889,7 @@ func _update_stations(dt: float) -> void:
 			var keep: Array[Passenger] = []
 			for passenger in st.waiting:
 				if passenger.target_shape == st.shape:
+					_earn_fare(passenger, st)
 					score += 1
 					delivered += 1
 				else:
@@ -1820,8 +1901,8 @@ func _update_stations(dt: float) -> void:
 			st.overload_timer += dt
 			if not was_overloading:
 				overload_started.emit(st)
-			if level.endless:
-				# 无尽模式：计时环会顶满，但不会判负
+			if level.endless or level.development_mode:
+				# 无尽/发展模式：计时环会顶满，但不会判负
 				st.overload_timer = minf(st.overload_timer, level.overload_grace)
 			elif st.overload_timer >= level.overload_grace and not is_over:
 				is_over = true
