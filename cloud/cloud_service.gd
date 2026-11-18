@@ -124,8 +124,11 @@ func player_id() -> String:
 func recent_dates(days: int = 7) -> Array[String]:
 	var out: Array[String] = []
 	var now := Time.get_unix_time_from_system()
+	# get_date_string_from_unix_time 是 UTC；日榜使用本地日期，需要加时区偏移。
+	var bias_minutes := int(Time.get_time_zone_from_system().get("bias", 0))
+	var local_now := now + float(bias_minutes) * 60.0
 	for i in days:
-		out.append(Time.get_date_string_from_unix_time(int(now - float(i) * 86400.0)))
+		out.append(Time.get_date_string_from_unix_time(int(local_now - float(i) * 86400.0)))
 	return out
 
 

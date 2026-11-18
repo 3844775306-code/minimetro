@@ -1489,10 +1489,71 @@ func _draw_city_preview(rect: Rect2, city: CityMap) -> void:
 				var uv := (point - world_min) / world_span
 				points.append(rect.position + uv * rect.size)
 			draw_colored_polygon(points, WATER)
+	# 预览里也铺三条游戏内线路，让它不是一张静态地图缩略图
+	_draw_city_schematic(inner)
 	# 内侧细线 + 外框，像一张装裱好的地图卡
 	var inner_poly := DrawUtil.rounded_rect(inner, 8.0, 6)
 	draw_polyline(DrawUtil.closed(inner_poly), Color(1.0, 1.0, 1.0, 0.28), 1.2, true)
 	draw_polyline(DrawUtil.closed(border), Color(GOLD, 0.55), 2.0, true)
+
+
+func _draw_city_schematic(rect: Rect2) -> void:
+	var routes := [
+		{
+			"color": ACCENT,
+			"points": [Vector2(0.10, 0.72), Vector2(0.34, 0.72), Vector2(0.45, 0.53),
+				Vector2(0.64, 0.53), Vector2(0.76, 0.70), Vector2(0.91, 0.70)],
+		},
+		{
+			"color": TEAL,
+			"points": [Vector2(0.22, 0.25), Vector2(0.22, 0.46), Vector2(0.36, 0.60),
+				Vector2(0.58, 0.60), Vector2(0.58, 0.82)],
+		},
+		{
+			"color": GOLD,
+			"points": [Vector2(0.72, 0.27), Vector2(0.72, 0.43), Vector2(0.88, 0.43)],
+		},
+	]
+	var first_points := PackedVector2Array()
+	for route_index in routes.size():
+		var route: Dictionary = routes[route_index]
+		var color: Color = route["color"]
+		var normalized: Array = route["points"]
+		var points := PackedVector2Array()
+		for point in normalized:
+			var uv: Vector2 = point
+			points.append(rect.position + Vector2(uv.x * rect.size.x, uv.y * rect.size.y))
+		draw_polyline(points, Color(color, 0.18), 9.0, true)
+		draw_polyline(points, Color(color, 0.78), 3.2, true)
+		for point in points:
+			draw_circle(point, 4.2, Color(PAPER, 0.98), true, -1.0, true)
+			draw_arc(point, 4.2, 0.0, TAU, 20, Color(color, 0.9), 1.8, true)
+		if route_index == 0:
+			first_points = points
+	# 预览线路上的小车，缓慢往返，作为菜单里的“活的”游戏元素
+	if first_points.size() >= 2:
+		var total := 0.0
+		for i in range(first_points.size() - 1):
+			total += first_points[i].distance_to(first_points[i + 1])
+		if total > 1.0:
+			var phase := fmod(Time.get_ticks_msec() / 7200.0, 2.0)
+			var progress := phase if phase <= 1.0 else 2.0 - phase
+			var target := total * progress
+			var walked := 0.0
+			for i in range(first_points.size() - 1):
+				var a := first_points[i]
+				var b := first_points[i + 1]
+				var segment := a.distance_to(b)
+				if walked + segment >= target and segment > 0.01:
+					var local := (target - walked) / segment
+					var head := a.lerp(b, local)
+					var angle := (b - a).angle()
+					draw_set_transform(head, angle)
+					_draw_capsule(Vector2.ZERO, Color(PAPER, 0.98), 24.0, 12.0)
+					_draw_capsule(Vector2.ZERO, Color(ACCENT, 0.98), 19.0, 8.0)
+					draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+					break
+				walked += segment
 
 
 func _draw_config_panel(vp: Vector2) -> void:
@@ -1539,28 +1600,46 @@ func _draw_config_panel(vp: Vector2) -> void:
 	for row_index in 3:
 		var row: Dictionary = rows[row_index]
 		var y := cy + 6.0 + float(row_index) * 70.0
-		_text(String(row["label"]), Vector2(cx - 552.0, y + 24.0), 22,
-			Color(1.0, 1.0, 1.0, 0.72))
-		_text(String(row["desc"]), Vector2(cx + 255.0, y + 24.0), 17,
+		var accent: Color = row["accent"]
+		# 每行本身就是一条迷你线路：左侧起点、两座可选站台
+		draw_circle(Vector2(cx - 574.0, y + 25.0), 5.0, accent, true, -1.0, true)
+		draw_line(Vector2(cx - 574.0, y + 25.0), Vector2(cx - 562.0, y + 25.0),
+			Color(accent, 0.45), 2.0, true)
+		_text(String(row["label"]), Vector2(cx - 552.0, y + 31.0), 22,
+			Color(1.0, 1.0, 1.0, 0.76))
+		_text(String(row["desc"]), Vector2(cx + 255.0, y + 31.0), 17,
 			Color(1.0, 1.0, 1.0, 0.48))
 		var options: Array = row["options"]
 		var selected := int(row["selected"])
-		var accent: Color = row["accent"]
 		var rects: Array[Rect2] = []
+		var centers: Array[Vector2] = []
 		for option_index in 2:
 			var option_rect := Rect2(cx - 300.0 + float(option_index) * 262.0,
-				y, 250.0, 50.0)
+				y, 250.0, 52.0)
 			rects.append(option_rect)
+			centers.append(Vector2(option_rect.get_center().x, y + 14.0))
+		# 先用一条线路把两座站台连起来，再画站台本身
+		draw_line(centers[0], centers[1], Color(accent, 0.48), 4.0, true)
+		draw_line(centers[0], centers[1], Color(1.0, 1.0, 1.0, 0.20), 1.2, true)
+		for option_index in 2:
+			var option_rect: Rect2 = rects[option_index]
+			var station: Vector2 = centers[option_index]
 			var hovered := option_rect.has_point(mouse)
 			var chosen := option_index == selected
-			var poly := DrawUtil.rounded_rect(option_rect, 13.0, 8)
-			draw_colored_polygon(poly, Color(accent, 0.88 if chosen else
-				(0.16 if hovered else 0.075)))
-			draw_polyline(DrawUtil.closed(poly),
-				Color(accent, 0.65 if chosen else 0.24), 1.6 if chosen else 1.2, true)
+			if chosen:
+				var highlight := DrawUtil.rounded_rect(
+					Rect2(option_rect.position.x + 46.0, y - 2.0, 158.0, 56.0), 28.0, 8)
+				draw_colored_polygon(highlight, Color(accent, 0.10))
+			draw_circle(station, 17.0 if chosen or hovered else 13.0,
+				Color(accent, 0.16 if chosen or hovered else 0.07), true, -1.0, true)
+			draw_circle(station, 9.0 if chosen else 8.0, Color(PAPER, 0.98), true, -1.0, true)
+			draw_arc(station, 9.0 if chosen else 8.0, 0.0, TAU, 32,
+				Color(accent, 0.95 if chosen else 0.55), 3.2 if chosen else 2.2, true)
+			if chosen:
+				draw_circle(station, 3.6, accent, true, -1.0, true)
 			_text_centered(String(options[option_index]), option_rect.get_center().x,
-				option_rect.position.y + 33.0, 25,
-				Color(1.0, 1.0, 1.0, 0.98 if chosen else 0.62))
+				y + 44.0, 22,
+				Color(1.0, 1.0, 1.0, 0.98 if chosen else (0.80 if hovered else 0.62)))
 		match row_index:
 			0:
 				_menu_base_rects = rects
@@ -1569,8 +1648,8 @@ func _draw_config_panel(vp: Vector2) -> void:
 			2:
 				_menu_manager_rects = rects
 		if row_index < 2:
-			draw_line(Vector2(panel.position.x + 26.0, y + 58.0),
-				Vector2(panel.end.x - 26.0, y + 58.0), Color(1.0, 1.0, 1.0, 0.055), 1.0, true)
+			draw_line(Vector2(panel.position.x + 26.0, y + 62.0),
+				Vector2(panel.end.x - 26.0, y + 62.0), Color(1.0, 1.0, 1.0, 0.055), 1.0, true)
 
 	# 配置摘要 + 本配置最高
 	var config_summary := "%s · %s · %s" % [
@@ -1590,24 +1669,61 @@ func _draw_config_panel(vp: Vector2) -> void:
 	_tutorial_card_rect = Rect2(cx + 194.0, cy + 258.0, 260.0, 76.0)
 	_draw_quick_config_card(_daily_card_rect, Loc.t("每日挑战", "Daily Challenge"),
 		Loc.t("经典规则 · 每天 1 次", "Classic rules · 1/day"), GOLD,
-		_daily_card_rect.has_point(mouse))
+		_daily_card_rect.has_point(mouse), false)
 	_draw_quick_config_card(_tutorial_card_rect, Loc.t("新手教程", "Tutorial"),
 		Loc.t("经典规则 · 12 步", "Classic rules · 12 steps"), TEAL,
-		_tutorial_card_rect.has_point(mouse))
-	_draw_touch_button(_menu_start_rect, Loc.t("开始运营", "Start run"),
+		_tutorial_card_rect.has_point(mouse), true)
+	_draw_departure_button(_menu_start_rect, Loc.t("发车", "DEPART"),
 		_menu_start_rect.has_point(mouse))
 
 
 func _draw_quick_config_card(rect: Rect2, title: String, desc: String, accent: Color,
-		hovered: bool) -> void:
+		hovered: bool, square_station: bool = false) -> void:
 	_draw_soft_shadow(rect, 14.0, 0.18 if hovered else 0.10, Vector2(0.0, 7.0))
 	var poly := DrawUtil.rounded_rect(rect, 15.0, 8)
 	draw_colored_polygon(poly, Color(0.07, 0.08, 0.09, 0.72 if hovered else 0.50))
 	draw_polyline(DrawUtil.closed(poly), Color(accent, 0.55 if hovered else 0.28), 1.5, true)
+	var station := Vector2(rect.position.x + 26.0, rect.position.y + 34.0)
+	if square_station:
+		var pts := PackedVector2Array([
+			station + Vector2(-9.0, -9.0), station + Vector2(9.0, -9.0),
+			station + Vector2(9.0, 9.0), station + Vector2(-9.0, 9.0),
+		])
+		draw_colored_polygon(pts, Color(PAPER, 0.98))
+		draw_polyline(DrawUtil.closed(pts), Color(accent, 0.9), 2.5, true)
+	else:
+		draw_circle(station, 10.0, Color(PAPER, 0.98), true, -1.0, true)
+		draw_arc(station, 10.0, 0.0, TAU, 28, Color(accent, 0.9), 2.5, true)
 	_text_centered(title, rect.get_center().x, rect.position.y + 32.0, 24,
 		Color(1.0, 1.0, 1.0, 0.94))
 	_text_centered(desc, rect.get_center().x, rect.position.y + 58.0, 16,
 		Color(1.0, 1.0, 1.0, 0.54))
+
+
+func _draw_departure_button(rect: Rect2, label: String, hovered: bool) -> void:
+	_draw_soft_shadow(rect, 18.0, 0.30 if hovered else 0.18, Vector2(0.0, 10.0))
+	var poly := DrawUtil.rounded_rect(rect, 18.0, 10)
+	draw_colored_polygon(poly, Color("#FFFFFF") if hovered else Color(PAPER, 0.98))
+	draw_rect(Rect2(rect.position + Vector2(24.0, 0.0), Vector2(rect.size.x - 48.0, 5.0)),
+		Color(GOLD, 0.95))
+	draw_polyline(DrawUtil.closed(poly), Color(INK, 0.30), 1.4, true)
+	# 发车按钮左侧放一列小列车，直接借用游戏里的车身元素
+	var train_center := Vector2(rect.position.x + 54.0, rect.get_center().y + 2.0)
+	_draw_capsule(train_center, Color(PAPER, 0.98), 62.0, 28.0)
+	_draw_capsule(train_center, Color(ACCENT, 0.96), 54.0, 21.0)
+	draw_line(train_center + Vector2(-14.0, 0.0), train_center + Vector2(14.0, 0.0),
+		Color(1.0, 1.0, 1.0, 0.55), 2.0, true)
+	draw_circle(train_center + Vector2(18.0, 8.0), 4.0, Color(INK, 0.82), true, -1.0, true)
+	draw_circle(train_center + Vector2(-18.0, 8.0), 4.0, Color(INK, 0.82), true, -1.0, true)
+	var text_x := rect.position.x + 96.0
+	_text(label, Vector2(text_x, rect.position.y + 39.0), 29, INK)
+	_text(Loc.t("START RUN", "START RUN"), Vector2(text_x + 2.0, rect.position.y + 61.0),
+		14, Color(MUTED, 0.82))
+	# 右侧出发箭头
+	var arrow := Vector2(rect.end.x - 34.0, rect.get_center().y)
+	draw_line(arrow - Vector2(10.0, 0.0), arrow + Vector2(10.0, 0.0), Color(ACCENT, 0.82), 2.5, true)
+	draw_line(arrow + Vector2(10.0, 0.0), arrow + Vector2(2.0, -8.0), Color(ACCENT, 0.82), 2.5, true)
+	draw_line(arrow + Vector2(10.0, 0.0), arrow + Vector2(2.0, 8.0), Color(ACCENT, 0.82), 2.5, true)
 
 
 func _mode_kind_at(index: int) -> int:
