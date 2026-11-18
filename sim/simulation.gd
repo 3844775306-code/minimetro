@@ -60,6 +60,9 @@ var coins_earned: int = 0
 
 ## 最近送达时间列表（无尽模式评价指标：近 30 秒平均每 5 秒客运量）
 var _delivery_times: Array[float] = []
+## 金币收入事件（x=时间，y=金额），用于发展+无尽“每30秒金币”指标
+var _coin_events: Array[Vector2] = []
+var endless_best_coins_per_30s := 0.0
 
 var _accum: float = 0.0
 var _station_spawn_timer: float = 0.0
@@ -111,6 +114,10 @@ func _earn_fare(passenger: Passenger, station: Station) -> void:
 	if fare > 0:
 		coins += fare
 		coins_earned += fare
+		_coin_events.append(Vector2(elapsed, float(fare)))
+		var cutoff := elapsed - 30.0
+		while not _coin_events.is_empty() and _coin_events[0].x < cutoff:
+			_coin_events.pop_front()
 
 
 ## 商店购买；返回 true 表示扣款并入库成功。
@@ -185,6 +192,13 @@ func tick(dt: float) -> void:
 	if is_over:
 		return
 	_update_week()
+	if level.endless:
+		if is_development():
+			endless_best_coins_per_30s = maxf(endless_best_coins_per_30s,
+				recent_coins_per_30s())
+		else:
+			endless_best_per_30s = maxf(endless_best_per_30s,
+				recent_throughput_per_30s())
 
 
 ## 当前游戏时刻（0~24 小时）。
@@ -318,6 +332,26 @@ func recent_throughput_per_30s() -> float:
 		if t >= cutoff:
 			count += 1
 	return float(count)
+
+
+## 发展模式近 30 秒赚到的金币。
+func recent_coins_per_30s() -> float:
+	var cutoff := elapsed - 30.0
+	var total := 0.0
+	for event in _coin_events:
+		if event.x >= cutoff:
+			total += event.y
+	return total
+
+
+## 无尽轴当前使用的评价指标：经典看客运量，发展看金币。
+func recent_endless_metric() -> float:
+	return recent_coins_per_30s() if is_development() else recent_throughput_per_30s()
+
+
+func endless_best_value() -> int:
+	return int(floor(endless_best_coins_per_30s if is_development()
+		else endless_best_per_30s))
 
 
 func endless_best() -> int:
@@ -1901,8 +1935,8 @@ func _update_stations(dt: float) -> void:
 			st.overload_timer += dt
 			if not was_overloading:
 				overload_started.emit(st)
-			if level.endless or level.development_mode:
-				# 无尽/发展模式：计时环会顶满，但不会判负
+			if level.endless:
+				# 无尽轴：计时环会顶满，但不会判负
 				st.overload_timer = minf(st.overload_timer, level.overload_grace)
 			elif st.overload_timer >= level.overload_grace and not is_over:
 				is_over = true

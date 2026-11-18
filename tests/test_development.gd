@@ -61,6 +61,17 @@ static func _test_fare_and_coins(h: TestHarness) -> void:
 	h.eq(sim.coins, 3, "送达入账 3 金币")
 	h.eq(sim.coins_earned, 3, "累计收入同步")
 
+	# 发展 + 无尽：评价指标是最近 30 秒金币
+	var endless_made := _make_sim()
+	var endless_sim: Simulation = endless_made[0]
+	endless_made[2].endless = true
+	endless_sim.elapsed = 40.0
+	endless_sim._coin_events = [Vector2(20.0, 3.0), Vector2(35.0, 5.0)]
+	h.near(endless_sim.recent_coins_per_30s(), 8.0, 0.001,
+		"发展+无尽：最近30秒金币 = 8")
+	endless_sim.tick(Simulation.STEP)
+	h.eq(endless_sim.endless_best_value(), 8, "无尽最高值记录每30秒金币")
+
 
 static func _test_shop_purchase(h: TestHarness) -> void:
 	h.section("development/shop")
@@ -86,8 +97,20 @@ static func _test_no_weekly_and_no_fail(h: TestHarness) -> void:
 	sim.elapsed = made[2].week_seconds + 2.0
 	sim._update_week()
 	h.check(not sim.week_pending, "发展模式不会弹出周奖励")
+	# 发展 + 无尽轴：不判负
+	made[2].endless = true
 	for i in 10:
 		station.waiting.append(Passenger.new(Shape.Kind.STAR))
 	for i in 20:
 		sim._update_stations(0.2)
-	h.check(not sim.is_over, "发展模式不会因拥堵结束")
+	h.check(not sim.is_over, "发展 + 无尽不会因拥堵结束")
+
+	# 对照：发展 + 无（非无尽）仍按普通拥堵结束
+	var made2 := _make_sim()
+	var sim2: Simulation = made2[0]
+	var station2: Station = made2[3]
+	for i in 10:
+		station2.waiting.append(Passenger.new(Shape.Kind.STAR))
+	for i in 20:
+		sim2._update_stations(0.2)
+	h.check(sim2.is_over, "发展 + 无仍会因拥堵结束")
