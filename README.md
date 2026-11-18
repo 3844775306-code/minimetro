@@ -176,6 +176,13 @@ Web 版使用 Godot Compatibility 渲染器、无多线程导出，可直接在�
 - **中英双语**：HUD、模式菜单、升级卡、提示全部走 `Loc` 双语表
 - **Windows 导出**：`export_presets.cfg` + 一条命令产出 exe/pck
 
+## 视觉方向
+
+- **纸感城市图册**：地图保留纸张底色与颗粒，UI 用暖纸卡片、信号红与黄铜色做层次，避免纯白平铺。
+- **站牌式标题**：模式页标题用拉开字距的大写站牌字，五种模式不是五张孤立卡片，而是串在同一条"选线"上的五个站台。
+- **电影感层次**：菜单、结算、设置、周升级都有暗角、柔和投影和顶部强调色；资源卡片、速度按钮和提示条统一为纸片/玻璃两种材质。
+- **动效克制**：只保留菜单缓慢漂移的线路与星点、卡片悬停抬升和长按/超载的呼吸环，不影响读图。
+
 ## 截图
 
 ### 开局：村庄（固定 3 座基础车站）
@@ -185,6 +192,10 @@ Web 版使用 Godot Compatibility 渲染器、无多线程导出，可直接在�
 ### 模式选择（可切换城市）
 
 ![模式选择](docs/images/m6-menu.png)
+
+### 对局 HUD（纸片资源面板 + 电影感暗角）
+
+![对局 HUD](docs/images/ui-game.png)
 
 ### 新手教程（模式菜单第 5 张卡 / 按 5）
 
@@ -230,6 +241,10 @@ Web 版使用 Godot Compatibility 渲染器、无多线程导出，可直接在�
 > 云端后端已接入 Supabase 项目 `josalpkewgzritmwbocs`，publishable key 放在 `cloud/supabase_config.json`；网络失败时使用 `user://cloud_sim.json` 本地示例数据兜底。建表 SQL、RLS 与 RPC 见 `cloud/supabase_schema.sql`，接入说明见 `cloud/SUPABASE.md`。
 
 ![地图大厅缩略预览](docs/images/map-hall.png)
+
+### 对局结束
+
+![对局结束](docs/images/gameover.png)
 
 ![对局结束前拉近爆仓车站](docs/images/gameover-camera.png)
 

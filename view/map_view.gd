@@ -16,6 +16,7 @@ var _land := PackedVector2Array()
 var _water: Array[PackedVector2Array] = []
 ## 0 = 白天，1 = 夜晚。只改变地面/水面/桌面颜色，不盖全屏暗色滤镜。
 var _night := 0.0
+var _grain: Array[Vector2] = []
 
 
 func set_night_strength(value: float) -> void:
@@ -30,6 +31,13 @@ func setup(p_level: LevelData) -> void:
 	var rect := Rect2(Vector2.ZERO, level.world_size).grow(-level.land_margin)
 	_land = DrawUtil.rounded_rect(rect, level.land_corner_radius)
 	_water = merge_rivers(level.rivers)
+	# 固定种子的纸面颗粒，增加纸张质感而不影响碰撞/布局
+	_grain.clear()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 20261118
+	for i in 140:
+		_grain.append(Vector2(rng.randf_range(0.0, level.world_size.x),
+			rng.randf_range(0.0, level.world_size.y)))
 	queue_redraw()
 
 
@@ -58,6 +66,11 @@ func _draw() -> void:
 	for polygon in _water:
 		if polygon.size() >= 3:
 			draw_polyline(DrawUtil.closed(polygon), river_edge, 2.5, true)
+	# 纸面微颗粒与内侧暖边，让大面积纸色不再平板
+	var grain_color := Color(0.20, 0.18, 0.15, lerpf(0.045, 0.030, _night))
+	for point in _grain:
+		draw_circle(point, 0.8, grain_color, true, -1.0, true)
+	draw_polyline(DrawUtil.closed(_land), Color(1.0, 1.0, 1.0, 0.34), 1.0, true)
 
 
 ## 把多条河道多边形合并成水面并集；重叠或汇流处不会留下内部边界。

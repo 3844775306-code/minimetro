@@ -7,6 +7,10 @@ const INK := Color("#2B2B2B")
 const MUTED := Color("#7C7568")
 const PAPER := Color("#FBF8F1")
 const WATER := Color("#CFE4EA")
+const ACCENT := Color("#D64545")
+const GOLD := Color("#E8A33D")
+const TEAL := Color("#2F8F9D")
+const DEEP := Color("#121518")
 const CHIP_W := 46.0
 const CHIP_H := 13.0
 const CHIP_GAP := 12.0
@@ -315,11 +319,15 @@ func _draw() -> void:
 # ---------------------------------------------------------------------------
 
 func _draw_game_hud(vp: Vector2) -> void:
+	# 电影感边缘暗角，让地图中心更聚焦
+	_draw_vignette(vp, 0.55)
 	# 减负版 HUD：左上只留线色/库存，右上不再画面板（避免挡地图）
 	_draw_panel(Rect2(34.0, 46.0, 720.0, 156.0))
 	if map_name != "":
+		_text_centered(map_name, vp.x * 0.5 + 2.0, 62.0, 32, Color(0.0, 0.0, 0.0, 0.20))
 		_text_centered(map_name, vp.x * 0.5, 60.0, 32,
 			Color(1.0, 1.0, 1.0, 0.88) if is_night else Color(MUTED, 0.85))
+		_draw_accent_rule(Vector2(vp.x * 0.5, 76.0), 48.0, GOLD if not is_night else Color.WHITE)
 	_draw_clock(vp)
 	if endless_mode:
 		# 无尽模式的评价主指标：最近 30 秒送达量（人 / 30 秒）
@@ -354,8 +362,18 @@ func _draw_game_hud(vp: Vector2) -> void:
 	_draw_speed_buttons(vp)
 	if toast_left > 0.0:
 		var alpha: float = clampf(toast_left / 0.5, 0.0, 1.0)
-		_text_centered(toast_text, vp.x * 0.5, vp.y - 120.0, 26,
-			Color(1.0, 1.0, 1.0, alpha) if is_night else Color(INK, alpha))
+		var toast_size := font.get_string_size(toast_text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 26)
+		var toast_rect := Rect2(
+			Vector2(vp.x * 0.5 - minf(toast_size.x + 52.0, 900.0) * 0.5,
+				vp.y - 142.0), Vector2(minf(toast_size.x + 52.0, 900.0), 48.0))
+		_draw_soft_shadow(toast_rect, 24.0, 0.20, Vector2(0.0, 8.0))
+		var toast_poly := DrawUtil.rounded_rect(toast_rect, 24.0, 10)
+		draw_colored_polygon(toast_poly, Color(DEEP, 0.82 * alpha))
+		draw_polyline(DrawUtil.closed(toast_poly), Color(1.0, 1.0, 1.0, 0.16 * alpha), 1.2, true)
+		draw_circle(Vector2(toast_rect.position.x + 24.0, toast_rect.get_center().y), 3.5,
+			Color(GOLD, 0.9 * alpha), true, -1.0, true)
+		_text_centered(toast_text, toast_rect.get_center().x,
+			toast_rect.position.y + 32.0, 26, Color(1.0, 1.0, 1.0, alpha))
 	# 悬停车站：显示这个形状代表的地标
 	if hover_landmark != "":
 		var text_size := font.get_string_size(hover_landmark, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 15)
@@ -364,16 +382,21 @@ func _draw_game_hud(vp: Vector2) -> void:
 		rect.position.x = clampf(rect.position.x, 12.0, vp.x - rect.size.x - 12.0)
 		rect.position.y = clampf(rect.position.y, 12.0, vp.y - rect.size.y - 12.0)
 		var poly := DrawUtil.rounded_rect(rect, 9.0, 6)
-		draw_colored_polygon(poly, Color("#FBF8F1", 0.96))
-		draw_polyline(DrawUtil.closed(poly), Color(0.55, 0.52, 0.47), 1.6, true)
+		_draw_soft_shadow(rect, 9.0, 0.18, Vector2(0.0, 4.0))
+		draw_colored_polygon(poly, Color("#FBF8F1", 0.98))
+		draw_polyline(DrawUtil.closed(poly), Color(GOLD, 0.45), 1.2, true)
 		_text(hover_landmark, rect.position + Vector2(11.0, 21.0), 18, INK)
 
 
 ## HUD 半透明纸面板：地图变丰富后保证左上/右上文字可读
 func _draw_panel(rect: Rect2) -> void:
+	_draw_soft_shadow(rect, 14.0, 0.16, Vector2(0.0, 7.0))
 	var poly := DrawUtil.rounded_rect(rect, 14.0, 8)
-	draw_colored_polygon(poly, Color(0.99, 0.97, 0.92, 0.92))
-	draw_polyline(DrawUtil.closed(poly), Color(0.72, 0.69, 0.62, 0.5), 1.5, true)
+	draw_colored_polygon(poly, Color(0.99, 0.97, 0.92, 0.94))
+	draw_polyline(DrawUtil.closed(poly), Color(0.72, 0.69, 0.62, 0.42), 1.4, true)
+	# 左缘强调条，像一张装订标签
+	draw_line(rect.position + Vector2(3.0, 14.0), Vector2(rect.position.x + 3.0, rect.end.y - 14.0),
+		Color(ACCENT, 0.55), 3.0, true)
 
 
 ## 12 小时制时钟：12 点在上、6 点在下；到了夜晚整块表盘变黑、指针变白。
@@ -382,7 +405,11 @@ func _draw_clock(vp: Vector2) -> void:
 	var radius := 34.0
 	var strength := Simulation.night_strength(clock_hours)
 	var face := Color("#FBF8F1").lerp(Color("#1C1C1E"), strength)
+	# 悬浮表盘的柔和外圈 + 投影
+	draw_circle(center + Vector2(0.0, 5.0), radius + 3.0, Color(0.04, 0.05, 0.06, 0.14), true, -1.0, true)
+	draw_circle(center, radius + 10.0, Color(face, 0.10), true, -1.0, true)
 	draw_circle(center, radius, face)
+	draw_arc(center, radius + 1.0, 0.0, TAU, 48, Color(1.0, 1.0, 1.0, 0.28), 1.2, true)
 	var hand_color := Color(0.12, 0.13, 0.15, 0.95).lerp(Color(1.0, 1.0, 1.0, 0.95), strength)
 	var tick_color := Color(0.16, 0.17, 0.19, 0.5).lerp(Color(1.0, 1.0, 1.0, 0.55), strength)
 	# 12 个刻度
@@ -422,9 +449,10 @@ func _draw_speed_buttons(vp: Vector2) -> void:
 	# 设置按钮放在倍速按钮右边
 	_settings_rect = Rect2(Vector2(vp.x - 116.0, vp.y - 104.0), size)
 	var settings_center := _settings_rect.get_center()
+	_draw_soft_shadow(_settings_rect, 12.0, 0.12, Vector2(0.0, 5.0))
 	var settings_poly := DrawUtil.rounded_rect(_settings_rect, 12.0, 6)
-	draw_colored_polygon(settings_poly, Color(1.0, 1.0, 1.0, 0.42))
-	draw_polyline(DrawUtil.closed(settings_poly), Color(INK, 0.4), 1.5, true)
+	draw_colored_polygon(settings_poly, Color(1.0, 1.0, 1.0, 0.56))
+	draw_polyline(DrawUtil.closed(settings_poly), Color(INK, 0.34), 1.4, true)
 	draw_circle(settings_center, 15.0, Color(INK, 0.8), true, -1.0, true)
 	draw_circle(settings_center, 6.0, Color(PAPER, 0.95), true, -1.0, true)
 	for i in 8:
@@ -433,10 +461,12 @@ func _draw_speed_buttons(vp: Vector2) -> void:
 			settings_center + Vector2(cos(a), sin(a)) * 23.0, Color(INK, 0.8), 3.5, true)
 	var mouse := get_global_mouse_position()
 	var pause_hovered := _pause_rect.has_point(mouse)
+	_draw_soft_shadow(_pause_rect, 12.0, 0.12, Vector2(0.0, 5.0))
 	var pause_poly := DrawUtil.rounded_rect(_pause_rect, 12.0, 6)
 	draw_colored_polygon(pause_poly,
-		Color(INK, 0.85) if paused else Color(1.0, 1.0, 1.0, 0.65 if pause_hovered else 0.42))
-	draw_polyline(DrawUtil.closed(pause_poly), Color(INK, 0.4), 1.5, true)
+		Color(ACCENT, 0.80) if paused else Color(1.0, 1.0, 1.0, 0.72 if pause_hovered else 0.52))
+	draw_polyline(DrawUtil.closed(pause_poly), Color(ACCENT, 0.70) if paused else Color(INK, 0.34),
+		1.4, true)
 	var pc := _pause_rect.get_center()
 	if paused:
 		# 恢复播放：三角形
@@ -454,12 +484,14 @@ func _draw_speed_buttons(vp: Vector2) -> void:
 		_speed_rects.append(rect)
 		var active := is_equal_approx(speed, float(i + 1))
 		var hovered := rect.has_point(mouse)
+		_draw_soft_shadow(rect, 12.0, 0.12, Vector2(0.0, 5.0))
 		var poly := DrawUtil.rounded_rect(rect, 12.0, 6)
 		if active:
-			draw_colored_polygon(poly, Color(INK, 0.85))
+			draw_colored_polygon(poly, Color(ACCENT, 0.88))
 		else:
-			draw_colored_polygon(poly, Color(1.0, 1.0, 1.0, 0.65 if hovered else 0.42))
-		draw_polyline(DrawUtil.closed(poly), Color(INK, 0.4), 1.5, true)
+			draw_colored_polygon(poly, Color(1.0, 1.0, 1.0, 0.72 if hovered else 0.50))
+		draw_polyline(DrawUtil.closed(poly),
+			Color(ACCENT, 0.75) if active else Color(INK, 0.30), 1.4, true)
 		_text_centered(String(labels[i]), rect.position.x + rect.size.x * 0.5,
 			rect.position.y + 46.0, 26, Color(1.0, 1.0, 1.0, 0.95) if active else INK)
 
@@ -534,9 +566,11 @@ func _draw_resource_slots(vp: Vector2) -> void:
 		var count := int(stock_counts.get(kind, 0))
 		var card := Rect2(center - Vector2(60.0, 36.0), Vector2(120.0, 88.0))
 		var hovered := card.has_point(mouse)
+		_draw_soft_shadow(card, 12.0, 0.12 if hovered else 0.07, Vector2(0.0, 5.0))
 		var card_poly := DrawUtil.rounded_rect(card, 14.0, 8)
-		draw_colored_polygon(card_poly, Color(1.0, 1.0, 1.0, 0.78 if hovered else 0.48))
-		draw_polyline(DrawUtil.closed(card_poly), Color(INK, 0.38), 1.5, true)
+		draw_colored_polygon(card_poly, Color(1.0, 1.0, 1.0, 0.88 if hovered else 0.58))
+		draw_polyline(DrawUtil.closed(card_poly), Color(ACCENT, 0.38 if hovered else 0.16),
+			1.8 if hovered else 1.2, true)
 		_draw_stock_icon(kind, Vector2(center.x, row_y - 8.0), count > 0)
 		_text("x%d" % count, Vector2(center.x + 24.0, row_y - 14.0), 24,
 			Color(INK, 0.85) if count > 0 else Color(MUTED, 0.5))
@@ -551,9 +585,10 @@ func _draw_resource_slots(vp: Vector2) -> void:
 	# 桥梁不是库存，是预算：画桥图标 + 已用/上限
 	var bridge_center := Vector2(690.0, row_y)
 	var bridge_card := Rect2(bridge_center - Vector2(60.0, 36.0), Vector2(120.0, 88.0))
+	_draw_soft_shadow(bridge_card, 12.0, 0.07, Vector2(0.0, 5.0))
 	var bridge_poly := DrawUtil.rounded_rect(bridge_card, 14.0, 8)
-	draw_colored_polygon(bridge_poly, Color(1.0, 1.0, 1.0, 0.35))
-	draw_polyline(DrawUtil.closed(bridge_poly), Color(INK, 0.28), 1.5, true)
+	draw_colored_polygon(bridge_poly, Color(1.0, 1.0, 1.0, 0.46))
+	draw_polyline(DrawUtil.closed(bridge_poly), Color(INK, 0.28), 1.4, true)
 	_draw_stock_icon("bridge", Vector2(bridge_center.x, row_y - 8.0), true)
 	var bridges := 0 if network == null else network.used_bridges()
 	_text("%d/%d" % [bridges, level.start_bridges], Vector2(bridge_center.x + 16.0, row_y - 14.0),
@@ -625,18 +660,29 @@ func stock_icon_center(kind: String) -> Vector2:
 # ---------------------------------------------------------------------------
 
 func _draw_week(vp: Vector2) -> void:
-	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.10, 0.10, 0.11, 0.52))
+	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.06, 0.07, 0.08, 0.66))
+	_draw_vignette(vp, 1.2)
 	var title := reward_title if reward_title != "" else \
 		Loc.t("第 %d 周 · 选择升级", "Week %d · Choose an upgrade") % week
-	_text_centered(title, vp.x * 0.5, vp.y * 0.5 - 168.0, 40, Color(1.0, 1.0, 1.0, 0.96))
+	var cx := vp.x * 0.5
+	_text_centered(title, cx + 2.0, vp.y * 0.5 - 166.0, 42, Color(0.0, 0.0, 0.0, 0.25))
+	_text_centered(title, cx, vp.y * 0.5 - 168.0, 42, Color(1.0, 1.0, 1.0, 0.98))
+	_draw_accent_rule(Vector2(cx, vp.y * 0.5 - 136.0), 120.0, GOLD)
 	_card_rects = _compute_card_rects(vp, week_cards.size(), 400.0, 220.0, 44.0)
 	var mouse := get_global_mouse_position()
+	var accents := [GOLD, TEAL]
 	for i in _card_rects.size():
-		var rect: Rect2 = _card_rects[i]
-		var hovered := rect.has_point(mouse)
+		var base: Rect2 = _card_rects[i]
+		var hovered := base.has_point(mouse)
+		var rect := Rect2(base.position + Vector2(0.0, -6.0 if hovered else 0.0), base.size)
+		_draw_soft_shadow(rect, 20.0, 0.32 if hovered else 0.16, Vector2(0.0, 12.0))
 		var poly := DrawUtil.rounded_rect(rect, 20.0, 10)
 		draw_colored_polygon(poly, Color("#FFFFFF") if hovered else PAPER)
-		draw_polyline(DrawUtil.closed(poly), Color(0.72, 0.69, 0.62), 2.5, true)
+		var accent: Color = accents[i % accents.size()]
+		draw_rect(Rect2(rect.position + Vector2(24.0, 0.0), Vector2(rect.size.x - 48.0, 5.0)),
+			Color(accent, 0.92))
+		draw_polyline(DrawUtil.closed(poly), Color(accent, 0.36 if hovered else 0.18),
+			2.0 if hovered else 1.4, true)
 		if i < week_cards.size():
 			var card: Dictionary = week_cards[i]
 			_text_centered(String(card["title"]),
@@ -648,7 +694,7 @@ func _draw_week(vp: Vector2) -> void:
 			rect.position.x + rect.size.x * 0.5, rect.position.y + rect.size.y - 24.0, 18,
 			Color(MUTED, 0.8))
 	_text_centered(Loc.t("点击卡片，或按 1 / 2", "Click a card, or press 1 / 2"),
-		vp.x * 0.5, vp.y * 0.5 + 178.0, 21, Color(1.0, 1.0, 1.0, 0.75))
+		cx, vp.y * 0.5 + 178.0, 21, Color(1.0, 1.0, 1.0, 0.7))
 
 
 # ---------------------------------------------------------------------------
@@ -681,9 +727,12 @@ func _draw_tutorial(vp: Vector2) -> void:
 	if tutorial_complete:
 		draw_rect(Rect2(Vector2.ZERO, vp), Color(0.08, 0.09, 0.10, 0.60))
 		var end_panel := Rect2(cx - 430.0, vp.y * 0.5 - 190.0, 860.0, 380.0)
+		_draw_soft_shadow(end_panel, 22.0, 0.40, Vector2(0.0, 16.0))
 		var poly := DrawUtil.rounded_rect(end_panel, 22.0, 10)
-		draw_colored_polygon(poly, Color(0.99, 0.97, 0.92, 0.98))
-		draw_polyline(DrawUtil.closed(poly), Color(0.72, 0.69, 0.62), 2.0, true)
+		draw_colored_polygon(poly, Color(0.99, 0.97, 0.92, 0.99))
+		draw_polyline(DrawUtil.closed(poly), Color(GOLD, 0.55), 1.6, true)
+		draw_rect(Rect2(end_panel.position + Vector2(40.0, 0.0),
+			Vector2(end_panel.size.x - 80.0, 5.0)), Color(GOLD, 0.9))
 		_text_centered(Loc.t("教程完成", "Tutorial complete"), cx,
 			end_panel.position.y + 72.0, 44, INK)
 		_text_centered(Loc.t("你已经学会画线、拆站、环线、过河、换乘和升级。",
@@ -699,10 +748,19 @@ func _draw_tutorial(vp: Vector2) -> void:
 		_draw_touch_button(_tutorial_menu_rect,
 			Loc.t("返回模式选择", "Mode menu"), _tutorial_menu_rect.has_point(get_global_mouse_position()))
 		return
-	var panel := Rect2(cx - 430.0, 218.0, 860.0, 154.0)
+	var panel := Rect2(cx - 430.0, 118.0, 860.0, 154.0)
+	_draw_soft_shadow(panel, 16.0, 0.28, Vector2(0.0, 10.0))
 	var panel_poly := DrawUtil.rounded_rect(panel, 16.0, 8)
-	draw_colored_polygon(panel_poly, Color(0.99, 0.97, 0.92, 0.96))
-	draw_polyline(DrawUtil.closed(panel_poly), Color(0.72, 0.69, 0.62, 0.85), 1.6, true)
+	draw_colored_polygon(panel_poly, Color(0.99, 0.97, 0.92, 0.98))
+	draw_polyline(DrawUtil.closed(panel_poly), Color(GOLD, 0.50), 1.5, true)
+	# 左侧步骤色条 + 底部进度条
+	draw_rect(Rect2(panel.position + Vector2(0.0, 16.0), Vector2(4.0, panel.size.y - 32.0)),
+		Color(ACCENT, 0.85))
+	var progress := clampf((float(tutorial_step) + 1.0) / float(maxi(tutorial_total, 1)), 0.0, 1.0)
+	draw_rect(Rect2(panel.position + Vector2(20.0, panel.size.y - 7.0),
+		Vector2(panel.size.x - 40.0, 2.5)), Color(INK, 0.10))
+	draw_rect(Rect2(panel.position + Vector2(20.0, panel.size.y - 7.0),
+		Vector2((panel.size.x - 40.0) * progress, 2.5)), Color(ACCENT, 0.9))
 	_text(Loc.t("教程 %d/%d", "Tutorial %d/%d") % [tutorial_step + 1, tutorial_total],
 		panel.position + Vector2(22.0, 30.0), 19, Color(0.83, 0.32, 0.24, 0.95))
 	_text_centered(tutorial_title, cx, panel.position.y + 50.0, 27, INK)
@@ -717,17 +775,24 @@ func _draw_tutorial(vp: Vector2) -> void:
 
 
 func _draw_mode_menu(vp: Vector2) -> void:
-	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.09, 0.10, 0.11, 0.62))
+	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.07, 0.085, 0.095, 0.72))
+	_draw_vignette(vp, 1.2)
+	_draw_menu_ambient(vp)
 	var cx := vp.x * 0.5
 	var cy := vp.y * 0.5
-	_text_centered("MINI METRO", cx, cy - 290.0, 54, Color(1.0, 1.0, 1.0, 0.97))
-	_text_centered(Loc.t("极简地铁调度 · 选择模式与城市", "Minimal metro puzzle · pick a mode and a city"),
-		cx, cy - 250.0, 24, Color(1.0, 1.0, 1.0, 0.78))
+	# 标题：站牌式大字距 + 深色投影；让菜单第一眼有"城市线路图册"的身份
+	_text_tracked_centered("MINI METRO", cx + 2.0, cy - 288.0, 60,
+		Color(0.0, 0.0, 0.0, 0.28), 8.0)
+	_text_tracked_centered("MINI METRO", cx, cy - 290.0, 60,
+		Color(1.0, 1.0, 1.0, 0.98), 8.0)
+	_text_centered(Loc.t("极简地铁调度", "MINIMAL METRO PUZZLE"),
+		cx, cy - 244.0, 21, Color(0.96, 0.78, 0.52, 0.92))
+	_draw_accent_rule(Vector2(cx, cy - 232.0), 150.0, GOLD)
 	_draw_city_selector(vp)
 	_draw_mode_cards(vp)
 	_text_centered(Loc.t("左右键切换城市 · 点击卡片或按 1 / 2 / 3 / 4 / 5 开始",
 		"Left / Right city · click a card or press 1 / 2 / 3 / 4 / 5"),
-		cx, cy + 350.0, 21, Color(1.0, 1.0, 1.0, 0.75))
+		cx, cy + 350.0, 21, Color(1.0, 1.0, 1.0, 0.72))
 	# 底部入口：每日榜 / 地图大厅 / 地图排行 / 地图编辑器
 	var menu_buttons := [
 		{"rect": _daily_board_rect, "text": Loc.t("每日排行榜", "Daily board"),
@@ -837,13 +902,17 @@ func line_cancel_at(pos: Vector2) -> bool:
 
 
 func _draw_leaderboard(vp: Vector2) -> void:
-	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.08, 0.09, 0.10, 0.78))
+	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.06, 0.07, 0.08, 0.80))
+	_draw_vignette(vp, 1.1)
 	var panel_size := Vector2(minf(1760.0, vp.x - 120.0), 260.0 + float(leaderboard_lines.size()) * 44.0)
 	panel_size.y = minf(panel_size.y, vp.y - 100.0)
 	var panel := Rect2((vp - panel_size) * 0.5, panel_size)
+	_draw_soft_shadow(panel, 22.0, 0.40, Vector2(0.0, 16.0))
 	var poly := DrawUtil.rounded_rect(panel, 22.0, 10)
-	draw_colored_polygon(poly, Color(0.99, 0.97, 0.92, 0.98))
-	draw_polyline(DrawUtil.closed(poly), Color(0.55, 0.52, 0.47), 2.0, true)
+	draw_colored_polygon(poly, Color(0.99, 0.97, 0.92, 0.99))
+	draw_polyline(DrawUtil.closed(poly), Color(GOLD, 0.42), 1.5, true)
+	draw_rect(Rect2(panel.position + Vector2(32.0, 0.0), Vector2(panel.size.x - 64.0, 4.0)),
+		Color(GOLD, 0.85))
 	_text_centered(leaderboard_title, panel.position.x + panel.size.x * 0.5,
 		panel.position.y + 68.0, 40, INK)
 	_text_centered(leaderboard_subtitle, panel.position.x + panel.size.x * 0.5,
@@ -866,11 +935,14 @@ func _draw_line_cancel(vp: Vector2) -> void:
 		line = network.line_by_id(line_cancel_id)
 	if line == null:
 		return
-	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.08, 0.09, 0.10, 0.55))
+	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.06, 0.07, 0.08, 0.62))
 	var panel := Rect2(vp.x * 0.5 - 320.0, vp.y * 0.5 - 210.0, 640.0, 420.0)
+	_draw_soft_shadow(panel, 22.0, 0.38, Vector2(0.0, 16.0))
 	var poly := DrawUtil.rounded_rect(panel, 22.0, 10)
-	draw_colored_polygon(poly, Color(0.99, 0.97, 0.92, 0.98))
-	draw_polyline(DrawUtil.closed(poly), Color(0.55, 0.52, 0.47), 2.0, true)
+	draw_colored_polygon(poly, Color(0.99, 0.97, 0.92, 0.99))
+	draw_polyline(DrawUtil.closed(poly), Color(GOLD, 0.48), 1.5, true)
+	draw_rect(Rect2(panel.position + Vector2(28.0, 0.0), Vector2(panel.size.x - 56.0, 4.0)),
+		Color(GOLD, 0.85))
 	_draw_capsule(Vector2(vp.x * 0.5, panel.position.y + 70.0), line.color, 150.0, 26.0)
 	_text_centered(Loc.t("取消整条线路？", "Cancel this line?"), vp.x * 0.5,
 		panel.position.y + 132.0, 38, INK)
@@ -930,13 +1002,17 @@ func _draw_map_hall_preview(entry: Dictionary, rect: Rect2) -> void:
 
 
 func _draw_map_hall(vp: Vector2) -> void:
-	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.08, 0.09, 0.10, 0.78))
+	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.06, 0.07, 0.08, 0.80))
+	_draw_vignette(vp, 1.1)
 	var panel_size := Vector2(minf(1760.0, vp.x - 120.0), 260.0 + float(map_hall_entries.size()) * 96.0)
 	panel_size.y = minf(panel_size.y, vp.y - 100.0)
 	var panel := Rect2((vp - panel_size) * 0.5, panel_size)
+	_draw_soft_shadow(panel, 22.0, 0.40, Vector2(0.0, 16.0))
 	var poly := DrawUtil.rounded_rect(panel, 22.0, 10)
-	draw_colored_polygon(poly, Color(0.99, 0.97, 0.92, 0.98))
-	draw_polyline(DrawUtil.closed(poly), Color(0.55, 0.52, 0.47), 2.0, true)
+	draw_colored_polygon(poly, Color(0.99, 0.97, 0.92, 0.99))
+	draw_polyline(DrawUtil.closed(poly), Color(GOLD, 0.42), 1.5, true)
+	draw_rect(Rect2(panel.position + Vector2(32.0, 0.0), Vector2(panel.size.x - 64.0, 4.0)),
+		Color(GOLD, 0.85))
 	_text_centered(Loc.t("地图大厅", "Map Hall"), panel.position.x + panel.size.x * 0.5,
 		panel.position.y + 64.0, 40, INK)
 	_text_centered(Loc.t("点击地图行即可下载到本地，随后会出现在城市列表",
@@ -981,29 +1057,40 @@ func _draw_city_selector(vp: Vector2) -> void:
 		city_index = clampi(city_index, 0, menu_cities.size() - 1)
 		city = menu_cities[city_index]
 	if city != null:
-		_text_centered(city.display_name(), cx, cy - 216.0, 34, Color(1.0, 1.0, 1.0, 0.95))
-	_draw_city_preview(Rect2(cx - 180.0, cy - 204.0, 360.0, 176.0), city)
+		_text_centered(city.display_name(), cx, cy - 196.0, 32, Color(1.0, 1.0, 1.0, 0.95))
+	_draw_city_preview(Rect2(cx - 180.0, cy - 180.0, 360.0, 156.0), city)
 	_city_arrow_rects = [
-		Rect2(cx - 292.0, cy - 160.0, 90.0, 90.0),
-		Rect2(cx + 202.0, cy - 160.0, 90.0, 90.0),
+		Rect2(cx - 292.0, cy - 140.0, 90.0, 90.0),
+		Rect2(cx + 202.0, cy - 140.0, 90.0, 90.0),
 	]
 	var mouse := get_global_mouse_position()
 	for i in 2:
 		var arrow_rect: Rect2 = _city_arrow_rects[i]
 		var hovered := arrow_rect.has_point(mouse)
-		var color := Color(1.0, 1.0, 1.0, 0.95 if hovered else 0.55)
-		_text_centered("‹" if i == 0 else "›", arrow_rect.position.x + 45.0,
-			arrow_rect.position.y + 67.0, 62, color)
+		var center := arrow_rect.get_center()
+		draw_circle(center, 31.0, Color(1.0, 1.0, 1.0, 0.10 if hovered else 0.045), true, -1.0, true)
+		draw_arc(center, 31.0, 0.0, TAU, 40,
+			Color(1.0, 1.0, 1.0, 0.48 if hovered else 0.22), 1.6, true)
+		var sign := 1.0 if i == 0 else -1.0
+		var color := Color(1.0, 1.0, 1.0, 0.95 if hovered else 0.68)
+		draw_polyline(PackedVector2Array([
+			center + Vector2(sign * 7.0, -13.0),
+			center + Vector2(sign * -6.0, 0.0),
+			center + Vector2(sign * 7.0, 13.0),
+		]), color, 3.2, true)
 
 
 func _draw_city_preview(rect: Rect2, city: CityMap) -> void:
+	_draw_soft_shadow(rect, 14.0, 0.34, Vector2(0.0, 12.0))
+	# 预览边缘的暖色光晕
+	draw_arc(rect.get_center(), rect.size.x * 0.56, 0.0, TAU, 64,
+		Color(GOLD, 0.035), 26.0, true)
 	var border := DrawUtil.rounded_rect(rect, 14.0, 8)
 	draw_colored_polygon(border, WATER)
 	var inner := rect.grow(-8.0)
 	var land := DrawUtil.rounded_rect(inner, 8.0, 8)
 	draw_colored_polygon(land, Color("#F3EFE6"))
 	if city != null:
-		# 世界坐标（含河道越界的一点余量）→ 预览矩形
 		var world_min := Vector2(-60, -60)
 		var world_span := Vector2(CityMaps.WORLD_SIZE.x + 120.0, CityMaps.WORLD_SIZE.y + 120.0)
 		for river in city.rivers:
@@ -1012,7 +1099,10 @@ func _draw_city_preview(rect: Rect2, city: CityMap) -> void:
 				var uv := (point - world_min) / world_span
 				points.append(rect.position + uv * rect.size)
 			draw_colored_polygon(points, WATER)
-	draw_polyline(DrawUtil.closed(border), Color(0.72, 0.69, 0.62), 2.0, true)
+	# 内侧细线 + 外框，像一张装裱好的地图卡
+	var inner_poly := DrawUtil.rounded_rect(inner, 8.0, 6)
+	draw_polyline(DrawUtil.closed(inner_poly), Color(1.0, 1.0, 1.0, 0.28), 1.2, true)
+	draw_polyline(DrawUtil.closed(border), Color(GOLD, 0.55), 2.0, true)
 
 
 func _draw_mode_cards(vp: Vector2) -> void:
@@ -1021,33 +1111,62 @@ func _draw_mode_cards(vp: Vector2) -> void:
 	var width := 300.0
 	var height := 188.0
 	var gap := 22.0
-	var total := width * 4.0 + gap * 3.0
+	# 五张卡片的真实总宽（旧版只按四张计算，会整体偏右）
+	var total := width * 5.0 + gap * 4.0
 	var start_x := cx - total * 0.5
 	var top := cy + 8.0
 	_mode_rects = []
 	var mouse := get_global_mouse_position()
+	var accents := [ACCENT, TEAL, GOLD, Color("#6F7C86"), Color("#4F9E63")]
+	# 模式卡不是一排普通卡片，而是同一条"选线"上的五个站台
+	var route_y := cy - 6.0
+	draw_line(Vector2(start_x + width * 0.5, route_y),
+		Vector2(start_x + total - width * 0.5, route_y),
+		Color(0.93, 0.89, 0.78, 0.42), 2.5, true)
+	# 两端终点短竖线，像线路图上的终点站符号
+	draw_line(Vector2(start_x + width * 0.5, route_y - 7.0),
+		Vector2(start_x + width * 0.5, route_y + 7.0), Color(GOLD, 0.55), 2.0, true)
+	draw_line(Vector2(start_x + total - width * 0.5, route_y - 7.0),
+		Vector2(start_x + total - width * 0.5, route_y + 7.0), Color(GOLD, 0.55), 2.0, true)
 	for i in 5:
-		var rect := Rect2(start_x + float(i) * (width + gap), top, width, height)
-		_mode_rects.append(rect)
+		var base := Rect2(start_x + float(i) * (width + gap), top, width, height)
+		_mode_rects.append(base)
 		var kind := _mode_kind_at(i)
-		var hovered := rect.has_point(mouse)
-		var poly := DrawUtil.rounded_rect(rect, 20.0, 10)
+		var hovered := base.has_point(mouse)
+		var accent: Color = accents[i % accents.size()]
+		var station_pos := Vector2(base.get_center().x, route_y)
+		draw_line(station_pos, Vector2(base.get_center().x, top),
+			Color(accent, 0.50), 1.8, true)
+		draw_circle(station_pos, 9.5 if hovered else 7.0,
+			Color(accent, 0.16), true, -1.0, true)
+		draw_circle(station_pos, 5.0 if hovered else 4.0, Color(PAPER, 0.96), true, -1.0, true)
+		draw_arc(station_pos, 5.0 if hovered else 4.0, 0.0, TAU, 20, Color(accent, 0.95),
+			2.0, true)
+		var rect := Rect2(base.position + Vector2(0.0, -6.0 if hovered else 0.0), base.size)
+		_draw_soft_shadow(rect, 18.0, 0.24 if hovered else 0.13)
+		var poly := DrawUtil.rounded_rect(rect, 18.0, 10)
 		draw_colored_polygon(poly, Color("#FFFFFF") if hovered else PAPER)
-		draw_polyline(DrawUtil.closed(poly), Color(0.72, 0.69, 0.62), 2.5, true)
+		# 顶部像地铁线路色带一样的高亮条
+		var stripe := Rect2(rect.position + Vector2(16.0, 0.0), Vector2(rect.size.x - 32.0, 5.0))
+		draw_rect(stripe, Color(accent, 0.92))
+		draw_polyline(DrawUtil.closed(poly), Color(accent, 0.30 if hovered else 0.14),
+			2.0 if hovered else 1.4, true)
 		_text_centered(GameMode.title(kind), rect.position.x + rect.size.x * 0.5,
 			rect.position.y + 58.0, 34, INK)
 		_text_wrapped(GameMode.description(kind), rect.position.x + rect.size.x * 0.5,
 			rect.position.y + 100.0, 19, rect.size.x - 44.0, MUTED)
 		var mode_key := GameMode.key(kind)
 		var best := int(mode_bests.get(mode_key, 0))
-		if kind == GameMode.Kind.TUTORIAL:
-			_text_centered(Loc.t("从零开始", "Start here"),
-				rect.position.x + rect.size.x * 0.5, rect.position.y + 148.0, 20, Color(MUTED, 0.9))
-		else:
-			_text_centered(Loc.t("最高 %d", "Best %d") % best,
-				rect.position.x + rect.size.x * 0.5, rect.position.y + 148.0, 20, Color(MUTED, 0.9))
+		var best_text := Loc.t("从零开始", "Start here") if kind == GameMode.Kind.TUTORIAL \
+			else Loc.t("最高 %d", "Best %d") % best
+		var badge := Rect2(rect.position.x + rect.size.x * 0.5 - 62.0,
+			rect.position.y + 134.0, 124.0, 27.0)
+		var badge_poly := DrawUtil.rounded_rect(badge, 14.0, 6)
+		draw_colored_polygon(badge_poly, Color(accent, 0.10))
+		_text_centered(best_text, rect.position.x + rect.size.x * 0.5,
+			rect.position.y + 153.0, 18, Color(INK, 0.76))
 		_text_centered(Loc.t("按 %d", "Press %d") % (i + 1),
-			rect.position.x + rect.size.x * 0.5, rect.position.y + rect.size.y - 16.0, 17,
+			rect.position.x + rect.size.x * 0.5, rect.position.y + rect.size.y - 14.0, 16,
 			Color(MUTED, 0.72))
 
 
@@ -1066,13 +1185,18 @@ func _mode_kind_at(index: int) -> int:
 
 
 func _draw_settings(vp: Vector2) -> void:
-	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.10, 0.10, 0.11, 0.55))
+	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.06, 0.07, 0.08, 0.62))
+	_draw_vignette(vp, 1.1)
 	var panel := Rect2(vp.x * 0.5 - 450.0, vp.y * 0.5 - 410.0, 900.0, 820.0)
+	_draw_soft_shadow(panel, 22.0, 0.42, Vector2(0.0, 18.0))
 	var panel_poly := DrawUtil.rounded_rect(panel, 22.0, 10)
-	draw_colored_polygon(panel_poly, Color(0.12, 0.12, 0.13, 0.72))
-	draw_polyline(DrawUtil.closed(panel_poly), Color(1.0, 1.0, 1.0, 0.12), 2.0, true)
+	draw_colored_polygon(panel_poly, Color(0.10, 0.11, 0.12, 0.86))
+	draw_polyline(DrawUtil.closed(panel_poly), Color(1.0, 1.0, 1.0, 0.14), 1.5, true)
+	draw_rect(Rect2(panel.position + Vector2(30.0, 0.0), Vector2(panel.size.x - 60.0, 4.0)),
+		Color(GOLD, 0.85))
 	_text_centered(Loc.t("暂停 · 设置", "Paused · Settings"), vp.x * 0.5,
-		vp.y * 0.5 - 365.0, 38, Color(1.0, 1.0, 1.0, 0.96))
+		vp.y * 0.5 - 365.0, 38, Color(1.0, 1.0, 1.0, 0.98))
+	_draw_accent_rule(Vector2(vp.x * 0.5, vp.y * 0.5 - 338.0), 90.0, GOLD)
 	var labels := [
 		Loc.t("继续", "Resume"),
 		Loc.t("主音量", "Master volume"),
@@ -1105,8 +1229,11 @@ func _draw_settings(vp: Vector2) -> void:
 	for i in labels.size():
 		var row := Rect2(start_x, start_y + float(i) * step, row_width, row_height)
 		if i == settings_index:
+			_draw_soft_shadow(row, 12.0, 0.20, Vector2(0.0, 5.0))
 			var poly := DrawUtil.rounded_rect(row, 12.0, 6)
-			draw_colored_polygon(poly, Color(1.0, 1.0, 1.0, 0.16))
+			draw_colored_polygon(poly, Color(1.0, 1.0, 1.0, 0.13))
+			draw_line(row.position + Vector2(10.0, 14.0),
+				Vector2(row.position.x + 10.0, row.end.y - 14.0), Color(GOLD, 0.8), 3.0, true)
 		_text(String(labels[i]), Vector2(row.position.x + 40.0, row.position.y + 47.0), 34,
 			Color(1.0, 1.0, 1.0, 0.94 if i == settings_index else 0.78))
 		if i in [1, 2, 5]:
@@ -1134,41 +1261,77 @@ func _draw_settings(vp: Vector2) -> void:
 
 
 func _draw_game_over(vp: Vector2) -> void:
-	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.10, 0.10, 0.11, 0.58))
 	var cx := vp.x * 0.5
 	var cy := vp.y * 0.5
-	_text_centered(Loc.t("拥堵失控", "Overcrowded"), cx, cy - 40.0, 60,
-		Color(1.0, 1.0, 1.0, 0.96))
-	_text_centered(Loc.t("送达 %d 名乘客 · 最高 %d", "Delivered %d · Best %d") % [
-		final_score, best_score,
-	], cx, cy + 22.0, 32, Color(1.0, 1.0, 1.0, 0.92))
-	var button_size := Vector2(340.0, 96.0)
-	var gap := 40.0
+	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.06, 0.065, 0.075, 0.70))
+	_draw_vignette(vp, 1.4)
+	# 失败红晕，中心亮、边缘暗
+	draw_circle(Vector2(cx, cy - 70.0), 250.0, Color(ACCENT, 0.035), true, -1.0, true)
+	draw_circle(Vector2(cx, cy - 70.0), 170.0, Color(ACCENT, 0.045), true, -1.0, true)
+	_text_centered(Loc.t("本次运营结束", "RUN ENDED"), cx, cy - 168.0, 18,
+		Color(GOLD, 0.85))
+	_text_centered(Loc.t("拥堵失控", "Overcrowded"), cx + 2.0, cy - 96.0, 68,
+		Color(0.0, 0.0, 0.0, 0.30))
+	_text_centered(Loc.t("拥堵失控", "Overcrowded"), cx, cy - 98.0, 68,
+		Color(1.0, 1.0, 1.0, 0.98))
+	_draw_accent_rule(Vector2(cx, cy - 62.0), 220.0, ACCENT)
+	# 两个数据卡
+	var card_w := 250.0
+	var card_h := 104.0
+	var gap := 22.0
+	var stats_total := card_w * 2.0 + gap
+	var stat_y := cy - 28.0
+	var cards := [
+		{"title": Loc.t("送达乘客", "DELIVERED"), "value": final_score, "accent": GOLD},
+		{"title": Loc.t("历史最高", "BEST"), "value": best_score, "accent": ACCENT},
+	]
+	for i in 2:
+		var rect := Rect2(cx - stats_total * 0.5 + float(i) * (card_w + gap), stat_y,
+			card_w, card_h)
+		_draw_soft_shadow(rect, 16.0, 0.30, Vector2(0.0, 8.0))
+		var poly := DrawUtil.rounded_rect(rect, 16.0, 8)
+		draw_colored_polygon(poly, Color(0.09, 0.10, 0.11, 0.72))
+		draw_polyline(DrawUtil.closed(poly), Color(1.0, 1.0, 1.0, 0.12), 1.2, true)
+		_text_centered(String(cards[i]["title"]), rect.get_center().x,
+			rect.position.y + 28.0, 16, Color(1.0, 1.0, 1.0, 0.55))
+		_text_centered(str(cards[i]["value"]), rect.get_center().x,
+			rect.position.y + 76.0, 46, Color(cards[i]["accent"], 0.98))
+	var button_size := Vector2(340.0, 88.0)
+	var button_gap := 32.0
+	var button_y := cy + 104.0
 	if game_over_can_restart:
 		_game_over_restart_rect = Rect2(
-			Vector2(cx - button_size.x - gap * 0.5, cy + 78.0), button_size)
+			Vector2(cx - button_size.x - button_gap * 0.5, button_y), button_size)
 		_game_over_menu_rect = Rect2(
-			Vector2(cx + gap * 0.5, cy + 78.0), button_size)
+			Vector2(cx + button_gap * 0.5, button_y), button_size)
 	else:
 		_game_over_restart_rect = Rect2()
-		_game_over_menu_rect = Rect2(Vector2(cx - button_size.x * 0.5, cy + 78.0), button_size)
+		_game_over_menu_rect = Rect2(Vector2(cx - button_size.x * 0.5, button_y), button_size)
 	_draw_touch_button(_game_over_restart_rect,
 		Loc.t("重新开始", "Restart"), _game_over_restart_rect.has_point(get_global_mouse_position()))
 	_draw_touch_button(_game_over_menu_rect,
 		Loc.t("返回模式选择", "Mode menu"), _game_over_menu_rect.has_point(get_global_mouse_position()))
 	_text_centered(Loc.t("也可按 R 重新开始 · M 返回模式选择",
-		"Keyboard: R restart · M mode menu"), cx, cy + 208.0, 20,
-		Color(1.0, 1.0, 1.0, 0.55))
+		"Keyboard: R restart · M mode menu"), cx, cy + 232.0, 19,
+		Color(1.0, 1.0, 1.0, 0.48))
 
 
 ## 大号触屏按钮：绘制 + 文本。
 func _draw_touch_button(rect: Rect2, label: String, hovered: bool) -> void:
 	if rect.size.x <= 0.0:
 		return
+	_draw_soft_shadow(rect, 15.0, 0.22 if hovered else 0.12, Vector2(0.0, 7.0))
 	var poly := DrawUtil.rounded_rect(rect, 16.0, 10)
-	draw_colored_polygon(poly, Color(1.0, 1.0, 1.0, 0.92 if hovered else 0.80))
-	draw_polyline(DrawUtil.closed(poly), Color(0.42, 0.39, 0.35), 2.0, true)
-	_text_centered(label, rect.get_center().x, rect.position.y + 59.0, 30, INK)
+	draw_colored_polygon(poly, Color("#FFFFFF") if hovered else Color("#FBF8F1", 0.96))
+	# 顶部一条极浅高光，底部一条强调色细线
+	draw_line(rect.position + Vector2(18.0, 2.0), Vector2(rect.end.x - 18.0, rect.position.y + 2.0),
+		Color(1.0, 1.0, 1.0, 0.72), 1.5, true)
+	draw_line(rect.position + Vector2(24.0, rect.size.y - 3.0),
+		Vector2(rect.end.x - 24.0, rect.position.y + rect.size.y - 3.0),
+		Color(ACCENT, 0.50 if hovered else 0.26), 2.0, true)
+	draw_polyline(DrawUtil.closed(poly), Color(INK, 0.34 if hovered else 0.20), 1.4, true)
+	_text_centered(label, rect.get_center().x,
+		rect.position.y + rect.size.y * 0.5 + 10.0, 30, INK)
 
 
 # ---------------------------------------------------------------------------
@@ -1186,6 +1349,59 @@ func _compute_card_rects(vp: Vector2, count: int, width: float, height: float,
 	for i in count:
 		rects.append(Rect2(Vector2(start_x + float(i) * (width + gap), y), Vector2(width, height)))
 	return rects
+
+
+## 边缘暗角：用一圈低透明横向/纵向色带模拟柔和 vignette。
+func _draw_vignette(vp: Vector2, strength: float = 1.0) -> void:
+	for i in 9:
+		var depth := float(i) * 16.0
+		var band := 16.0
+		var alpha := 0.028 * strength * (1.0 - float(i) / 12.0)
+		draw_rect(Rect2(Vector2(0.0, depth), Vector2(vp.x, band)), Color(DEEP, alpha))
+		draw_rect(Rect2(Vector2(0.0, vp.y - depth - band), Vector2(vp.x, band)), Color(DEEP, alpha))
+		draw_rect(Rect2(Vector2(depth, 0.0), Vector2(band, vp.y)), Color(DEEP, alpha))
+		draw_rect(Rect2(Vector2(vp.x - depth - band, 0.0), Vector2(band, vp.y)), Color(DEEP, alpha))
+
+
+## 卡片背后的柔和投影（CanvasItem 没有 blur，用几层 alpha 叠出层次）。
+func _draw_soft_shadow(rect: Rect2, radius: float, strength: float = 0.18,
+		offset: Vector2 = Vector2(0.0, 9.0)) -> void:
+	var base := Rect2(rect.position + offset, rect.size)
+	for i in 3:
+		var grow := 5.0 + float(i) * 5.0
+		var alpha := strength * (0.42 - float(i) * 0.10)
+		var poly := DrawUtil.rounded_rect(base.grow(grow), radius + grow, 8)
+		draw_colored_polygon(poly, Color(0.04, 0.05, 0.06, alpha))
+
+
+func _draw_accent_rule(center: Vector2, width: float, color: Color = ACCENT) -> void:
+	draw_line(center - Vector2(width * 0.5, 0.0), center + Vector2(width * 0.5, 0.0),
+		Color(color, 0.85), 3.0, true)
+	draw_circle(center + Vector2(width * 0.5 + 9.0, 0.0), 2.2, Color(color, 0.7), true, -1.0, true)
+
+
+## 模式菜单背景的呼吸路径与光晕。
+func _draw_menu_ambient(vp: Vector2) -> void:
+	var cx := vp.x * 0.5
+	var cy := vp.y * 0.5
+	var t := float(Time.get_ticks_msec()) / 1000.0
+	for i in 4:
+		var radius := 180.0 + float(i) * 95.0 + sin(t * 0.5 + float(i)) * 8.0
+		draw_circle(Vector2(cx, cy - 245.0), radius, Color(ACCENT, 0.010 - float(i) * 0.002),
+			true, -1.0, true)
+	# 低对比度装饰轨道：缓慢漂移的 45°/水平线
+	var offset := fmod(t * 9.0, 120.0)
+	for i in 5:
+		var y := 100.0 + float(i) * 235.0 + offset
+		draw_line(Vector2(-60.0, y), Vector2(vp.x + 60.0, y),
+			Color(0.9, 0.88, 0.80, 0.045), 1.2, true)
+		draw_line(Vector2(-60.0 + y * 0.4, vp.y + 60.0), Vector2(vp.x + 60.0, -60.0),
+			Color(GOLD, 0.018), 2.0, true)
+	for i in 22:
+		var px := fmod(float(i * 157) + t * (5.0 + float(i % 3) * 2.0), vp.x + 80.0) - 40.0
+		var py := 90.0 + fmod(float(i * 91), vp.y - 180.0) + sin(t * 0.7 + float(i)) * 6.0
+		draw_circle(Vector2(px, py), 1.6 + float(i % 3) * 0.6,
+			Color(1.0, 1.0, 1.0, 0.12), true, -1.0, true)
 
 
 func _percent(value: float) -> String:
@@ -1230,6 +1446,20 @@ func _text_centered(s: String, center_x: float, baseline_y: float, size: int, co
 	var w := font.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1.0, size).x
 	draw_string(font, Vector2(center_x - w * 0.5, baseline_y), s,
 		HORIZONTAL_ALIGNMENT_LEFT, -1.0, size, color)
+
+
+## 字距拉开的标题：像车站站牌上的大写字，而不是普通居中文本。
+func _text_tracked_centered(s: String, center_x: float, baseline_y: float, size: int,
+		color: Color, tracking: float) -> void:
+	var total := 0.0
+	for i in s.length():
+		total += font.get_string_size(s[i], HORIZONTAL_ALIGNMENT_LEFT, -1.0, size).x
+	total += tracking * float(maxi(s.length() - 1, 0))
+	var x := center_x - total * 0.5
+	for i in s.length():
+		var ch := s[i]
+		draw_string(font, Vector2(x, baseline_y), ch, HORIZONTAL_ALIGNMENT_LEFT, -1.0, size, color)
+		x += font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1.0, size).x + tracking
 
 
 func _text_right(s: String, right_x: float, baseline_y: float, size: int, color: Color) -> void:
