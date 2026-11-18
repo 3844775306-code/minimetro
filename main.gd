@@ -56,6 +56,7 @@ var _tutorial: TutorialController = null
 var _tutorial_station_a: Station = null
 var _tutorial_station_b: Station = null
 var _tutorial_station_c: Station = null
+var _tutorial_upgrade_offered := false
 
 
 func _ready() -> void:
@@ -1001,15 +1002,16 @@ func _setup_tutorial() -> void:
 	if camera != null:
 		camera.zoom = Vector2(2.0, 2.0)
 		simulation.current_camera_zoom = 2.0
-	_tutorial_station_a = network.add_station(Vector2(920, 600), Shape.Kind.CIRCLE)
-	_tutorial_station_b = network.add_station(Vector2(1480, 600), Shape.Kind.SQUARE)
-	_tutorial_station_c = network.add_station(Vector2(1200, 790), Shape.Kind.TRIANGLE)
+	_tutorial_station_a = network.add_station(Vector2(850, 500), Shape.Kind.CIRCLE)
+	_tutorial_station_b = network.add_station(Vector2(1250, 500), Shape.Kind.SQUARE)
+	_tutorial_station_c = network.add_station(Vector2(1050, 780), Shape.Kind.TRIANGLE)
 	network.touch()
 	_tutorial = TutorialController.new()
 	_tutorial.setup(network, simulation, _tutorial_station_a,
 		_tutorial_station_b, _tutorial_station_c)
 	_tutorial.step_changed.connect(_on_tutorial_step_changed)
 	_tutorial.finished.connect(_on_tutorial_finished)
+	_tutorial_upgrade_offered = false
 	if hud != null:
 		hud.map_name = Loc.t("新手教程", "Tutorial")
 	_refresh_tutorial_hud()
@@ -1017,6 +1019,10 @@ func _setup_tutorial() -> void:
 
 func _on_tutorial_step_changed(_index: int) -> void:
 	_refresh_tutorial_hud()
+	if _tutorial != null and _tutorial.step == 10 and not _tutorial_upgrade_offered:
+		_tutorial_upgrade_offered = true
+		# 复用正式周结算：HUD 周卡弹窗、暂停和选卡逻辑都不另写一套
+		simulation.offer_week_reward()
 
 
 func _refresh_tutorial_hud() -> void:

@@ -499,6 +499,23 @@ func _update_endless_milestones() -> void:
 	week_completed.emit(pending_cards, hit)
 
 
+## 教程用：主动开启一次周升级选择，复用正式周结算的卡片与 HUD 流程。
+func offer_week_reward(reward_title: String = "") -> bool:
+	if week_pending:
+		return false
+	var cards := _roll_cards()
+	if cards.is_empty():
+		return false
+	pending_cards.clear()
+	for card in cards:
+		pending_cards.append(card)
+	pending_reward_title = reward_title if reward_title != "" \
+		else Loc.t("教程 · 选择一张升级卡", "Tutorial · choose an upgrade")
+	week_pending = true
+	week_completed.emit(pending_cards, week_index)
+	return true
+
+
 ## 选择本周末的升级卡（暂停状态下由 UI 调用）。
 ## 列车/车厢/换乘中心都只是入库，玩家之后从 HUD 图标拖到地图上使用。
 func choose_upgrade(index: int) -> void:

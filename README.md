@@ -180,8 +180,19 @@
 
 ### 新手教程（模式菜单第 5 张卡 / 按 5）
 
-- 固定三座车站、干净地图、不会因拥堵失败，专注学会基础操作
-- 5 步引导：画第一条线 → 接入第三站 → 拖列车上线 → 挂一节车厢 → 送达第一位乘客
+- 固定站、干净地图、不会因拥堵失败，专注学会基础操作；后段会解锁新站、第二线路和桥梁
+- 11 步引导：
+  1. 画第一条线
+  2. 接入第三站
+  3. 拖列车上线
+  4. 挂一节车厢
+  5. 送达第一位乘客
+  6. 插入第四座车站
+  7. 闭合成环线
+  8. 跨河建第二条线
+  9. 给第二条线发车
+  10. 完成一次换乘送达
+  11. 选择一张每周升级卡
 - 当前步骤带呼吸高亮环、操作说明和「跳过」按钮；完成后可直接开始经典模式或返回菜单
 - 教程不写入最高分，也不进入排行榜
 
@@ -381,7 +392,7 @@ $godot = "D:\Downloads\06_游戏与Flash资源\Godot_v4.7.2-stable_win64.exe\God
 ```powershell
 $godot = "D:\Downloads\06_游戏与Flash资源\Godot_v4.7.2-stable_win64.exe\Godot_v4.7.2-stable_win64_console.exe"
 & $godot --headless --path . --script res://tests/run_tests.gd
-# 期望输出：TESTS PASSED (832 checks)
+# 期望输出：TESTS PASSED (844 checks)
 ```
 
 覆盖：八向几何与弯曲翻转、弧长采样、网络增删、画线/撤销/重排/翻转/插站/停留移除手势、换乘寻路、
@@ -498,7 +509,7 @@ view/                     表现层（Node2D，只读模型）
 input/line_editor.gd      画线手势状态机（IDLE / DRAFT / REORDER / SEGMENT）+ Esc 设置信号
 ui/hud.gd                 资源/分数、周抽卡、换乘点选、模式菜单、暂停设置、结束遮罩（双语）
 tools/demo_setup.gd       截图用确定性布局
-tests/                    headless 测试（832 checks）
+tests/                    headless 测试（844 checks）
 export_presets.cfg        Windows Desktop 导出预设
 art/shaders/paper_grain.gdshader  极轻纸纹
 docs/设计方案.md           完整实现方案（机制拆解 / 架构 / 里程碑）

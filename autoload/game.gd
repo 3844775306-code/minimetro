@@ -58,15 +58,16 @@ func start_run(p_seed: int = 0, p_mode: int = -1) -> void:
 	level.start_trains = city.start_trains
 	level.start_bridges = city.start_bridges
 	if mode == GameMode.Kind.TUTORIAL:
-		# 新手教程：三座固定站、无随机生成、无周结算、不会因拥堵结束
+		# 新手教程：固定站、无随机生成、无周结算、不会因拥堵结束
 		level.start_lines = 1
 		level.start_trains = 0
 		level.start_carriages = 0
 		level.start_bridges = 0
-		level.max_lines = 1
+		level.max_lines = 2
 		level.max_trains = 6
 		level.max_carriages = 1
-		level.max_stations = 3
+		level.max_bridges = 2
+		level.max_stations = 5
 		level.no_station_spawn = true
 		level.station_spawn_interval = 999999.0
 		level.passenger_spawn_start = 999999.0
@@ -84,8 +85,10 @@ func start_run(p_seed: int = 0, p_mode: int = -1) -> void:
 		level.station_margin = 150.0
 	level.rivers.clear()
 	if mode == GameMode.Kind.TUTORIAL:
-		# 教程地图保持干净，避免第一局就被河流/桥梁规则打断
-		pass
+		# 教程用一条简单竖向河流，后面用桥跨过去
+		level.rivers.append(CityMaps.editor_band(PackedVector2Array([
+			Vector2(1560, 180), Vector2(1560, 1020),
+		]), 130.0))
 	else:
 		for river in city.rivers:
 			level.rivers.append(river)

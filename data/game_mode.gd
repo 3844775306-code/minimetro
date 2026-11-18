@@ -50,8 +50,8 @@ static func description(kind: int) -> String:
 			return Loc.t("40站 · 7线5隧道 · 固定视角",
 				"40 stations · 7 lines · fixed camera")
 		Kind.TUTORIAL:
-			return Loc.t("画线 · 发车 · 加车厢 · 送客",
-				"Draw · run · add carriage · deliver")
+			return Loc.t("画线 · 环线 · 换乘 · 过河",
+				"Draw · loop · transfer · bridge")
 		_:
 			return Loc.t("拥堵失控即结束", "Overcrowding ends the run")
 
