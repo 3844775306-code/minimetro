@@ -57,6 +57,10 @@ var _tutorial_station_a: Station = null
 var _tutorial_station_b: Station = null
 var _tutorial_station_c: Station = null
 var _tutorial_upgrade_offered := false
+## 第一次启动：强制取名并完成教程
+var _onboarding_name_pending := false
+var _skip_onboarding := false
+var _force_onboarding := false
 ## 打开商店前是否处于暂停；关闭商店后恢复
 var _shop_resume_after_close := false
 
@@ -68,24 +72,29 @@ func _ready() -> void:
 	_resolve_run()
 	_build_world()
 	_build_ui()
+	var onboarding_needed := _onboarding_required()
 	if _menu_mode:
 		hud.menu_cities = CityMaps.all()
 		hud.city_index = CityMaps.index_of(Game.city_id)
 		editor.set_process_unhandled_input(false)
 		_refresh_mode_bests()
 		hud.show_mode_menu()
-		if _pose == "intro":
+		if onboarding_needed:
+			Game.intro_played = true
+			_begin_onboarding()
+		elif _pose == "intro":
 			hud.start_startup_intro()
 		elif not Game.intro_played and _shot_path == "" and _smoke_ticks < 0:
 			Game.intro_played = true
 			hud.start_startup_intro()
-		match _open_arg:
-			"daily":
-				_open_daily_leaderboard()
-			"hall":
-				_open_map_hall()
-			"rank":
-				_open_map_leaderboard()
+		if not onboarding_needed:
+			match _open_arg:
+				"daily":
+					_open_daily_leaderboard()
+				"hall":
+					_open_map_hall()
+				"rank":
+					_open_map_leaderboard()
 	else:
 		_start_session()
 	if _smoke_ticks > 0:
@@ -173,6 +182,8 @@ func _resolve_run() -> void:
 		or (_pose != "" and _pose != "menu" and _pose != "intro") or _mode_arg >= 0 \
 		or Game.pending_config != null
 	if _pose in ["menu", "intro"]:
+		direct = false
+	if _force_onboarding:
 		direct = false
 	if _city_arg != "":
 		Game.pending_city = _city_arg
@@ -385,9 +396,43 @@ func _restart() -> void:
 
 
 func _back_to_menu() -> void:
+	if hud != null and hud.tutorial_active and hud.tutorial_forced and not hud.tutorial_complete:
+		hud.show_toast(Loc.t("先完成新手教程", "Finish the tutorial first"))
+		return
 	_record_run_result()
 	Game.pending_config = null
 	Game.pending_mode = -1
+	get_tree().reload_current_scene()
+
+
+## 第一次启动必须取名 + 完成新手教程；调试姿态/截图/旧存档不触发。
+func _onboarding_required() -> bool:
+	if _skip_onboarding or Save == null:
+		return false
+	if not _force_onboarding:
+		if _demo or _shot_path != "" or _smoke_ticks >= 0 or _pose != "" or _open_arg != "":
+			return false
+	return Save.needs_player_name() or not Save.tutorial_done()
+
+
+func _begin_onboarding() -> void:
+	if Save == null:
+		return
+	if Save.needs_player_name():
+		_onboarding_name_pending = true
+		Game.paused = true
+		hud.show_name_editor("", true)
+	elif not Save.tutorial_done():
+		call_deferred("_start_onboarding_tutorial")
+
+
+func _start_onboarding_tutorial() -> void:
+	if hud != null:
+		hud.hide_name_editor()
+	Game.paused = false
+	Game.pending_config = RunConfig.tutorial()
+	Game.pending_mode = -1
+	Game.pending_city = Game.city_id
 	get_tree().reload_current_scene()
 
 
@@ -398,6 +443,8 @@ func _back_to_menu() -> void:
 ## 倍速按钮走 _input（早于 _unhandled_input），这样线编辑不会把点击吞掉。
 func _input(event: InputEvent) -> void:
 	if hud == null:
+		return
+	if hud.name_edit_open:
 		return
 	if hud.tutorial_active:
 		if event is InputEventMouseButton and event.pressed \
@@ -479,6 +526,11 @@ func _input(event: InputEvent) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if hud != null and hud.name_edit_open:
+		if event is InputEventKey and event.pressed and not event.echo \
+				and event.keycode == KEY_ESCAPE and not hud.name_edit_required:
+			hud.hide_name_editor()
+		return
 	if hud != null and hud.startup_intro_active:
 		# 动画期间吞掉输入；任意点击/按键跳过，避免误触后面的模式卡
 		if (event is InputEventKey and event.pressed and not event.echo) \
@@ -490,6 +542,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event is InputEventKey and event.pressed and not event.echo \
 				and event.keycode == KEY_ESCAPE:
 			hud.hide_line_cancel()
+		return
+	if hud != null and hud.tutorial_active:
+		# 教程期间只允许周奖励和设置；不能用 M / 设置菜单绕过强制教程
+		if hud.week_modal:
+			_handle_week_input(event)
+		elif hud.settings_menu:
+			_handle_settings_input(event)
 		return
 	if hud != null and hud.shop_open:
 		_handle_shop_input(event)
@@ -747,9 +806,17 @@ func _apply_editor_settings() -> void:
 
 
 func _on_player_name_submitted(player_name: String) -> void:
+	var was_required := _onboarding_name_pending
+	_onboarding_name_pending = false
 	if Save != null:
-		Save.set_setting("player_name", player_name)
+		Save.mark_player_name(player_name)
 	_sync_settings_values()
+	if was_required:
+		if Save != null and not Save.tutorial_done():
+			call_deferred("_start_onboarding_tutorial")
+		else:
+			Game.paused = false
+			hud.hide_name_editor()
 
 
 func _handle_settings_input(event: InputEvent) -> void:
@@ -841,6 +908,9 @@ func _activate_setting(index: int) -> void:
 			_close_settings()
 			_restart()
 		8:
+			if Game.is_tutorial() and hud.tutorial_forced:
+				hud.show_toast(Loc.t("先完成新手教程", "Finish the tutorial first"))
+				return
 			_close_settings()
 			_back_to_menu()
 	if index in [3, 4]:
@@ -1153,6 +1223,7 @@ func _setup_tutorial() -> void:
 	_tutorial.finished.connect(_on_tutorial_finished)
 	_tutorial_upgrade_offered = false
 	if hud != null:
+		hud.tutorial_forced = Save != null and not Save.tutorial_done()
 		hud.map_name = Loc.t("新手教程", "Tutorial")
 	_refresh_tutorial_hud()
 
@@ -1180,13 +1251,20 @@ func _refresh_tutorial_hud() -> void:
 
 
 func _on_tutorial_finished() -> void:
+	if Save != null:
+		Save.mark_tutorial_done()
 	Game.paused = true
+	if hud != null:
+		hud.tutorial_forced = false
 	if editor != null:
 		editor.set_process_unhandled_input(false)
 	_refresh_tutorial_hud()
 
 
 func _finish_tutorial_to_menu() -> void:
+	if hud != null and hud.tutorial_forced and not hud.tutorial_complete:
+		hud.show_toast(Loc.t("先完成新手教程", "Finish the tutorial first"))
+		return
 	Game.paused = false
 	_tutorial = null
 	if hud != null:
@@ -1509,6 +1587,10 @@ func _parse_args() -> void:
 			_cloud_post_test = true
 		elif arg == "--demo":
 			_demo = true
+		elif arg == "--skip-onboarding":
+			_skip_onboarding = true
+		elif arg == "--force-onboarding":
+			_force_onboarding = true
 
 
 func _print_stats() -> void:

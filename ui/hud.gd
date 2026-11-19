@@ -139,6 +139,10 @@ var toast_left := 0.0
 ## 玩家名输入框（设置菜单中的"玩家名"）
 var name_edit: LineEdit = null
 var name_edit_open := false
+var name_edit_required := false
+var name_edit_error := false
+## 新玩家强制教程：不显示跳过按钮
+var tutorial_forced := false
 signal name_submitted(player_name: String)
 
 ## 手机 / 低高度横屏把 UI 字号整体放大，避免 1080p 手机上文字过小。
@@ -429,10 +433,12 @@ func settings_plus_at(pos: Vector2) -> int:
 	return -1
 
 
-func show_name_editor(current_name: String) -> void:
+func show_name_editor(current_name: String, required: bool = false) -> void:
 	if name_edit == null:
 		return
 	name_edit_open = true
+	name_edit_required = required
+	name_edit_error = false
 	var vp := get_viewport_rect().size
 	name_edit.position = Vector2(vp.x * 0.5 - 350.0, vp.y * 0.5 - 36.0)
 	name_edit.size = Vector2(700.0, 80.0)
@@ -445,6 +451,7 @@ func show_name_editor(current_name: String) -> void:
 
 func hide_name_editor() -> void:
 	name_edit_open = false
+	name_edit_required = false
 	if name_edit != null:
 		name_edit.visible = false
 		name_edit.release_focus()
@@ -454,7 +461,12 @@ func hide_name_editor() -> void:
 func _on_name_edit_submitted(text: String) -> void:
 	var cleaned := text.strip_edges()
 	if cleaned.is_empty():
+		if name_edit_required:
+			name_edit_error = true
+			queue_redraw()
+			return
 		cleaned = "玩家"
+	name_edit_error = false
 	hide_name_editor()
 	name_submitted.emit(cleaned)
 
@@ -484,8 +496,14 @@ func _update_ui_scale() -> void:
 		queue_redraw()
 
 
+## 手机端最小字号：以主菜单「发车」在手机上的字号为下限。
+const MOBILE_MIN_FONT := 37
+
 func _scaled_size(size: int) -> int:
-	return maxi(1, int(round(float(size) * ui_text_scale)))
+	var scaled := maxi(1, int(round(float(size) * ui_text_scale)))
+	if _mobile_ui:
+		return maxi(scaled, MOBILE_MIN_FONT)
+	return scaled
 
 
 func _scaled_tracking(tracking: float) -> float:
@@ -546,7 +564,7 @@ func _draw_game_hud(vp: Vector2) -> void:
 	# 电影感边缘暗角，让地图中心更聚焦
 	_draw_vignette(vp, 0.55)
 	# 减负版 HUD：左上只留线色/库存，右上不再画面板（避免挡地图）
-	_draw_panel(Rect2(34.0, 46.0, 720.0, 156.0))
+	_draw_panel(Rect2(34.0, 46.0, 720.0, 280.0 if _mobile_ui else 156.0))
 	if map_name != "":
 		_text_centered(map_name, vp.x * 0.5 + 2.0, 62.0, 32, Color(0.0, 0.0, 0.0, 0.20))
 		_text_centered(map_name, vp.x * 0.5, 60.0, 32,
@@ -567,16 +585,18 @@ func _draw_game_hud(vp: Vector2) -> void:
 	else:
 		_text_right(Loc.t("已送达 %d", "Delivered %d") % score, vp.x - 40.0, 162.0, 32,
 			Color.WHITE if is_night else INK)
+	var dev_coin_y := 0.0
 	if development_mode:
-		var coin_y := (232.0 + 40.0 * extra) if endless_mode else (204.0 + 24.0 * extra)
-		_text_right(Loc.t("金币 %d", "Coins %d") % coins, vp.x - 40.0, coin_y, 30,
+		dev_coin_y = (232.0 + 40.0 * extra) if endless_mode else (204.0 + 24.0 * extra)
+		var fare_y := dev_coin_y + (44.0 if _mobile_ui else 28.0)
+		_text_right(Loc.t("金币 %d", "Coins %d") % coins, vp.x - 40.0, dev_coin_y, 30,
 			Color(GOLD, 0.98))
-		_text_right(Loc.t("票价 2 金币起", "Fare from 2 coins"), vp.x - 40.0, coin_y + 28.0, 17,
+		_text_right(Loc.t("票价 2 金币起", "Fare from 2 coins"), vp.x - 40.0, fare_y, 17,
 			Color(1.0, 1.0, 1.0, 0.60) if is_night else Color(MUTED, 0.82))
 	if stage_label != "":
 		var stage_y := 222.0
 		if development_mode:
-			stage_y = (288.0 + 54.0 * extra) if endless_mode else (258.0 + 46.0 * extra)
+			stage_y = dev_coin_y + (88.0 if _mobile_ui else (56.0 if endless_mode else 54.0))
 		elif endless_mode:
 			stage_y = 222.0 + 30.0 * extra
 		_text_right(stage_label, vp.x - 40.0, stage_y, 20,
@@ -590,8 +610,12 @@ func _draw_game_hud(vp: Vector2) -> void:
 		if hint_left > 0.0:
 			hint_alpha = clampf(hint_left / 2.0, 0.0, 1.0)
 		_text_centered(Loc.t(
-			"拖拽画线 · 拖端点延伸 · 拖线段插站 · 轻点翻折 · 拖左上角图标放车 · Ctrl+Z 撤销 · Esc 设置",
-			"Drag to draw · drag endpoint to extend · drag a segment to insert · tap to flip · drag top-left icons for vehicles · Ctrl+Z undo · Esc settings"
+			"拖拽画线 · 拖端点延伸 · 轻点翻折 · Ctrl+Z 撤销"
+				if _mobile_ui else
+				"拖拽画线 · 拖端点延伸 · 拖线段插站 · 轻点翻折 · 拖左上角图标放车 · Ctrl+Z 撤销 · Esc 设置",
+			"Drag to draw · drag endpoint to extend · tap to flip · Ctrl+Z undo"
+				if _mobile_ui else
+				"Drag to draw · drag endpoint to extend · drag a segment to insert · tap to flip · drag top-left icons for vehicles · Ctrl+Z undo · Esc settings"
 		), vp.x * 0.5, vp.y - 46.0, 22,
 			Color(1.0, 1.0, 1.0, 0.72) if is_night else Color(MUTED, 0.9 * hint_alpha))
 	if paused and not game_over and not settings_menu and not week_modal \
@@ -609,7 +633,8 @@ func _draw_game_hud(vp: Vector2) -> void:
 			_scaled_size(26))
 		var toast_rect := Rect2(
 			Vector2(vp.x * 0.5 - minf(toast_size.x + 52.0, 900.0) * 0.5,
-				vp.y - 142.0), Vector2(minf(toast_size.x + 52.0, 900.0), 48.0))
+				vp.y - 158.0 if _mobile_ui else vp.y - 142.0),
+			Vector2(minf(toast_size.x + 52.0, 900.0), 64.0 if _mobile_ui else 48.0))
 		_draw_soft_shadow(toast_rect, 24.0, 0.20, Vector2(0.0, 8.0))
 		var toast_poly := DrawUtil.rounded_rect(toast_rect, 24.0, 10)
 		draw_colored_polygon(toast_poly, Color(DEEP, 0.82 * alpha))
@@ -617,20 +642,22 @@ func _draw_game_hud(vp: Vector2) -> void:
 		draw_circle(Vector2(toast_rect.position.x + 24.0, toast_rect.get_center().y), 3.5,
 			Color(GOLD, 0.9 * alpha), true, -1.0, true)
 		_text_centered(toast_text, toast_rect.get_center().x,
-			toast_rect.position.y + 32.0, 26, Color(1.0, 1.0, 1.0, alpha))
+			toast_rect.position.y + (46.0 if _mobile_ui else 32.0), 26,
+			Color(1.0, 1.0, 1.0, alpha))
 	# 悬停车站：显示这个形状代表的地标
 	if hover_landmark != "":
 		var text_size := font.get_string_size(hover_landmark, HORIZONTAL_ALIGNMENT_LEFT,
 			-1.0, _scaled_size(15))
 		var rect := Rect2(hover_screen + Vector2(20.0, -40.0),
-			Vector2(text_size.x + 22.0, 28.0 * ui_text_scale))
+			Vector2(text_size.x + 22.0, (48.0 if _mobile_ui else 28.0) * ui_text_scale))
 		rect.position.x = clampf(rect.position.x, 12.0, vp.x - rect.size.x - 12.0)
 		rect.position.y = clampf(rect.position.y, 12.0, vp.y - rect.size.y - 12.0)
 		var poly := DrawUtil.rounded_rect(rect, 9.0, 6)
 		_draw_soft_shadow(rect, 9.0, 0.18, Vector2(0.0, 4.0))
 		draw_colored_polygon(poly, Color("#FBF8F1", 0.98))
 		draw_polyline(DrawUtil.closed(poly), Color(GOLD, 0.45), 1.2, true)
-		_text(hover_landmark, rect.position + Vector2(11.0, 21.0 * ui_text_scale), 18, INK)
+		_text(hover_landmark, rect.position + Vector2(11.0,
+			(36.0 if _mobile_ui else 21.0) * ui_text_scale), 18, INK)
 
 
 func _draw_shop_button(vp: Vector2) -> void:
@@ -716,8 +743,9 @@ func _draw_shop(vp: Vector2) -> void:
 			1.8 if hovered else 1.2, true)
 		_text_centered(String(item["title"]), rect.get_center().x,
 			rect.position.y + 58.0, 30, INK)
-		_text_wrapped(String(item["desc"]), rect.get_center().x,
-			rect.position.y + 92.0, 19, rect.size.x - 44.0, MUTED)
+		if not _mobile_ui:
+			_text_wrapped(String(item["desc"]), rect.get_center().x,
+				rect.position.y + 92.0, 19, rect.size.x - 44.0, MUTED)
 		var price_rect := Rect2(rect.position.x + 22.0, rect.end.y - 66.0,
 			rect.size.x - 44.0, 44.0)
 		var price_poly := DrawUtil.rounded_rect(price_rect, 12.0, 6)
@@ -787,9 +815,13 @@ func _draw_clock(vp: Vector2) -> void:
 		display_hour = 12
 	var minutes := int((clock_hours - floor(clock_hours)) * 60.0)
 	var suffix := Loc.t("上午", "AM") if hour < 12 else Loc.t("下午", "PM")
-	_text_centered("%s  %02d:%02d %s" % [weekday, display_hour, mini(minutes, 59), suffix],
-		center.x, center.y + radius + 18.0, 20,
-		Color(1.0, 1.0, 1.0, 0.86) if strength > 0.5 else Color(MUTED, 0.9))
+	var clock_text := "%s  %02d:%02d %s" % [weekday, display_hour, mini(minutes, 59), suffix]
+	if _mobile_ui:
+		_text_right(clock_text, vp.x - 40.0, center.y + radius + 18.0, 20,
+			Color(1.0, 1.0, 1.0, 0.86) if strength > 0.5 else Color(MUTED, 0.9))
+	else:
+		_text_centered(clock_text, center.x, center.y + radius + 18.0, 20,
+			Color(1.0, 1.0, 1.0, 0.86) if strength > 0.5 else Color(MUTED, 0.9))
 
 
 func _draw_speed_buttons(vp: Vector2) -> void:
@@ -909,7 +941,7 @@ func _draw_resource_slots(vp: Vector2) -> void:
 		740.0, chip_y + 23.0, 20, Color(INK, 0.70))
 
 	# 第二行：可拖拽的资源卡片（列车 / 车厢 / 换乘中心 / 新干线）+ 桥梁余量
-	var row_y := 140.0
+	var row_y := 226.0 if _mobile_ui else 140.0
 	_stock_rects = {}
 	var slots := [
 		{"kind": "train", "x": 100.0, "label": Loc.t("列车", "Trains")},
@@ -921,7 +953,8 @@ func _draw_resource_slots(vp: Vector2) -> void:
 		var kind := String(slot["kind"])
 		var center := Vector2(float(slot["x"]), row_y)
 		var count := int(stock_counts.get(kind, 0))
-		var card := Rect2(center - Vector2(60.0, 36.0), Vector2(120.0, 88.0))
+		var card := Rect2(center - Vector2(60.0, 56.0 if _mobile_ui else 36.0),
+			Vector2(120.0, 112.0 if _mobile_ui else 88.0))
 		var hovered := card.has_point(mouse)
 		_draw_soft_shadow(card, 12.0, 0.12 if hovered else 0.07, Vector2(0.0, 5.0))
 		var card_poly := DrawUtil.rounded_rect(card, 14.0, 8)
@@ -941,7 +974,8 @@ func _draw_resource_slots(vp: Vector2) -> void:
 
 	# 桥梁不是库存，是预算：画桥图标 + 已用/上限
 	var bridge_center := Vector2(690.0, row_y)
-	var bridge_card := Rect2(bridge_center - Vector2(60.0, 36.0), Vector2(120.0, 88.0))
+	var bridge_card := Rect2(bridge_center - Vector2(60.0, 56.0 if _mobile_ui else 36.0),
+		Vector2(120.0, 112.0 if _mobile_ui else 88.0))
 	_draw_soft_shadow(bridge_card, 12.0, 0.07, Vector2(0.0, 5.0))
 	var bridge_poly := DrawUtil.rounded_rect(bridge_card, 14.0, 8)
 	draw_colored_polygon(bridge_poly, Color(1.0, 1.0, 1.0, 0.46))
@@ -1027,7 +1061,7 @@ func _draw_week(vp: Vector2) -> void:
 	_draw_accent_rule(Vector2(cx, vp.y * 0.5 - 136.0), 120.0, GOLD)
 	var extra := clampf((ui_text_scale - 1.0) / 0.28, 0.0, 1.0)
 	_card_rects = _compute_card_rects(vp, week_cards.size(), 400.0 + 80.0 * extra,
-		220.0 + 36.0 * extra, 44.0)
+		220.0 + 72.0 * extra, 44.0)
 	var mouse := get_global_mouse_position()
 	var accents := [GOLD, TEAL]
 	for i in _card_rects.size():
@@ -1061,7 +1095,8 @@ func _draw_week(vp: Vector2) -> void:
 # ---------------------------------------------------------------------------
 
 func tutorial_skip_at(pos: Vector2) -> bool:
-	return tutorial_active and not tutorial_complete and _tutorial_skip_rect.has_point(pos)
+	return tutorial_active and not tutorial_complete and not tutorial_forced \
+		and _tutorial_skip_rect.has_point(pos)
 
 
 func tutorial_start_at(pos: Vector2) -> bool:
@@ -1085,7 +1120,9 @@ func _draw_tutorial(vp: Vector2) -> void:
 			Color(0.83, 0.32, 0.24, 0.85), 2.0, true)
 	if tutorial_complete:
 		draw_rect(Rect2(Vector2.ZERO, vp), Color(0.08, 0.09, 0.10, 0.60))
-		var end_panel := Rect2(cx - 430.0, vp.y * 0.5 - 190.0, 860.0, 380.0)
+		var end_panel := Rect2(cx - 430.0,
+			vp.y * 0.5 - (230.0 if _mobile_ui else 190.0), 860.0,
+			460.0 if _mobile_ui else 380.0)
 		_draw_soft_shadow(end_panel, 22.0, 0.40, Vector2(0.0, 16.0))
 		var poly := DrawUtil.rounded_rect(end_panel, 22.0, 10)
 		draw_colored_polygon(poly, Color(0.99, 0.97, 0.92, 0.99))
@@ -1093,21 +1130,23 @@ func _draw_tutorial(vp: Vector2) -> void:
 		draw_rect(Rect2(end_panel.position + Vector2(40.0, 0.0),
 			Vector2(end_panel.size.x - 80.0, 5.0)), Color(GOLD, 0.9))
 		_text_centered(Loc.t("教程完成", "Tutorial complete"), cx,
-			end_panel.position.y + 72.0, 44, INK)
+			end_panel.position.y + (82.0 if _mobile_ui else 72.0), 44, INK)
 		_text_centered(Loc.t("你已经学会画线、拆站、环线、过河、换乘和升级。",
 			"You can draw, remove stations, loop, bridge, transfer and upgrade."),
-			cx, end_panel.position.y + 120.0, 23, MUTED)
+			cx, end_panel.position.y + (144.0 if _mobile_ui else 120.0), 23, MUTED)
 		_text_centered(Loc.t("接下来试试经典模式，看看能送多少人？",
 			"Now try Classic and see how many you can deliver."),
-			cx, end_panel.position.y + 158.0, 21, Color(MUTED, 0.85))
-		_tutorial_start_rect = Rect2(cx - 310.0, end_panel.position.y + 220.0, 290.0, 78.0)
-		_tutorial_menu_rect = Rect2(cx + 20.0, end_panel.position.y + 220.0, 290.0, 78.0)
+			cx, end_panel.position.y + (194.0 if _mobile_ui else 158.0), 21, Color(MUTED, 0.85))
+		_tutorial_start_rect = Rect2(cx - 310.0,
+			end_panel.position.y + (260.0 if _mobile_ui else 220.0), 290.0, 78.0)
+		_tutorial_menu_rect = Rect2(cx + 20.0,
+			end_panel.position.y + (260.0 if _mobile_ui else 220.0), 290.0, 78.0)
 		_draw_touch_button(_tutorial_start_rect,
 			Loc.t("开始经典模式", "Start Classic"), _tutorial_start_rect.has_point(get_global_mouse_position()))
 		_draw_touch_button(_tutorial_menu_rect,
 			Loc.t("返回模式选择", "Mode menu"), _tutorial_menu_rect.has_point(get_global_mouse_position()))
 		return
-	var panel := Rect2(cx - 430.0, 118.0, 860.0, 154.0)
+	var panel := Rect2(cx - 430.0, 118.0, 860.0, 260.0 if _mobile_ui else 154.0)
 	_draw_soft_shadow(panel, 16.0, 0.28, Vector2(0.0, 10.0))
 	var panel_poly := DrawUtil.rounded_rect(panel, 16.0, 8)
 	draw_colored_polygon(panel_poly, Color(0.99, 0.97, 0.92, 0.98))
@@ -1121,16 +1160,22 @@ func _draw_tutorial(vp: Vector2) -> void:
 	draw_rect(Rect2(panel.position + Vector2(20.0, panel.size.y - 7.0),
 		Vector2((panel.size.x - 40.0) * progress, 2.5)), Color(ACCENT, 0.9))
 	_text(Loc.t("教程 %d/%d", "Tutorial %d/%d") % [tutorial_step + 1, tutorial_total],
-		panel.position + Vector2(22.0, 30.0), 19, Color(0.83, 0.32, 0.24, 0.95))
-	_text_centered(tutorial_title, cx, panel.position.y + 50.0, 27, INK)
-	_text_centered(tutorial_body, cx, panel.position.y + 84.0, 21, Color(INK, 0.9))
-	_text_centered(tutorial_hint, cx, panel.position.y + 118.0, 18, MUTED)
-	_tutorial_skip_rect = Rect2(panel.end.x - 122.0, panel.position.y + 14.0, 102.0, 40.0)
-	var skip_poly := DrawUtil.rounded_rect(_tutorial_skip_rect, 9.0, 6)
-	draw_colored_polygon(skip_poly, Color(1.0, 1.0, 1.0, 0.65))
-	draw_polyline(DrawUtil.closed(skip_poly), Color(INK, 0.35), 1.2, true)
-	_text_centered(Loc.t("跳过", "Skip"), _tutorial_skip_rect.get_center().x,
-		_tutorial_skip_rect.position.y + 27.0, 18, Color(INK, 0.8))
+		panel.position + Vector2(22.0, 42.0 if _mobile_ui else 30.0), 19,
+		Color(0.83, 0.32, 0.24, 0.95))
+	_text_centered(tutorial_title, cx, panel.position.y + (82.0 if _mobile_ui else 50.0), 27, INK)
+	_text_centered(tutorial_body, cx, panel.position.y + (134.0 if _mobile_ui else 84.0), 21,
+		Color(INK, 0.9))
+	_text_centered(tutorial_hint, cx, panel.position.y + (186.0 if _mobile_ui else 118.0), 18,
+		MUTED)
+	_tutorial_skip_rect = Rect2() if tutorial_forced else Rect2(panel.end.x - 138.0,
+		panel.position.y + (10.0 if _mobile_ui else 14.0),
+		118.0, 54.0 if _mobile_ui else 40.0)
+	if not tutorial_forced:
+		var skip_poly := DrawUtil.rounded_rect(_tutorial_skip_rect, 9.0, 6)
+		draw_colored_polygon(skip_poly, Color(1.0, 1.0, 1.0, 0.65))
+		draw_polyline(DrawUtil.closed(skip_poly), Color(INK, 0.35), 1.2, true)
+		_text_centered(Loc.t("跳过", "Skip"), _tutorial_skip_rect.get_center().x,
+			_tutorial_skip_rect.get_center().y + 13.0, 18, Color(INK, 0.8))
 
 
 func _draw_mode_menu(vp: Vector2) -> void:
@@ -1159,9 +1204,10 @@ func _draw_mode_menu(vp: Vector2) -> void:
 	_draw_config_panel(vp)
 	_draw_dispatch_panel(vp)
 	_draw_menu_bottom_bar(vp)
-	_text_centered(Loc.t("←/→ 切换城市 · 1/2 资源 · 3/4 结束 · 5/6 开局 · Enter 发车 · T 教程",
-		"←/→ city · 1/2 resources · 3/4 ending · 5/6 start · Enter depart · T tutorial"),
-		cx, 1050.0, 19, Color(1.0, 1.0, 1.0, 0.62))
+	if not _mobile_ui:
+		_text_centered(Loc.t("←/→ 切换城市 · 1/2 资源 · 3/4 结束 · 5/6 开局 · Enter 发车 · T 教程",
+			"←/→ city · 1/2 resources · 3/4 ending · 5/6 start · Enter depart · T tutorial"),
+			cx, 1050.0, 19, Color(1.0, 1.0, 1.0, 0.62))
 
 
 ## 左侧城市卡：把城市预览从顶部移到主区域，填满左侧。
@@ -1177,8 +1223,8 @@ func _draw_city_selector(vp: Vector2) -> void:
 	if not menu_cities.is_empty():
 		city_index = clampi(city_index, 0, menu_cities.size() - 1)
 		city = menu_cities[city_index]
-	_text(Loc.t("当前城市 / CITY", "CITY MAP"), card.position + Vector2(26.0, 38.0),
-		16, Color(MUTED, 0.85))
+	_text(Loc.t("城市 / CITY", "CITY MAP") if _mobile_ui else Loc.t("当前城市 / CITY", "CITY MAP"),
+		card.position + Vector2(26.0, 38.0), 16, Color(MUTED, 0.85))
 	if city != null:
 		_text(city.display_name(), card.position + Vector2(26.0, 78.0), 34, INK)
 		_text_right(Loc.t("%02d / %02d", "%02d / %02d") % [city_index + 1, menu_cities.size()],
@@ -1207,20 +1253,22 @@ func _draw_city_selector(vp: Vector2) -> void:
 	draw_line(Vector2(card.position.x + 26.0, card.position.y + 430.0),
 		Vector2(card.end.x - 26.0, card.position.y + 430.0), Color(INK, 0.10), 1.0, true)
 	if city != null:
-		_text(Loc.t("初始资源", "STARTING RESOURCES"), card.position + Vector2(26.0, 462.0),
+		_text(Loc.t("初始资源", "STARTING RESOURCES"),
+			card.position + Vector2(26.0, 466.0 if _mobile_ui else 462.0),
 			15, Color(MUTED, 0.82))
 		_text(Loc.t("%d 线 · %d 列车 · %d 桥", "%d lines · %d trains · %d bridges") % [
 			city.start_lines, city.start_trains, city.start_bridges,
-		], card.position + Vector2(26.0, 490.0), 21, INK)
+		], card.position + Vector2(26.0, 514.0 if _mobile_ui else 490.0), 21, INK)
 		_text(Loc.t("河道 %d 条 · 可左右切换", "Rivers %d · use arrows to switch") % city.rivers.size(),
-			card.position + Vector2(26.0, 520.0), 17, Color(MUTED, 0.86))
+			card.position + Vector2(26.0, 562.0 if _mobile_ui else 520.0), 17, Color(MUTED, 0.86))
 	# 一侧的线路色票，填满卡片底部
-	_text(Loc.t("线路色 / LINE COLORS", "LINE COLORS"), card.position + Vector2(26.0, 558.0),
-		14, Color(MUTED, 0.72))
+	if not _mobile_ui:
+		_text(Loc.t("线路色 / LINE COLORS", "LINE COLORS"), card.position + Vector2(26.0, 558.0),
+			14, Color(MUTED, 0.72))
 	for i in mini(level.line_colors.size() if level != null else 0, 8):
 		var color: Color = level.line_colors[i]
 		_draw_capsule(Vector2(card.position.x + 46.0 + float(i) * 50.0,
-			card.position.y + 588.0), color, 36.0, 12.0)
+			card.position.y + (594.0 if _mobile_ui else 588.0)), color, 36.0, 12.0)
 
 
 func daily_board_button_at(pos: Vector2) -> bool:
@@ -1347,9 +1395,15 @@ func line_cancel_at(pos: Vector2) -> bool:
 func _draw_leaderboard(vp: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.06, 0.07, 0.08, 0.80))
 	_draw_vignette(vp, 1.1)
+	var mobile := _mobile_ui
 	var has_categories := not _leaderboard_categories.is_empty()
 	var content_lines := leaderboard_lines.size()
+	var mobile_tab_rows := 2 if mobile and has_categories else 1
 	var panel_height := (360.0 if has_categories else 260.0) + float(content_lines) * 40.0
+	if mobile:
+		panel_height = (300.0 if not has_categories else 300.0) \
+			+ (float(mobile_tab_rows) * 64.0 if has_categories else 0.0) \
+			+ float(content_lines) * 46.0
 	var panel_size := Vector2(minf(1760.0, vp.x - 120.0), panel_height)
 	panel_size.y = minf(panel_size.y, vp.y - 100.0)
 	var panel := Rect2((vp - panel_size) * 0.5, panel_size)
@@ -1367,32 +1421,54 @@ func _draw_leaderboard(vp: Vector2) -> void:
 		subtitle = "%s · %s" % [subtitle, String(category.get("metric", ""))]
 	_text_centered(subtitle, panel.position.x + panel.size.x * 0.5,
 		panel.position.y + 98.0, 21, MUTED)
-	var content_y := panel.position.y + 138.0
+	var content_y := panel.position.y + (138.0 if not mobile else 156.0)
 	_leaderboard_category_rects = []
 	if has_categories:
 		var count := _leaderboard_categories.size()
 		var tab_gap := 6.0
-		var tab_w := (panel.size.x - 96.0 - tab_gap * float(count - 1)) / float(maxi(count, 1))
-		var tab_start := panel.position.x + 48.0
-		for i in count:
-			var tab := Rect2(tab_start + float(i) * (tab_w + tab_gap),
-				panel.position.y + 124.0, tab_w, 40.0)
-			_leaderboard_category_rects.append(tab)
-			var selected := i == _leaderboard_category_index
-			var hovered := tab.has_point(get_global_mouse_position())
-			var tab_poly := DrawUtil.rounded_rect(tab, 10.0, 6)
-			draw_colored_polygon(tab_poly, Color(GOLD, 0.20 if selected else
-				(0.10 if hovered else 0.035)))
-			draw_polyline(DrawUtil.closed(tab_poly),
-				Color(GOLD, 0.60 if selected else 0.16), 1.2, true)
-			var name := String((_leaderboard_categories[i] as Dictionary).get("title", "?"))
-			_text_centered(name, tab.get_center().x, tab.position.y + 27.0, 15,
-				Color(INK, 0.92 if selected else 0.55))
-		content_y = panel.position.y + 188.0
+		if mobile:
+			var cols := 4
+			var row_gap := 8.0
+			var tab_w := (panel.size.x - 96.0 - 8.0 * float(cols - 1)) / float(cols)
+			for i in count:
+				var row := i / cols
+				var col := i % cols
+				var tab := Rect2(panel.position.x + 48.0 + float(col) * (tab_w + 8.0),
+					panel.position.y + 124.0 + float(row) * 64.0, tab_w, 56.0)
+				_leaderboard_category_rects.append(tab)
+				var selected := i == _leaderboard_category_index
+				var hovered := tab.has_point(get_global_mouse_position())
+				var tab_poly := DrawUtil.rounded_rect(tab, 10.0, 6)
+				draw_colored_polygon(tab_poly, Color(GOLD, 0.20 if selected else
+					(0.10 if hovered else 0.035)))
+				draw_polyline(DrawUtil.closed(tab_poly),
+					Color(GOLD, 0.60 if selected else 0.16), 1.2, true)
+				var name := String((_leaderboard_categories[i] as Dictionary).get("title", "?"))
+				_text_centered(name, tab.get_center().x, tab.position.y + 35.0, 15,
+					Color(INK, 0.92 if selected else 0.55))
+			content_y = panel.position.y + 124.0 + float(mobile_tab_rows) * 64.0 + 20.0
+		else:
+			var tab_w := (panel.size.x - 96.0 - tab_gap * float(count - 1)) / float(maxi(count, 1))
+			var tab_start := panel.position.x + 48.0
+			for i in count:
+				var tab := Rect2(tab_start + float(i) * (tab_w + tab_gap),
+					panel.position.y + 124.0, tab_w, 40.0)
+				_leaderboard_category_rects.append(tab)
+				var selected := i == _leaderboard_category_index
+				var hovered := tab.has_point(get_global_mouse_position())
+				var tab_poly := DrawUtil.rounded_rect(tab, 10.0, 6)
+				draw_colored_polygon(tab_poly, Color(GOLD, 0.20 if selected else
+					(0.10 if hovered else 0.035)))
+				draw_polyline(DrawUtil.closed(tab_poly),
+					Color(GOLD, 0.60 if selected else 0.16), 1.2, true)
+				var name := String((_leaderboard_categories[i] as Dictionary).get("title", "?"))
+				_text_centered(name, tab.get_center().x, tab.position.y + 27.0, 15,
+					Color(INK, 0.92 if selected else 0.55))
+			content_y = panel.position.y + 188.0
 	var y := content_y
 	for line in leaderboard_lines:
 		_text(line, Vector2(panel.position.x + 70.0, y), 23, INK)
-		y += 38.0
+		y += 46.0 if mobile else 38.0
 		if y > panel.end.y - 110.0:
 			break
 	_leaderboard_back_rect = Rect2(Vector2(panel.position.x + panel.size.x * 0.5 - 160.0,
@@ -1442,10 +1518,15 @@ func _draw_name_modal(vp: Vector2) -> void:
 	var poly := DrawUtil.rounded_rect(panel, 20.0, 10)
 	draw_colored_polygon(poly, Color(0.12, 0.12, 0.13, 0.96))
 	draw_polyline(DrawUtil.closed(poly), Color(1.0, 1.0, 1.0, 0.18), 2.0, true)
-	_text_centered(Loc.t("玩家名", "Player name"), vp.x * 0.5,
+	_text_centered(Loc.t("先给自己取名", "Choose your name") if name_edit_required
+		else Loc.t("玩家名", "Player name"), vp.x * 0.5,
 		vp.y * 0.5 - 98.0, 36, Color(1.0, 1.0, 1.0, 0.96))
-	_text_centered(Loc.t("输入后按 Enter 保存 · Esc 取消", "Enter to save · Esc to cancel"),
-		vp.x * 0.5, vp.y * 0.5 + 70.0, 20, Color(1.0, 1.0, 1.0, 0.58))
+	_text_centered(Loc.t("输入后按 Enter 保存 · Esc 取消", "Enter to save · Esc to cancel")
+		if not name_edit_required else
+		Loc.t("名字不能为空", "Name cannot be empty") if name_edit_error else
+		Loc.t("必须填写名字，随后进入新手教程", "Required · the tutorial starts next"),
+		vp.x * 0.5, vp.y * 0.5 + (90.0 if _mobile_ui else 70.0), 20,
+		Color(1.0, 0.55, 0.48, 0.92) if name_edit_error else Color(1.0, 1.0, 1.0, 0.58))
 
 
 func _draw_map_hall_preview(entry: Dictionary, rect: Rect2) -> void:
@@ -1476,7 +1557,10 @@ func _draw_map_hall_preview(entry: Dictionary, rect: Rect2) -> void:
 func _draw_map_hall(vp: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.06, 0.07, 0.08, 0.80))
 	_draw_vignette(vp, 1.1)
-	var panel_size := Vector2(minf(1760.0, vp.x - 120.0), 260.0 + float(map_hall_entries.size()) * 96.0)
+	var mobile := _mobile_ui
+	var panel_size := Vector2(minf(1760.0, vp.x - 120.0),
+		(300.0 + float(map_hall_entries.size()) * 124.0) if mobile
+		else (260.0 + float(map_hall_entries.size()) * 96.0))
 	panel_size.y = minf(panel_size.y, vp.y - 100.0)
 	var panel := Rect2((vp - panel_size) * 0.5, panel_size)
 	_draw_soft_shadow(panel, 22.0, 0.40, Vector2(0.0, 16.0))
@@ -1491,27 +1575,30 @@ func _draw_map_hall(vp: Vector2) -> void:
 		"Click a map row to download it; it appears in the city list"),
 		panel.position.x + panel.size.x * 0.5, panel.position.y + 104.0, 21, MUTED)
 	_map_hall_row_rects = []
-	var y := panel.position.y + 140.0
+	var y := panel.position.y + (160.0 if mobile else 140.0)
 	var row_w := panel.size.x - 120.0
 	var mouse := get_global_mouse_position()
 	for i in map_hall_entries.size():
 		var entry: Dictionary = map_hall_entries[i]
-		var row := Rect2(panel.position.x + 60.0, y, row_w, 84.0)
+		var row := Rect2(panel.position.x + 60.0, y, row_w, 112.0 if mobile else 84.0)
 		_map_hall_row_rects.append(row)
 		var hovered := row.has_point(mouse)
 		var row_poly := DrawUtil.rounded_rect(row, 12.0, 6)
 		draw_colored_polygon(row_poly, Color(INK, 0.06 if hovered else 0.03))
 		draw_polyline(DrawUtil.closed(row_poly), Color(0.72, 0.69, 0.62), 1.2, true)
-		var preview := Rect2(row.position + Vector2(12.0, 8.0), Vector2(150.0, 68.0))
+		var preview := Rect2(row.position + Vector2(12.0, 10.0 if mobile else 8.0),
+			Vector2(180.0, 92.0) if mobile else Vector2(150.0, 68.0))
 		_draw_map_hall_preview(entry, preview)
 		_text(String(entry.get("name_zh", entry.get("name_en", "未命名"))),
-			row.position + Vector2(180.0, 36.0), 28, INK)
+			row.position + Vector2(200.0 if mobile else 180.0, 48.0 if mobile else 36.0),
+			28, INK)
 		_text(Loc.t("作者 %s · 下载 %d", "by %s · %d downloads") % [
 			String(entry.get("author", "?")), int(entry.get("downloads", 0)),
-		], row.position + Vector2(180.0, 66.0), 20, MUTED)
+		], row.position + Vector2(200.0 if mobile else 180.0, 94.0 if mobile else 66.0),
+			20, MUTED)
 		_text_centered(Loc.t("下载", "Download"), row.end.x - 100.0,
-			row.position.y + 50.0, 26, Color(INK, 0.8))
-		y += 96.0
+			row.position.y + (68.0 if mobile else 50.0), 26, Color(INK, 0.8))
+		y += 124.0 if mobile else 96.0
 		if y > panel.end.y - 110.0:
 			break
 	_map_hall_back_rect = Rect2(Vector2(panel.position.x + panel.size.x * 0.5 - 160.0,
@@ -1610,6 +1697,7 @@ func _draw_city_schematic(rect: Rect2) -> void:
 func _draw_config_panel(vp: Vector2) -> void:
 	var cx := vp.x * 0.5
 	var mouse := get_global_mouse_position()
+	var mobile := _mobile_ui
 	_menu_base_rects = []
 	_menu_endless_rects = []
 	_menu_manager_rects = []
@@ -1620,12 +1708,17 @@ func _draw_config_panel(vp: Vector2) -> void:
 	draw_polyline(DrawUtil.closed(panel_poly), Color(1.0, 1.0, 1.0, 0.12), 1.4, true)
 	draw_rect(Rect2(panel.position + Vector2(26.0, 0.0), Vector2(panel.size.x - 52.0, 5.0)),
 		Color(1.0, 1.0, 1.0, 0.16))
-	_text(Loc.t("运营配置 / BUILD", "BUILD / THREE AXES"),
-		panel.position + Vector2(28.0, 48.0), 17, Color(GOLD, 0.82))
-	_text(Loc.t("三条线路决定本局规则", "Three lines define this run"),
-		panel.position + Vector2(28.0, 78.0), 26, Color(1.0, 1.0, 1.0, 0.92))
-	draw_line(Vector2(panel.position.x + 28.0, panel.position.y + 96.0),
-		Vector2(panel.end.x - 28.0, panel.position.y + 96.0), Color(1.0, 1.0, 1.0, 0.08), 1.0, true)
+	if not mobile:
+		_text(Loc.t("运营配置 / BUILD", "BUILD / THREE AXES"),
+			panel.position + Vector2(28.0, 48.0), 17, Color(GOLD, 0.82))
+		_text(Loc.t("三条线路决定本局规则", "Three lines define this run"),
+			panel.position + Vector2(28.0, 78.0), 26, Color(1.0, 1.0, 1.0, 0.92))
+	else:
+		_text(Loc.t("三条线路决定本局规则", "Three lines define this run"),
+			panel.position + Vector2(28.0, 62.0), 26, Color(1.0, 1.0, 1.0, 0.92))
+	draw_line(Vector2(panel.position.x + 28.0, panel.position.y + (96.0 if not mobile else 84.0)),
+		Vector2(panel.end.x - 28.0, panel.position.y + (96.0 if not mobile else 84.0)),
+		Color(1.0, 1.0, 1.0, 0.08), 1.0, true)
 	var rows := [
 		{
 			"label": Loc.t("资源获取", "RESOURCES"),
@@ -1657,22 +1750,24 @@ func _draw_config_panel(vp: Vector2) -> void:
 	]
 	for row_index in 3:
 		var row: Dictionary = rows[row_index]
-		var y := panel.position.y + 118.0 + float(row_index) * 80.0
+		var y := panel.position.y + (118.0 if not mobile else 110.0) \
+			+ float(row_index) * (80.0 if not mobile else 88.0)
 		var accent: Color = row["accent"]
 		draw_circle(Vector2(cx - 574.0, y + 25.0), 5.0, accent, true, -1.0, true)
 		draw_line(Vector2(cx - 574.0, y + 25.0), Vector2(cx - 562.0, y + 25.0),
 			Color(accent, 0.45), 2.0, true)
 		_text(String(row["label"]), Vector2(cx - 552.0, y + 31.0), 22,
 			Color(1.0, 1.0, 1.0, 0.76))
-		_text(String(row["desc"]), Vector2(cx + 255.0, y + 31.0), 17,
-			Color(1.0, 1.0, 1.0, 0.48))
+		if not mobile:
+			_text(String(row["desc"]), Vector2(cx + 255.0, y + 31.0), 17,
+				Color(1.0, 1.0, 1.0, 0.48))
 		var options: Array = row["options"]
 		var selected := int(row["selected"])
 		var rects: Array[Rect2] = []
 		var centers: Array[Vector2] = []
 		for option_index in 2:
 			var option_rect := Rect2(cx - 300.0 + float(option_index) * 262.0,
-				y, 250.0, 52.0)
+				y, 250.0, 52.0 if not mobile else 82.0)
 			rects.append(option_rect)
 			centers.append(Vector2(option_rect.get_center().x, y + 14.0))
 		draw_line(centers[0], centers[1], Color(accent, 0.48), 4.0, true)
@@ -1684,7 +1779,8 @@ func _draw_config_panel(vp: Vector2) -> void:
 			var chosen := option_index == selected
 			if chosen:
 				var highlight := DrawUtil.rounded_rect(
-					Rect2(option_rect.position.x + 46.0, y - 2.0, 158.0, 56.0), 28.0, 8)
+					Rect2(option_rect.position.x + 46.0, y - 2.0, 158.0,
+						56.0 if not mobile else 84.0), 28.0, 8)
 				draw_colored_polygon(highlight, Color(accent, 0.10))
 			draw_circle(station, 17.0 if chosen or hovered else 13.0,
 				Color(accent, 0.16 if chosen or hovered else 0.07), true, -1.0, true)
@@ -1694,7 +1790,7 @@ func _draw_config_panel(vp: Vector2) -> void:
 			if chosen:
 				draw_circle(station, 3.6, accent, true, -1.0, true)
 			_text_centered(String(options[option_index]), option_rect.get_center().x,
-				y + 44.0, 22,
+				y + (44.0 if not mobile else 70.0), 22,
 				Color(1.0, 1.0, 1.0, 0.98 if chosen else (0.80 if hovered else 0.62)))
 		match row_index:
 			0:
@@ -1704,8 +1800,9 @@ func _draw_config_panel(vp: Vector2) -> void:
 			2:
 				_menu_manager_rects = rects
 		if row_index < 2:
-			draw_line(Vector2(panel.position.x + 26.0, y + 64.0),
-				Vector2(panel.end.x - 26.0, y + 64.0), Color(1.0, 1.0, 1.0, 0.055), 1.0, true)
+			draw_line(Vector2(panel.position.x + 26.0, y + (64.0 if not mobile else 82.0)),
+				Vector2(panel.end.x - 26.0, y + (64.0 if not mobile else 82.0)),
+				Color(1.0, 1.0, 1.0, 0.055), 1.0, true)
 
 	var config_summary := "%s · %s · %s" % [
 		menu_config.resource_title(),
@@ -1713,15 +1810,20 @@ func _draw_config_panel(vp: Vector2) -> void:
 		Loc.t("管理", "Manager") if menu_config.manager else Loc.t("无", "None"),
 	]
 	_text_centered(Loc.t("配置：%s", "Build: %s") % config_summary,
-		cx - 170.0, panel.position.y + 382.0, 21, Color(1.0, 1.0, 1.0, 0.80))
+		cx - 170.0 if not mobile else cx - 190.0,
+		panel.position.y + (382.0 if not mobile else 424.0), 21,
+		Color(1.0, 1.0, 1.0, 0.80))
 	_text_centered(Loc.t("评价：%s · 最高 %d", "Metric: %s · Best %d") % [
 		menu_config.metric_label(), menu_best,
-	], cx + 292.0, panel.position.y + 382.0, 19, Color(GOLD, 0.86))
-	_menu_start_rect = Rect2(cx - 210.0, panel.position.y + 414.0, 420.0, 104.0)
+	], (cx + 292.0) if not mobile else (cx + 250.0),
+		panel.position.y + (382.0 if not mobile else 424.0), 19, Color(GOLD, 0.86))
+	_menu_start_rect = Rect2(cx - 210.0,
+		panel.position.y + (414.0 if not mobile else 450.0), 420.0, 104.0)
 	_draw_departure_button(_menu_start_rect, Loc.t("发车", "DEPART"),
 		_menu_start_rect.has_point(mouse))
-	_text_centered(Loc.t("每日挑战与新手教程固定使用经典规则", "Daily & tutorial always use classic rules"),
-		cx, panel.position.y + 570.0, 17, Color(1.0, 1.0, 1.0, 0.46))
+	if not mobile:
+		_text_centered(Loc.t("每日挑战与新手教程固定使用经典规则", "Daily & tutorial always use classic rules"),
+			cx, panel.position.y + 570.0, 17, Color(1.0, 1.0, 1.0, 0.46))
 
 
 ## 右侧运营简报：把当前配置、评价指标、最高分和规则说明集中起来。
@@ -1733,6 +1835,27 @@ func _draw_dispatch_panel(vp: Vector2) -> void:
 	draw_polyline(DrawUtil.closed(poly), Color(GOLD, 0.45), 1.5, true)
 	draw_rect(Rect2(card.position + Vector2(26.0, 0.0), Vector2(card.size.x - 52.0, 5.0)),
 		Color(GOLD, 0.88))
+	if _mobile_ui:
+		_text(menu_config.resource_title(), card.position + Vector2(24.0, 66.0), 34, INK)
+		_text_right(Loc.t("本配置最高 %d", "BEST %d") % menu_best,
+			card.end.x - 24.0, card.position.y + 108.0, 17, Color(MUTED, 0.82))
+		var mobile_rows := [
+			Loc.t("资源  %s", "RES  %s") % (Loc.t("经典·周奖励", "Classic·weekly")
+				if menu_config.base == "classic" else Loc.t("发展·金币店", "Dev·shop")),
+			Loc.t("结束  %s", "END  %s") % (Loc.t("无尽·不判负", "Endless·no fail")
+				if menu_config.endless else Loc.t("普通·会结束", "Normal·ends")),
+			Loc.t("开局  %s", "START  %s") % (Loc.t("管理·沙盘", "Manager·sandbox")
+				if menu_config.manager else Loc.t("普通·城市", "Normal·city")),
+			Loc.t("评价  %s", "METRIC  %s") % menu_config.metric_label(),
+		]
+		var mobile_y := card.position.y + 166.0
+		for row_text in mobile_rows:
+			_text(String(row_text), Vector2(card.position.x + 24.0, mobile_y), 20, INK)
+			mobile_y += 64.0
+		for i in mini(level.line_colors.size() if level != null else 0, 7):
+			_draw_capsule(Vector2(card.position.x + 36.0 + float(i) * 62.0,
+				card.end.y - 24.0), level.line_colors[i], 44.0, 12.0)
+		return
 	_text(Loc.t("运营简报 / DISPATCH", "DISPATCH"), card.position + Vector2(24.0, 40.0),
 		16, Color(MUTED, 0.85))
 	_text(menu_config.resource_title(), card.position + Vector2(24.0, 82.0), 34, INK)
@@ -1803,8 +1926,9 @@ func _draw_menu_bottom_bar(vp: Vector2) -> void:
 	for x in [route_left, (route_left + route_right) * 0.5, route_right]:
 		draw_circle(Vector2(x, route_y), 4.0, Color(PAPER, 0.70), true, -1.0, true)
 		draw_arc(Vector2(x, route_y), 4.0, 0.0, TAU, 20, Color(GOLD, 0.55), 1.2, true)
-	_text_centered(Loc.t("8 种组合 · 自由配置", "8 builds · configure freely"),
-		(route_left + route_right) * 0.5, route_y - 14.0, 16, Color(1.0, 1.0, 1.0, 0.48))
+	if not _mobile_ui:
+		_text_centered(Loc.t("8 种组合 · 自由配置", "8 builds · configure freely"),
+			(route_left + route_right) * 0.5, route_y - 14.0, 16, Color(1.0, 1.0, 1.0, 0.48))
 	var menu_buttons := [
 		{"text": Loc.t("每日排行榜", "Daily board"), "action": "daily"},
 		{"text": Loc.t("地图大厅", "Map hall"), "action": "hall"},
@@ -1843,10 +1967,12 @@ func _draw_quick_config_card(rect: Rect2, title: String, desc: String, accent: C
 	else:
 		draw_circle(station, 10.0, Color(PAPER, 0.98), true, -1.0, true)
 		draw_arc(station, 10.0, 0.0, TAU, 28, Color(accent, 0.9), 2.5, true)
-	_text_centered(title, rect.get_center().x, rect.position.y + 32.0, 24,
+	_text_centered(title, rect.get_center().x,
+		rect.position.y + (49.0 if _mobile_ui else 32.0), 24,
 		Color(1.0, 1.0, 1.0, 0.94))
-	_text_centered(desc, rect.get_center().x, rect.position.y + 58.0, 16,
-		Color(1.0, 1.0, 1.0, 0.54))
+	if not _mobile_ui:
+		_text_centered(desc, rect.get_center().x, rect.position.y + 58.0, 16,
+			Color(1.0, 1.0, 1.0, 0.54))
 
 
 func _draw_departure_button(rect: Rect2, label: String, hovered: bool) -> void:
@@ -1865,9 +1991,10 @@ func _draw_departure_button(rect: Rect2, label: String, hovered: bool) -> void:
 	draw_circle(train_center + Vector2(18.0, 8.0), 4.0, Color(INK, 0.82), true, -1.0, true)
 	draw_circle(train_center + Vector2(-18.0, 8.0), 4.0, Color(INK, 0.82), true, -1.0, true)
 	var text_x := rect.position.x + 96.0
-	_text(label, Vector2(text_x, rect.position.y + 39.0), 29, INK)
-	_text(Loc.t("START RUN", "START RUN"), Vector2(text_x + 2.0, rect.position.y + 61.0),
-		14, Color(MUTED, 0.82))
+	_text(label, Vector2(text_x, rect.position.y + (62.0 if _mobile_ui else 39.0)), 29, INK)
+	if not _mobile_ui:
+		_text("START RUN", Vector2(text_x + 2.0, rect.position.y + 61.0),
+			14, Color(MUTED, 0.82))
 	# 右侧出发箭头
 	var arrow := Vector2(rect.end.x - 34.0, rect.get_center().y)
 	draw_line(arrow - Vector2(10.0, 0.0), arrow + Vector2(10.0, 0.0), Color(ACCENT, 0.82), 2.5, true)
@@ -1992,10 +2119,10 @@ func _draw_game_over(vp: Vector2) -> void:
 	elif endless_mode:
 		score_title = Loc.t("每30秒客运量", "PASSENGERS / 30S")
 	var card_w := 250.0
-	var card_h := 104.0 + 24.0 * extra
+	var card_h := 104.0 + 48.0 * extra
 	var gap := 22.0
 	var stats_total := card_w * 2.0 + gap
-	var stat_y := cy - 28.0 - 4.0 * extra
+	var stat_y := cy - 28.0 - 12.0 * extra
 	var cards := [
 		{"title": score_title, "value": final_score, "accent": GOLD},
 		{"title": Loc.t("历史最高", "BEST"), "value": best_score, "accent": ACCENT},
@@ -2008,12 +2135,12 @@ func _draw_game_over(vp: Vector2) -> void:
 		draw_colored_polygon(poly, Color(0.09, 0.10, 0.11, 0.72))
 		draw_polyline(DrawUtil.closed(poly), Color(1.0, 1.0, 1.0, 0.12), 1.2, true)
 		_text_centered(String(cards[i]["title"]), rect.get_center().x,
-			rect.position.y + 28.0, 16, Color(1.0, 1.0, 1.0, 0.55))
+			rect.position.y + (40.0 if _mobile_ui else 28.0), 16, Color(1.0, 1.0, 1.0, 0.55))
 		_text_centered(str(cards[i]["value"]), rect.get_center().x,
-			rect.position.y + 76.0 + 18.0 * extra, 46, Color(cards[i]["accent"], 0.98))
+			rect.position.y + (110.0 if _mobile_ui else 76.0), 46, Color(cards[i]["accent"], 0.98))
 	var button_size := Vector2(340.0, 88.0)
 	var button_gap := 32.0
-	var button_y := cy + 104.0 + 14.0 * extra
+	var button_y := cy + 104.0 + 36.0 * extra
 	if game_over_can_restart:
 		_game_over_restart_rect = Rect2(
 			Vector2(cx - button_size.x - button_gap * 0.5, button_y), button_size)
@@ -2027,7 +2154,7 @@ func _draw_game_over(vp: Vector2) -> void:
 	_draw_touch_button(_game_over_menu_rect,
 		Loc.t("返回模式选择", "Mode menu"), _game_over_menu_rect.has_point(get_global_mouse_position()))
 	_text_centered(Loc.t("也可按 R 重新开始 · M 返回模式选择",
-		"Keyboard: R restart · M mode menu"), cx, cy + 232.0 + 14.0 * extra, 19,
+		"Keyboard: R restart · M mode menu"), cx, cy + 232.0 + 28.0 * extra, 19,
 		Color(1.0, 1.0, 1.0, 0.48))
 
 

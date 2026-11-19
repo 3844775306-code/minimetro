@@ -8,10 +8,45 @@ var profile: Profile = null
 
 
 func _ready() -> void:
+	var had_profile := FileAccess.file_exists(PROFILE_PATH)
 	profile = Profile.new()
 	load_profile()
 	ensure_player_id()
+	_migrate_onboarding(had_profile)
 	apply_settings()
+
+
+## 第一次启动的新玩家必须取名并完成教程；功能上线前的旧存档视为已完成引导。
+func _migrate_onboarding(had_profile: bool) -> void:
+	if int(profile.get_setting("onboarding_version", 0)) >= 1:
+		return
+	if had_profile:
+		profile.set_setting("has_player_name", true)
+		profile.set_setting("tutorial_done", true)
+	else:
+		profile.set_setting("has_player_name", false)
+		profile.set_setting("tutorial_done", false)
+	profile.set_setting("onboarding_version", 1)
+	save_profile()
+
+
+func needs_player_name() -> bool:
+	return not bool(profile.get_setting("has_player_name", false))
+
+
+func mark_player_name(value: String) -> void:
+	profile.set_setting("player_name", value)
+	profile.set_setting("has_player_name", true)
+	save_profile()
+
+
+func tutorial_done() -> bool:
+	return bool(profile.get_setting("tutorial_done", false))
+
+
+func mark_tutorial_done() -> void:
+	profile.set_setting("tutorial_done", true)
+	save_profile()
 
 
 ## 云端排行榜的匿名玩家 ID（一机一号，随档案保存）。

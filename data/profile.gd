@@ -10,6 +10,9 @@ const DEFAULT_SETTINGS := {
 	"language": "zh",
 	"city": "paper",
 	"player_name": "玩家",
+	"has_player_name": false,
+	"tutorial_done": false,
+	"onboarding_version": 0,
 	"station_remove_time": 0.8,
 }
 
