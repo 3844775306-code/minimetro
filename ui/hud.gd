@@ -141,6 +141,10 @@ var name_edit: LineEdit = null
 var name_edit_open := false
 signal name_submitted(player_name: String)
 
+## 手机 / 低高度横屏把 UI 字号整体放大，避免 1080p 手机上文字过小。
+var ui_text_scale := 1.0
+var _mobile_ui := false
+
 ## 四角 HUD 遮挡站台时自动“隐身”，但保留很淡的轮廓；输入也会穿透到站台。
 var _hud_material: ShaderMaterial = null
 var _ghost_tl := 0.0
@@ -220,12 +224,21 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	font = UiFonts.get_font()
+	_mobile_ui = OS.get_name() in ["Android", "iOS"] \
+		or OS.has_feature("mobile") \
+		or OS.get_cmdline_user_args().has("--mobile-ui") \
+		or DisplayServer.is_touchscreen_available()
+	var window_size := DisplayServer.window_get_size()
+	if window_size.x > 0 and window_size.y > 0 and window_size.y <= 1120 \
+			and window_size.x >= window_size.y:
+		_mobile_ui = true
+	ui_text_scale = 1.28 if _mobile_ui else 1.0
 	name_edit = LineEdit.new()
 	name_edit.add_theme_font_override("font", font)
 	name_edit.visible = false
 	name_edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	name_edit.max_length = 16
-	name_edit.add_theme_font_size_override("font_size", 32)
+	name_edit.add_theme_font_size_override("font_size", _scaled_size(32))
 	name_edit.text_submitted.connect(_on_name_edit_submitted)
 	add_child(name_edit)
 	_hud_material = ShaderMaterial.new()
@@ -447,6 +460,7 @@ func _on_name_edit_submitted(text: String) -> void:
 
 
 func _process(delta: float) -> void:
+	_update_ui_scale()
 	if toast_left > 0.0:
 		toast_left = maxf(0.0, toast_left - delta)
 	if startup_intro_active:
@@ -460,6 +474,24 @@ func _process(delta: float) -> void:
 
 
 ## 播放一次启动动画；点击/按键由 Main 调用 skip_startup_intro() 跳过。
+## 手机端字号整体放大；桌面 2400×1200 保持原尺寸。
+func _update_ui_scale() -> void:
+	var win := DisplayServer.window_get_size()
+	var compact_window := win.x > 0 and win.y > 0 and win.y <= 1120 and win.x >= win.y
+	var target := 1.28 if (_mobile_ui or compact_window) else 1.0
+	if not is_equal_approx(ui_text_scale, target):
+		ui_text_scale = target
+		queue_redraw()
+
+
+func _scaled_size(size: int) -> int:
+	return maxi(1, int(round(float(size) * ui_text_scale)))
+
+
+func _scaled_tracking(tracking: float) -> float:
+	return tracking * ui_text_scale
+
+
 func start_startup_intro() -> void:
 	startup_intro_active = true
 	startup_intro_time = 0.0
@@ -521,6 +553,7 @@ func _draw_game_hud(vp: Vector2) -> void:
 			Color(1.0, 1.0, 1.0, 0.88) if is_night else Color(MUTED, 0.85))
 		_draw_accent_rule(Vector2(vp.x * 0.5, 76.0), 48.0, GOLD if not is_night else Color.WHITE)
 	_draw_clock(vp)
+	var extra := clampf((ui_text_scale - 1.0) / 0.28, 0.0, 1.0)
 	if endless_mode:
 		# 无尽轴的评价指标：发展模式看金币，经典看客运量
 		var metric_text := Loc.t("平均每30秒 %.0f 金币", "%.0f coins / 30s") % throughput \
@@ -529,13 +562,13 @@ func _draw_game_hud(vp: Vector2) -> void:
 		_text_right(metric_text,
 			vp.x - 40.0, metric_y, 28, Color.WHITE if is_night else INK)
 		_text_right(Loc.t("已送达 %d", "Delivered %d") % score,
-			vp.x - 40.0, metric_y + 20.0, 20,
+			vp.x - 40.0, metric_y + 20.0 + 28.0 * extra, 20,
 			Color(1.0, 1.0, 1.0, 0.78) if is_night else Color(MUTED, 0.9))
 	else:
 		_text_right(Loc.t("已送达 %d", "Delivered %d") % score, vp.x - 40.0, 162.0, 32,
 			Color.WHITE if is_night else INK)
 	if development_mode:
-		var coin_y := 232.0 if endless_mode else 204.0
+		var coin_y := (232.0 + 40.0 * extra) if endless_mode else (204.0 + 24.0 * extra)
 		_text_right(Loc.t("金币 %d", "Coins %d") % coins, vp.x - 40.0, coin_y, 30,
 			Color(GOLD, 0.98))
 		_text_right(Loc.t("票价 2 金币起", "Fare from 2 coins"), vp.x - 40.0, coin_y + 28.0, 17,
@@ -543,7 +576,9 @@ func _draw_game_hud(vp: Vector2) -> void:
 	if stage_label != "":
 		var stage_y := 222.0
 		if development_mode:
-			stage_y = 288.0 if endless_mode else 258.0
+			stage_y = (288.0 + 54.0 * extra) if endless_mode else (258.0 + 46.0 * extra)
+		elif endless_mode:
+			stage_y = 222.0 + 30.0 * extra
 		_text_right(stage_label, vp.x - 40.0, stage_y, 20,
 			Color(1.0, 1.0, 1.0, 0.68) if is_night else Color(MUTED, 0.78))
 	_draw_resource_slots(vp)
@@ -570,7 +605,8 @@ func _draw_game_hud(vp: Vector2) -> void:
 	_draw_speed_buttons(vp)
 	if toast_left > 0.0:
 		var alpha: float = clampf(toast_left / 0.5, 0.0, 1.0)
-		var toast_size := font.get_string_size(toast_text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 26)
+		var toast_size := font.get_string_size(toast_text, HORIZONTAL_ALIGNMENT_LEFT, -1.0,
+			_scaled_size(26))
 		var toast_rect := Rect2(
 			Vector2(vp.x * 0.5 - minf(toast_size.x + 52.0, 900.0) * 0.5,
 				vp.y - 142.0), Vector2(minf(toast_size.x + 52.0, 900.0), 48.0))
@@ -584,16 +620,17 @@ func _draw_game_hud(vp: Vector2) -> void:
 			toast_rect.position.y + 32.0, 26, Color(1.0, 1.0, 1.0, alpha))
 	# 悬停车站：显示这个形状代表的地标
 	if hover_landmark != "":
-		var text_size := font.get_string_size(hover_landmark, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 15)
+		var text_size := font.get_string_size(hover_landmark, HORIZONTAL_ALIGNMENT_LEFT,
+			-1.0, _scaled_size(15))
 		var rect := Rect2(hover_screen + Vector2(20.0, -40.0),
-			Vector2(text_size.x + 22.0, 28.0))
+			Vector2(text_size.x + 22.0, 28.0 * ui_text_scale))
 		rect.position.x = clampf(rect.position.x, 12.0, vp.x - rect.size.x - 12.0)
 		rect.position.y = clampf(rect.position.y, 12.0, vp.y - rect.size.y - 12.0)
 		var poly := DrawUtil.rounded_rect(rect, 9.0, 6)
 		_draw_soft_shadow(rect, 9.0, 0.18, Vector2(0.0, 4.0))
 		draw_colored_polygon(poly, Color("#FBF8F1", 0.98))
 		draw_polyline(DrawUtil.closed(poly), Color(GOLD, 0.45), 1.2, true)
-		_text(hover_landmark, rect.position + Vector2(11.0, 21.0), 18, INK)
+		_text(hover_landmark, rect.position + Vector2(11.0, 21.0 * ui_text_scale), 18, INK)
 
 
 func _draw_shop_button(vp: Vector2) -> void:
@@ -988,7 +1025,9 @@ func _draw_week(vp: Vector2) -> void:
 	_text_centered(title, cx + 2.0, vp.y * 0.5 - 166.0, 42, Color(0.0, 0.0, 0.0, 0.25))
 	_text_centered(title, cx, vp.y * 0.5 - 168.0, 42, Color(1.0, 1.0, 1.0, 0.98))
 	_draw_accent_rule(Vector2(cx, vp.y * 0.5 - 136.0), 120.0, GOLD)
-	_card_rects = _compute_card_rects(vp, week_cards.size(), 400.0, 220.0, 44.0)
+	var extra := clampf((ui_text_scale - 1.0) / 0.28, 0.0, 1.0)
+	_card_rects = _compute_card_rects(vp, week_cards.size(), 400.0 + 80.0 * extra,
+		220.0 + 36.0 * extra, 44.0)
 	var mouse := get_global_mouse_position()
 	var accents := [GOLD, TEAL]
 	for i in _card_rects.size():
@@ -1758,7 +1797,7 @@ func _draw_menu_bottom_bar(vp: Vector2) -> void:
 	# 中间用一条迷你线路连接三个入口语境
 	var route_y := bar.position.y + 56.0
 	var route_left := bar.position.x + 670.0
-	var route_right := bar.position.x + 1260.0
+	var route_right := bar.position.x + 1190.0
 	draw_line(Vector2(route_left, route_y), Vector2(route_right, route_y),
 		Color(0.93, 0.89, 0.78, 0.20), 2.0, true)
 	for x in [route_left, (route_left + route_right) * 0.5, route_right]:
@@ -1772,8 +1811,8 @@ func _draw_menu_bottom_bar(vp: Vector2) -> void:
 		{"text": Loc.t("地图排行榜", "Map ranks"), "action": "rank"},
 		{"text": Loc.t("地图编辑器", "Map editor"), "action": "editor"},
 	]
-	var button_w := 220.0
-	var button_gap := 14.0
+	var button_w := 240.0
+	var button_gap := 12.0
 	var total_w := button_w * 4.0 + button_gap * 3.0
 	var start_x := bar.end.x - 20.0 - total_w
 	for i in menu_buttons.size():
@@ -1920,7 +1959,8 @@ func _draw_settings(vp: Vector2) -> void:
 					br.position.y + 39.0, 34, Color(1.0, 1.0, 1.0, 0.9))
 		if values[i] != "":
 			var text := String(values[i])
-			var width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 32).x
+			var width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0,
+				_scaled_size(32)).x
 			_text(text, Vector2(row.position.x + row.size.x - 40.0 - width, row.position.y + 47.0),
 				32, Color(1.0, 1.0, 1.0, 0.88))
 	_text_centered(Loc.t("点击行切换/确认 · 音量与移站时间可点 - / + · Esc 返回",
@@ -1931,18 +1971,19 @@ func _draw_settings(vp: Vector2) -> void:
 func _draw_game_over(vp: Vector2) -> void:
 	var cx := vp.x * 0.5
 	var cy := vp.y * 0.5
+	var extra := clampf((ui_text_scale - 1.0) / 0.28, 0.0, 1.0)
 	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.06, 0.065, 0.075, 0.70))
 	_draw_vignette(vp, 1.4)
 	# 失败红晕，中心亮、边缘暗
 	draw_circle(Vector2(cx, cy - 70.0), 250.0, Color(ACCENT, 0.035), true, -1.0, true)
 	draw_circle(Vector2(cx, cy - 70.0), 170.0, Color(ACCENT, 0.045), true, -1.0, true)
-	_text_centered(Loc.t("本次运营结束", "RUN ENDED"), cx, cy - 168.0, 18,
+	_text_centered(Loc.t("本次运营结束", "RUN ENDED"), cx, cy - 168.0 - 42.0 * extra, 18,
 		Color(GOLD, 0.85))
 	_text_centered(Loc.t("拥堵失控", "Overcrowded"), cx + 2.0, cy - 96.0, 68,
 		Color(0.0, 0.0, 0.0, 0.30))
 	_text_centered(Loc.t("拥堵失控", "Overcrowded"), cx, cy - 98.0, 68,
 		Color(1.0, 1.0, 1.0, 0.98))
-	_draw_accent_rule(Vector2(cx, cy - 62.0), 220.0, ACCENT)
+	_draw_accent_rule(Vector2(cx, cy - 62.0 - 6.0 * extra), 220.0, ACCENT)
 	# 两个数据卡
 	var score_title := Loc.t("送达乘客", "DELIVERED")
 	if development_mode:
@@ -1951,10 +1992,10 @@ func _draw_game_over(vp: Vector2) -> void:
 	elif endless_mode:
 		score_title = Loc.t("每30秒客运量", "PASSENGERS / 30S")
 	var card_w := 250.0
-	var card_h := 104.0
+	var card_h := 104.0 + 24.0 * extra
 	var gap := 22.0
 	var stats_total := card_w * 2.0 + gap
-	var stat_y := cy - 28.0
+	var stat_y := cy - 28.0 - 4.0 * extra
 	var cards := [
 		{"title": score_title, "value": final_score, "accent": GOLD},
 		{"title": Loc.t("历史最高", "BEST"), "value": best_score, "accent": ACCENT},
@@ -1969,10 +2010,10 @@ func _draw_game_over(vp: Vector2) -> void:
 		_text_centered(String(cards[i]["title"]), rect.get_center().x,
 			rect.position.y + 28.0, 16, Color(1.0, 1.0, 1.0, 0.55))
 		_text_centered(str(cards[i]["value"]), rect.get_center().x,
-			rect.position.y + 76.0, 46, Color(cards[i]["accent"], 0.98))
+			rect.position.y + 76.0 + 18.0 * extra, 46, Color(cards[i]["accent"], 0.98))
 	var button_size := Vector2(340.0, 88.0)
 	var button_gap := 32.0
-	var button_y := cy + 104.0
+	var button_y := cy + 104.0 + 14.0 * extra
 	if game_over_can_restart:
 		_game_over_restart_rect = Rect2(
 			Vector2(cx - button_size.x - button_gap * 0.5, button_y), button_size)
@@ -1986,7 +2027,7 @@ func _draw_game_over(vp: Vector2) -> void:
 	_draw_touch_button(_game_over_menu_rect,
 		Loc.t("返回模式选择", "Mode menu"), _game_over_menu_rect.has_point(get_global_mouse_position()))
 	_text_centered(Loc.t("也可按 R 重新开始 · M 返回模式选择",
-		"Keyboard: R restart · M mode menu"), cx, cy + 232.0, 19,
+		"Keyboard: R restart · M mode menu"), cx, cy + 232.0 + 14.0 * extra, 19,
 		Color(1.0, 1.0, 1.0, 0.48))
 
 
@@ -2212,44 +2253,50 @@ func _speed_label() -> String:
 
 func _text(s: String, pos: Vector2, size: int, color: Color,
 		align: int = HORIZONTAL_ALIGNMENT_LEFT) -> void:
-	draw_string(font, pos, s, align, -1.0, size, color)
+	var scaled := _scaled_size(size)
+	draw_string(font, pos, s, align, -1.0, scaled, color)
 
 
 func _text_centered(s: String, center_x: float, baseline_y: float, size: int, color: Color) -> void:
-	var w := font.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1.0, size).x
+	var scaled := _scaled_size(size)
+	var w := font.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1.0, scaled).x
 	draw_string(font, Vector2(center_x - w * 0.5, baseline_y), s,
-		HORIZONTAL_ALIGNMENT_LEFT, -1.0, size, color)
+		HORIZONTAL_ALIGNMENT_LEFT, -1.0, scaled, color)
 
 
 ## 字距拉开的标题：像车站站牌上的大写字，而不是普通居中文本。
 func _text_tracked_centered(s: String, center_x: float, baseline_y: float, size: int,
 		color: Color, tracking: float) -> void:
+	var scaled := _scaled_size(size)
+	var scaled_tracking := _scaled_tracking(tracking)
 	var total := 0.0
 	for i in s.length():
-		total += font.get_string_size(s[i], HORIZONTAL_ALIGNMENT_LEFT, -1.0, size).x
-	total += tracking * float(maxi(s.length() - 1, 0))
+		total += font.get_string_size(s[i], HORIZONTAL_ALIGNMENT_LEFT, -1.0, scaled).x
+	total += scaled_tracking * float(maxi(s.length() - 1, 0))
 	var x := center_x - total * 0.5
 	for i in s.length():
 		var ch := s[i]
-		draw_string(font, Vector2(x, baseline_y), ch, HORIZONTAL_ALIGNMENT_LEFT, -1.0, size, color)
-		x += font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1.0, size).x + tracking
+		draw_string(font, Vector2(x, baseline_y), ch, HORIZONTAL_ALIGNMENT_LEFT, -1.0, scaled, color)
+		x += font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1.0, scaled).x + scaled_tracking
 
 
 func _text_right(s: String, right_x: float, baseline_y: float, size: int, color: Color) -> void:
-	var w := font.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1.0, size).x
+	var scaled := _scaled_size(size)
+	var w := font.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1.0, scaled).x
 	draw_string(font, Vector2(right_x - w, baseline_y), s,
-		HORIZONTAL_ALIGNMENT_LEFT, -1.0, size, color)
+		HORIZONTAL_ALIGNMENT_LEFT, -1.0, scaled, color)
 
 
 ## 按空格断行并居中（中文没有空格，会整行绘制）。
 func _text_wrapped(s: String, center_x: float, baseline_y: float, size: int,
 		max_width: float, color: Color) -> void:
+	var scaled := _scaled_size(size)
 	var words := s.split(" ", false)
 	var lines: Array[String] = []
 	var current := ""
 	for word in words:
 		var candidate := word if current == "" else current + " " + word
-		if font.get_string_size(candidate, HORIZONTAL_ALIGNMENT_LEFT, -1.0, size).x <= max_width:
+		if font.get_string_size(candidate, HORIZONTAL_ALIGNMENT_LEFT, -1.0, scaled).x <= max_width:
 			current = candidate
 		else:
 			if current != "":
@@ -2258,6 +2305,7 @@ func _text_wrapped(s: String, center_x: float, baseline_y: float, size: int,
 	if current != "":
 		lines.append(current)
 	for i in lines.size():
-		var line_width := font.get_string_size(lines[i], HORIZONTAL_ALIGNMENT_LEFT, -1.0, size).x
-		draw_string(font, Vector2(center_x - line_width * 0.5, baseline_y + float(i) * (size + 6.0)),
-			lines[i], HORIZONTAL_ALIGNMENT_LEFT, -1.0, size, color)
+		var line_width := font.get_string_size(lines[i], HORIZONTAL_ALIGNMENT_LEFT, -1.0, scaled).x
+		draw_string(font, Vector2(center_x - line_width * 0.5,
+			baseline_y + float(i) * (scaled + 6.0 * ui_text_scale)),
+			lines[i], HORIZONTAL_ALIGNMENT_LEFT, -1.0, scaled, color)
